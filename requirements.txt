@@ -18,6 +18,16 @@ psycopg2-binary>=2.9.9
 pandas>=2.2.2
 numpy>=1.26.4
 
+# Localization Engine
+scipy>=1.14.0
+pyproj>=3.6.1
+shapely>=2.0.0
+
+# Cloud Storage (Cloudinary + Google Drive)
+cloudinary>=1.40.0
+google-auth>=2.30.0
+google-api-python-client>=2.120.0
+
 # Structured Logging
 structlog>=24.2.0
 colorama>=0.4.6  # For colored logs locally
@@ -32,4 +42,3 @@ black>=24.4.2
 isort>=5.13.2
 mypy>=1.10.0
 pre-commit>=3.7.1
-types-pandas>=2.2.2.20240524

@@ -129,3 +129,29 @@ class MeasurementTowerModel(Base):
     pseudorange_meters: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
     frame: Mapped[MeasurementFrameModel] = relationship(back_populates="towers")
+
+
+class LocalizationFixModel(Base):
+    """
+    Stores resolved suspect position fixes produced by the localization engine.
+    """
+    __tablename__ = "localization_fixes"
+
+    fix_id: Mapped[UUID] = mapped_column(primary_key=True)
+    case_id: Mapped[str] = mapped_column(String(50), index=True, nullable=False)
+    frame_id: Mapped[Optional[UUID]] = mapped_column(
+        ForeignKey("measurement_frames.frame_id", ondelete="SET NULL"), nullable=True
+    )
+    subscriber_identifier: Mapped[str] = mapped_column(String(50), index=True, nullable=False)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, index=True, nullable=False)
+    latitude: Mapped[float] = mapped_column(Float, nullable=False)
+    longitude: Mapped[float] = mapped_column(Float, nullable=False)
+    velocity_east: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    velocity_north: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    confidence_radius_meters: Mapped[float] = mapped_column(Float, nullable=False)
+    gdop: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    residual_rms: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    ta_inner_m: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    ta_outer_m: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    rss_i_dbm: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)

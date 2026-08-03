@@ -30,16 +30,35 @@ class Settings(BaseSettings):
 
     # Database Settings
     DATABASE_URL: str = Field(
-        default="postgresql+asyncpg://postgres:postgres@localhost:5432/erakshak"
+        ...,
+        description="Async Postgres DSN (postgresql+asyncpg://...)"
     )
     SYNC_DATABASE_URL: str = Field(
-        default="postgresql+psycopg2://postgres:postgres@localhost:5432/erakshak"
+        ...,
+        description="Sync Postgres DSN for Alembic (postgresql+psycopg2://...)"
     )
 
     # Storage Settings
     UPLOAD_DIR: str = Field(default="./uploads")
     MAX_CONTENT_LENGTH_MB: int = Field(default=100)
     ALLOWED_EXTENSIONS: str = Field(default="csv,xlsx,xls,txt,docx,pdf")
+
+    # Cloudinary Settings (direct-to-storage uploads from the browser)
+    CLOUDINARY_CLOUD_NAME: str = Field(default="")
+    CLOUDINARY_API_KEY: str = Field(default="")
+    CLOUDINARY_API_SECRET: str = Field(default="")
+    CLOUDINARY_UPLOAD_FOLDER: str = Field(default="erakshak-uploads")
+
+    # Google Drive Picker Settings (Drive import via frontend OAuth popup)
+    GOOGLE_CLIENT_ID: str = Field(default="")
+    GOOGLE_API_KEY: str = Field(default="")
+    GOOGLE_PROJECT_ID: str = Field(default="")
+
+    # Localization Engine Settings
+    UTM_ZONE: int = Field(default=43, description="Default UTM zone; auto-derived from longitude when 0")
+
+    # OpenCellID Fallback Settings
+    OPENCELLID_API_KEY: str = Field(default="", description="OpenCellID API key for tower geolocation fallback")
 
     @property
     def allowed_extensions_list(self) -> list[str]:

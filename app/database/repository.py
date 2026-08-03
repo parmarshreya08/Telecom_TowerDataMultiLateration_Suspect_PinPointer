@@ -11,12 +11,14 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.contracts.enums import CallType, Operator, RadioTechnology, SourceType
-from app.contracts.measurement import MeasurementFrame
+from app.contracts.enums import CallType, FrameStatus, Operator, RadioTechnology, SourceType
+from app.contracts.localization import LocalizationFix
+from app.contracts.measurement import MeasurementFrame, MeasurementTower
 from app.contracts.subscriber import SubscriberEventRecord
 from app.contracts.tower import TowerRecord
 from app.contracts.upload import UploadMetadata
 from app.database.models.telecom import (
+    LocalizationFixModel,
     MeasurementFrameModel,
     MeasurementTowerModel,
     SubscriberEventRecordModel,
@@ -198,3 +200,177 @@ class TelecomRepository:
                 for t in f.towers
             ]
             self.session.add_all(tower_models)
+
+    async def get_frames_by_case(self, case_id: str) -> list[MeasurementFrame]:
+        """
+        Loads all MeasurementFrames (with their towers) belonging to an investigation case.
+        """
+        stmt = (
+            select(MeasurementFrameModel)
+            .join(UploadMetadataModel, UploadMetadataModel.upload_id == MeasurementFrameModel.upload_id)
+            .where(UploadMetadataModel.case_id == case_id)
+            .order_by(MeasurementFrameModel.timestamp)
+        )
+        result = await self.session.execute(stmt)
+        models = result.scalars().all()
+
+        frames: list[MeasurementFrame] = []
+        for m in models:
+            frames.append(MeasurementFrame(
+                frame_id=m.frame_id,
+                upload_id=m.upload_id,
+                subscriber_identifier=m.subscriber_identifier,
+                timestamp=m.timestamp,
+                status=FrameStatus(m.status),
+                towers=[
+                    MeasurementTower(
+                        tower_id=t.tower_id,
+                        cgi=t.cgi,
+                        latitude=t.latitude,
+                        longitude=t.longitude,
+                        azimuth=t.azimuth,
+                        beamwidth=t.beamwidth,
+                        signal_strength=t.signal_strength,
+                        timing_advance=t.timing_advance,
+                        rtt=t.rtt,
+                        pseudorange_meters=t.pseudorange_meters,
+                    )
+                    for t in m.towers
+                ],
+            ))
+        return frames
+
+    async def get_uploads_by_case(self, case_id: str) -> list[UploadMetadataModel]:
+        """
+        Loads all upload metadata rows registered to an investigation case (1:N).
+        """
+        stmt = (
+            select(UploadMetadataModel)
+            .where(UploadMetadataModel.case_id == case_id)
+            .order_by(UploadMetadataModel.uploaded_at)
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def save_localization_fixes(self, fixes: list[LocalizationFix]) -> None:
+        """
+        Bulk inserts resolved localization fixes for a case.
+        """
+        if not fixes:
+            return
+
+        models = [
+            LocalizationFixModel(
+                fix_id=f.fix_id,
+                case_id=f.case_id,
+                frame_id=f.frame_id,
+                subscriber_identifier=f.subscriber_identifier,
+                timestamp=f.timestamp,
+                latitude=f.latitude,
+                longitude=f.longitude,
+                velocity_east=f.velocity_east,
+                velocity_north=f.velocity_north,
+                confidence_radius_meters=f.confidence_radius_meters,
+                gdop=f.gdop,
+                residual_rms=f.residual_rms,
+                ta_inner_m=f.ta_inner_m,
+                ta_outer_m=f.ta_outer_m,
+                rss_i_dbm=f.rss_i_dbm,
+                created_at=f.created_at,
+            )
+            for f in fixes
+        ]
+        self.session.add_all(models)
+
+    async def get_localization_fixes(self, case_id: str) -> list[LocalizationFixModel]:
+        """
+        Loads stored localization fixes for a case (cached engine output).
+        """
+        stmt = (
+            select(LocalizationFixModel)
+            .where(LocalizationFixModel.case_id == case_id)
+            .order_by(LocalizationFixModel.timestamp)
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def find_towers_within_radius(
+        self, lat: float, lon: float, radius_meters: float
+    ) -> list[TowerRecord]:
+        """
+        Finds towers within a radius of a point using PostGIS spatial query.
+        """
+        from sqlalchemy import text
+
+        stmt = text(
+            "SELECT tower_id, operator, radio, mcc, mnc, lac, cell_id, cgi, "
+            "latitude, longitude, azimuth, beamwidth, range_meters, site_address "
+            "FROM tower_records "
+            "WHERE ST_DWithin(geometry::geography, "
+            "ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography, :radius)"
+        )
+        result = await self.session.execute(
+            stmt, {"lat": lat, "lon": lon, "radius": radius_meters}
+        )
+        rows = result.fetchall()
+        return [
+            TowerRecord(
+                tower_id=row[0],
+                operator=Operator(row[1]),
+                radio=RadioTechnology(row[2]),
+                mcc=row[3],
+                mnc=row[4],
+                lac=row[5],
+                cell_id=row[6],
+                cgi=row[7],
+                latitude=row[8],
+                longitude=row[9],
+                azimuth=row[10],
+                beamwidth=row[11],
+                range_meters=row[12],
+                site_address=row[13],
+            )
+            for row in rows
+        ]
+
+    async def find_fixes_within_radius(
+        self, case_id: str, lat: float, lon: float, radius_meters: float
+    ) -> list[LocalizationFixModel]:
+        """
+        Finds localization fixes within a radius of a point using PostGIS.
+        """
+        from sqlalchemy import text
+
+        stmt = text(
+            "SELECT fix_id, case_id, frame_id, subscriber_identifier, timestamp, "
+            "latitude, longitude, confidence_radius_meters, gdop, residual_rms, "
+            "ta_inner_m, ta_outer_m, rss_i_dbm, created_at "
+            "FROM localization_fixes "
+            "WHERE case_id = :case_id "
+            "AND ST_DWithin(geometry::geography, "
+            "ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography, :radius) "
+            "ORDER BY timestamp"
+        )
+        result = await self.session.execute(
+            stmt, {"case_id": case_id, "lat": lat, "lon": lon, "radius": radius_meters}
+        )
+        rows = result.fetchall()
+        return [
+            LocalizationFixModel(
+                fix_id=row[0],
+                case_id=row[1],
+                frame_id=row[2],
+                subscriber_identifier=row[3],
+                timestamp=row[4],
+                latitude=row[5],
+                longitude=row[6],
+                confidence_radius_meters=row[7],
+                gdop=row[8],
+                residual_rms=row[9],
+                ta_inner_m=row[10],
+                ta_outer_m=row[11],
+                rss_i_dbm=row[12],
+                created_at=row[13],
+            )
+            for row in rows
+        ]

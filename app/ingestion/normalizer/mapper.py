@@ -66,10 +66,35 @@ class OperatorMapper:
             mnc=mnc,
             lac=lac,
             cell_id=cell_id,
+            tower_latitude=OperatorMapper._safe_float(raw.get("first_cgi_lat")),
+            tower_longitude=OperatorMapper._safe_float(raw.get("first_cgi_lon")),
+            signal_strength=OperatorMapper._safe_float(raw.get("signal_strength")),
+            timing_advance=OperatorMapper._safe_int(raw.get("timing_advance")),
+            rtt=OperatorMapper._safe_float(raw.get("rtt")),
             source_file=source_file,
             record_number=record_number,
             raw_fields=raw,
         )
+
+    @staticmethod
+    def _safe_float(value: Any) -> Any:
+        """Converts a raw string to float when possible."""
+        if value is None or value == "":
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _safe_int(value: Any) -> Any:
+        """Converts a raw string to int when possible."""
+        if value is None or value == "":
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
 
     @staticmethod
     def map_jio_cdr(
@@ -169,6 +194,9 @@ class OperatorMapper:
             mnc=mnc,
             lac=lac,
             cell_id=cell_id,
+            signal_strength=OperatorMapper._safe_float(raw.get("signal_strength")),
+            timing_advance=OperatorMapper._safe_int(raw.get("timing_advance")),
+            rtt=OperatorMapper._safe_float(raw.get("rtt")),
             source_file=source_file,
             record_number=record_number,
             raw_fields=raw,
@@ -216,6 +244,9 @@ class OperatorMapper:
             mnc=mnc,
             lac=lac,
             cell_id=cell_id,
+            signal_strength=OperatorMapper._safe_float(raw.get("signal_strength")),
+            timing_advance=OperatorMapper._safe_int(raw.get("timing_advance")),
+            rtt=OperatorMapper._safe_float(raw.get("rtt")),
             source_file=source_file,
             record_number=record_number,
             raw_fields=raw,

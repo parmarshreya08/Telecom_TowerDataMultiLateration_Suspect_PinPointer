@@ -8,20 +8,28 @@ from typing import AsyncGenerator
 
 from fastapi import FastAPI
 
-from app.api import health_router, upload_router
+from app.api import cases_router, health_router, upload_router
 from app.core.config import settings
 from app.core.logging import logger, setup_logging
+from app.database.session import check_database_connection
 
 
 @asynccontextmanager
 async def app_lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """
     Context manager managing app lifecycle events.
-    Fires startup logging configurations and shutdown cleanups.
+    Verifies database connectivity before serving, then yields.
     """
     # 1. Initialize structured logging
     setup_logging()
-    
+
+    # 2. Verify database connectivity before accepting requests
+    if not await check_database_connection():
+        logger.error("startup_database_unreachable", database_url=settings.DATABASE_URL)
+        raise RuntimeError(
+            "Database is unreachable at startup. Check DATABASE_URL and Neon connection."
+        )
+
     logger.info(
         "starting_erakshak_backend",
         version="1.0.0",
@@ -52,3 +60,4 @@ app = FastAPI(
 # Include API endpoints
 app.include_router(health_router)
 app.include_router(upload_router)
+app.include_router(cases_router)
