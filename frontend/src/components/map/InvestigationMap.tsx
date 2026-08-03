@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { MapContainer, TileLayer, Marker, Popup, Polyline, Circle, useMap } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, Popup, Polyline, Circle, Polygon, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import { Maximize2, Target, Eye, EyeOff } from 'lucide-react'
-import type { LocalizationResult, PathPoint, TowerRecord } from '@/types'
+import type { LocalizationResult, PathPoint, TowerRecord, GeoJSONFeatureCollection } from '@/types'
 import { formatCoordinate, cn } from '@/utils'
 import { DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM } from '@/constants'
 
@@ -64,6 +64,30 @@ function CenterControl({ lat, lon, trigger }: CenterControlProps) {
   return null
 }
 
+// ── Parse sector wedge GeoJSON polygons ──────────────────────
+function parseSectorWedges(geojson?: GeoJSONFeatureCollection) {
+  if (!geojson?.features) return []
+  return geojson.features
+    .filter((f) => f.geometry.type === 'Polygon' && f.properties?.azimuth_degrees != null)
+    .map((f) => {
+      const coords = (f.geometry as { coordinates: [number, number][][] }).coordinates[0]
+      const latlngs: [number, number][] = coords.map(([lon, lat]) => [lat, lon])
+      return { latlngs, properties: f.properties }
+    })
+}
+
+// ── Parse confidence ellipses from GeoJSON ────────────────────
+function parseEllipses(geojson?: GeoJSONFeatureCollection) {
+  if (!geojson?.features) return []
+  return geojson.features
+    .filter((f) => f.geometry.type === 'Polygon' && f.properties?.semi_major_axis_meters != null)
+    .map((f) => {
+      const coords = (f.geometry as { coordinates: [number, number][][] }).coordinates[0]
+      const latlngs: [number, number][] = coords.map(([lon, lat]) => [lat, lon])
+      return { latlngs, properties: f.properties }
+    })
+}
+
 // ── Main component ────────────────────────────────────────────
 interface InvestigationMapProps {
   currentLocation?: LocalizationResult
@@ -72,6 +96,7 @@ interface InvestigationMapProps {
   onCenterRequest:  () => void
   centerTrigger:    boolean
   autoFollow?:      boolean
+  geojson?:         GeoJSONFeatureCollection
 }
 
 export function InvestigationMap({
@@ -81,12 +106,17 @@ export function InvestigationMap({
   onCenterRequest,
   centerTrigger,
   autoFollow = true,
+  geojson,
 }: InvestigationMapProps) {
-  const [showPath,     setShowPath]     = useState(true)
-  const [showTowers,   setShowTowers]   = useState(true)
-  const [showEllipse,  setShowEllipse]  = useState(true)
-  const [isFullscreen, setIsFullscreen] = useState(false)
+  const [showPath,       setShowPath]       = useState(true)
+  const [showTowers,     setShowTowers]     = useState(true)
+  const [showEllipse,    setShowEllipse]    = useState(true)
+  const [showSectors,    setShowSectors]    = useState(true)
+  const [isFullscreen,   setIsFullscreen]   = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
+
+  const sectorWedges = parseSectorWedges(geojson)
+  const ellipses = parseEllipses(geojson)
 
   const center: [number, number] = currentLocation
     ? [currentLocation.latitude, currentLocation.longitude]
@@ -128,8 +158,23 @@ export function InvestigationMap({
           />
         )}
 
-        {/* Confidence ellipse */}
-        {showEllipse && currentLocation && (
+        {/* Confidence ellipses from GeoJSON */}
+        {showEllipse && ellipses.map((e, i) => (
+          <Polygon
+            key={`ellipse-${i}`}
+            positions={e.latlngs}
+            pathOptions={{
+              color:       '#2563eb',
+              fillColor:   '#2563eb',
+              fillOpacity: 0.07,
+              weight:      1.5,
+              dashArray:   '5 5',
+            }}
+          />
+        ))}
+
+        {/* Fallback: simple circle when no GeoJSON ellipses */}
+        {showEllipse && currentLocation && ellipses.length === 0 && (
           <Circle
             center={[currentLocation.latitude, currentLocation.longitude]}
             radius={currentLocation.accuracy_meters}
@@ -142,6 +187,30 @@ export function InvestigationMap({
             }}
           />
         )}
+
+        {/* Sector wedge polygons */}
+        {showSectors && sectorWedges.map((s, i) => (
+          <Polygon
+            key={`sector-${i}`}
+            positions={s.latlngs}
+            pathOptions={{
+              color:       '#f59e0b',
+              fillColor:   '#f59e0b',
+              fillOpacity: 0.10,
+              weight:      1,
+              dashArray:   '3 3',
+            }}
+          >
+            <Popup>
+              <div className="text-xs leading-relaxed">
+                <p className="font-bold text-amber-700">Sector Wedge</p>
+                <p>Azimuth: {String(s.properties.azimuth_degrees ?? '')}°</p>
+                <p>Beamwidth: {String(s.properties.beamwidth_degrees ?? '')}°</p>
+                <p>Radius: {typeof s.properties.radius_meters === 'number' ? s.properties.radius_meters.toFixed(0) : ''}m</p>
+              </div>
+            </Popup>
+          </Polygon>
+        ))}
 
         {/* Path trail */}
         {showPath && pathCoords.length > 1 && (
@@ -183,6 +252,8 @@ export function InvestigationMap({
                 <p className="font-bold text-blue-700">{tower.cgi}</p>
                 <p className="text-gray-600">{tower.operator} · {tower.radio}</p>
                 <p>{formatCoordinate(tower.latitude)}°N, {formatCoordinate(tower.longitude)}°E</p>
+                {tower.azimuth != null && <p>Azimuth: {tower.azimuth}°</p>}
+                {tower.beamwidth != null && <p>Beamwidth: {tower.beamwidth}°</p>}
                 {tower.range_meters && <p>Range: {tower.range_meters}m</p>}
                 {tower.site_address && <p className="text-gray-400 mt-1">{tower.site_address}</p>}
               </div>
@@ -239,6 +310,7 @@ export function InvestigationMap({
             { label: 'Path',    state: showPath,    set: setShowPath    },
             { label: 'Towers',  state: showTowers,  set: setShowTowers  },
             { label: 'Ellipse', state: showEllipse, set: setShowEllipse },
+            { label: 'Sectors', state: showSectors, set: setShowSectors },
           ].map(({ label, state, set }, i, arr) => (
             <button
               key={label}

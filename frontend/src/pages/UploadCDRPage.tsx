@@ -3,18 +3,16 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Upload, FileText, X, CheckCircle, AlertCircle, ArrowLeft, ArrowRight,
-  HardDrive, Tag, BarChart2, FolderOpen, PlusCircle,
+  HardDrive, Tag, BarChart2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { Select } from '@/components/ui/Select'
-import { Modal } from '@/components/ui/Modal'
 import { TRACKING_DURATION_OPTIONS, ACCEPTED_FILE_TYPES, MAX_FILE_SIZE_MB, MAX_FILE_SIZE_BYTES } from '@/constants'
 import { formatFileSize, estimateRowCount, cn } from '@/utils'
 import type { TrackingDuration, UploadResponse } from '@/types'
 import { uploadApi } from '@/services/api'
 import { useAuthContext } from '@/contexts/AuthContext'
-import { MOCK_INVESTIGATIONS } from '@/mock/investigations'
 
 type UploadStage = 'select' | 'preview' | 'settings' | 'uploading' | 'done'
 

@@ -1,10 +1,13 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { FileText, Download, FileSpreadsheet, File, Braces, Map } from 'lucide-react'
+import { FileText, Download, FileSpreadsheet, File, Braces, Map, Shield } from 'lucide-react'
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
+import { Button } from '@/components/ui/Button'
 import { MOCK_INVESTIGATIONS } from '@/mock/investigations'
 import { formatDateTime, formatFileSize } from '@/utils'
+import { reportApi } from '@/services/api'
+import type { ForensicReport } from '@/types'
 
 const EXPORT_FORMATS = [
   { value: 'pdf',     label: 'PDF Report',        icon: FileText,       desc: 'Full investigation summary with map snapshot' },
@@ -27,12 +30,36 @@ const formatIcon: Record<string, React.ElementType> = {
 export default function ReportsPage() {
   const [selectedInv, setSelectedInv] = useState('inv-001')
   const [generating, setGenerating]   = useState<string | null>(null)
+  const [report, setReport]           = useState<ForensicReport | null>(null)
+  const [reportError, setReportError] = useState<string | null>(null)
 
   const handleGenerate = async (format: string) => {
     setGenerating(format)
-    // TODO: reportApi.generate(selectedInv, format)
-    await new Promise((r) => setTimeout(r, 1500))
+    setReportError(null)
+
+    if (format === 'json') {
+      try {
+        const data = await reportApi.getForensicReport(selectedInv)
+        setReport(data)
+      } catch (err: unknown) {
+        const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? 'Report generation failed'
+        setReportError(msg)
+      }
+    }
+
+    await new Promise((r) => setTimeout(r, 1000))
     setGenerating(null)
+  }
+
+  const handleDownloadJSON = () => {
+    if (!report) return
+    const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${report.report_id}.json`
+    a.click()
+    URL.revokeObjectURL(url)
   }
 
   return (
@@ -106,6 +133,72 @@ export default function ReportsPage() {
               </div>
             </div>
           </Card>
+
+          {reportError && (
+            <div className="rounded-lg bg-danger-light px-4 py-3 text-sm text-danger">
+              {reportError}
+            </div>
+          )}
+
+          {/* Forensic Report Preview */}
+          {report && (
+            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Forensic Report</CardTitle>
+                  <Button size="sm" variant="primary" icon={<Download className="h-3.5 w-3.5" />} onClick={handleDownloadJSON}>
+                    Download JSON
+                  </Button>
+                </CardHeader>
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3 rounded-lg bg-surface-50 p-4 dark:bg-surface-800">
+                    <Shield className="h-8 w-8 text-primary-600" />
+                    <div>
+                      <p className="text-sm font-semibold text-surface-800 dark:text-surface-200">{report.report_id}</p>
+                      <p className="text-xs text-surface-400">Generated {formatDateTime(report.generated_at)}</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <p className="text-2xs text-surface-400">Algorithm</p>
+                      <p className="text-sm font-medium text-surface-800 dark:text-surface-200">{report.methodology.algorithm}</p>
+                    </div>
+                    <div>
+                      <p className="text-2xs text-surface-400">Confidence Level</p>
+                      <p className="text-sm font-medium text-surface-800 dark:text-surface-200">{(report.methodology.confidence_level * 100).toFixed(0)}%</p>
+                    </div>
+                    <div>
+                      <p className="text-2xs text-surface-400">Total Fixes</p>
+                      <p className="text-sm font-medium text-surface-800 dark:text-surface-200">{report.summary.fix_count}</p>
+                    </div>
+                    <div>
+                      <p className="text-2xs text-surface-400">Subscribers</p>
+                      <p className="text-sm font-medium text-surface-800 dark:text-surface-200">{report.summary.subscriber_count}</p>
+                    </div>
+                  </div>
+
+                  {report.subscribers.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold text-surface-500 mb-2">Subscriber Summary</p>
+                      {report.subscribers.map((sub) => (
+                        <div key={sub.subscriber_identifier} className="rounded-lg border border-surface-100 p-3 dark:border-surface-700">
+                          <div className="flex items-center justify-between">
+                            <p className="text-sm font-medium text-surface-800 dark:text-surface-200">{sub.subscriber_identifier}</p>
+                            <p className="text-xs text-surface-400">{sub.fix_count} fixes</p>
+                          </div>
+                          <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-surface-500">
+                            <span>Centroid: {sub.centroid.latitude.toFixed(4)}, {sub.centroid.longitude.toFixed(4)}</span>
+                            <span>Avg accuracy: ±{sub.confidence.mean_meters.toFixed(0)}m</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </Card>
+            </motion.div>
+          )}
         </div>
 
         {/* Recent Reports */}

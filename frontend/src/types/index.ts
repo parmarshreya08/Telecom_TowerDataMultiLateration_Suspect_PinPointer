@@ -223,6 +223,68 @@ export interface MeasurementFrame {
   status: FrameStatus
 }
 
+// ── Localization Fix (matches backend LocalizationFix contract) ──
+
+export interface LocalizationFix {
+  fix_id: string
+  case_id: string
+  frame_id?: string
+  subscriber_identifier: string
+  timestamp: string
+  latitude: number
+  longitude: number
+  velocity_east?: number
+  velocity_north?: number
+  confidence_radius_meters: number
+  gdop?: number
+  residual_rms?: number
+  ta_inner_m?: number
+  ta_outer_m?: number
+  rss_i_dbm?: number
+  created_at: string
+}
+
+export interface ForensicReport {
+  report_id: string
+  case_id: string
+  status: string
+  generated_at: string
+  methodology: {
+    algorithm: string
+    ta_band_model: string
+    sector_wedge_model: string
+    confidence_level: number
+  }
+  summary: {
+    fix_count: number
+    subscriber_count: number
+    time_span: { earliest: string; latest: string }
+  }
+  subscribers: Array<{
+    subscriber_identifier: string
+    fix_count: number
+    first_seen: string
+    last_seen: string
+    centroid: { latitude: number; longitude: number }
+    bounds: {
+      min_latitude: number
+      max_latitude: number
+      min_longitude: number
+      max_longitude: number
+    }
+    confidence: { mean_meters: number; min_meters: number; max_meters: number }
+    fixes: Array<{
+      timestamp: string
+      latitude: number
+      longitude: number
+      confidence_radius_meters: number
+      gdop?: number
+      residual_rms?: number
+    }>
+  }>
+  metadata: Record<string, unknown>
+}
+
 // ── Localization Result (Future backend output) ────────────
 
 /**

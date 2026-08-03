@@ -14,6 +14,8 @@ import type {
   PaginatedResponse,
   ReportRecord,
   Notification,
+  ForensicReport,
+  GeoJSONFeatureCollection,
 } from '@/types'
 
 // ── Axios instance ─────────────────────────────────────────
@@ -133,38 +135,48 @@ export const authApi = {
   },
 }
 
-// ── Tracking ───────────────────────────────────────────────
-// TODO: Backend localization endpoints not yet implemented
+// ── Tracking / Localization ────────────────────────────────
 export const trackingApi = {
-  startTracking: (investigationId: string, settings: unknown) =>
+  /** POST /api/case/{case_id}/localize — run trilateration + Kalman on stored frames */
+  runLocalization: (caseId: string) =>
     apiClient
-      .post(`/api/investigations/${investigationId}/tracking/start`, settings)
+      .post<{ case_id: string; fix_count: number; geojson: GeoJSONFeatureCollection }>(
+        `/api/case/${caseId}/localize`
+      )
       .then((r) => r.data),
 
-  pauseTracking: (investigationId: string) =>
+  /** GET /api/case/{case_id}/localize/geojson — read cached GeoJSON fixes */
+  getGeoJSON: (caseId: string) =>
     apiClient
-      .post(`/api/investigations/${investigationId}/tracking/pause`)
+      .get<GeoJSONFeatureCollection>(`/api/case/${caseId}/localize/geojson`)
       .then((r) => r.data),
 
-  resumeTracking: (investigationId: string) =>
+  /** GET /api/case/{case_id}/uploads — list uploads for a case */
+  getCaseUploads: (caseId: string) =>
     apiClient
-      .post(`/api/investigations/${investigationId}/tracking/resume`)
+      .get<{ case_id: string; uploads: unknown[]; total: number }>(
+        `/api/case/${caseId}/uploads`
+      )
       .then((r) => r.data),
 
-  getLocation: (investigationId: string) =>
+  /** GET /api/towers?cgi=... — lookup tower by CGI */
+  lookupTower: (cgi: string) =>
     apiClient
-      .get(`/api/investigations/${investigationId}/location`)
-      .then((r) => r.data),
-
-  getHeatmap: (investigationId: string) =>
-    apiClient
-      .get(`/api/investigations/${investigationId}/heatmap`)
+      .get<{ tower_id: string; latitude: number; longitude: number; azimuth?: number; beamwidth?: number }>(
+        '/api/towers',
+        { params: { cgi } }
+      )
       .then((r) => r.data),
 }
 
 // ── Reports / Export ───────────────────────────────────────
-// TODO: Backend export endpoints not yet implemented
 export const reportApi = {
+  /** GET /api/case/{case_id}/report — forensic report for a case */
+  getForensicReport: (caseId: string) =>
+    apiClient
+      .get<ForensicReport>(`/api/case/${caseId}/report`)
+      .then((r) => r.data),
+
   list: (investigationId: string) =>
     apiClient
       .get<ReportRecord[]>(`/api/investigations/${investigationId}/reports`)

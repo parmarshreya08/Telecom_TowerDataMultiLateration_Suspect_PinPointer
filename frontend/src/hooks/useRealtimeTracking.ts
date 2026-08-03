@@ -100,7 +100,7 @@ export function useRealtimeTracking(investigationId: string) {
 
   // ── Mock live simulation ───────────────────────────────────
   // TODO: Remove once real engine pushes location updates via socket
-  const startMockSimulation = useCallback((base: LocalizationResult) => {
+  const startMockSimulation = useCallback((_base: LocalizationResult) => {
     if (pollRef.current) clearInterval(pollRef.current)
     isLiveRef.current = true
 
