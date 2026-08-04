@@ -45,15 +45,7 @@ class UploadService:
     ) -> dict[str, Any]:
         """
         Executes file validation, local saving, hashing, duplicate checking, 
-        operator detection, and metadata persistence.
-
-        Args:
-            file: FastAPI UploadFile instance.
-            case_id: Investigation reference case code.
-            uploaded_by: Officer uploader ID.
-
-        Returns:
-            Dict containing upload metadata and classification outputs.
+        operator detection, metadata persistence, and pipeline ingestion.
         """
         logger.info("upload_started", filename=file.filename, case_id=case_id)
 
@@ -85,15 +77,12 @@ class UploadService:
         # 5. Duplicate Check
         existing_upload = await self.repo.get_upload_by_hash(sha256_hash)
         if existing_upload:
-            # File already exists. Delete the newly written file immediately to save space.
             logger.info("duplicate_detected", hash=sha256_hash, filename=file.filename)
             try:
                 os.remove(dest_path)
-                logger.debug("duplicate_file_cleanup_completed", path=dest_path)
             except Exception as e:
                 logger.error("failed_to_clean_duplicate_file", path=dest_path, error=str(e))
 
-            # Retrieve details from database configuration
             operator_enum = Operator(existing_upload.operator)
             source_enum = SourceType(existing_upload.source_type)
             extractor_name = EXTRACTOR_MAP.get((operator_enum, source_enum), "UnknownExtractor")
@@ -130,7 +119,7 @@ class UploadService:
             logger.error("upload_failed", filename=file.filename, error=f"Detection failed: {e}")
             raise RuntimeError(f"Detector execution failure: {e}")
 
-        # 7. Persist UploadMetadata to database config
+        # 7. Persist UploadMetadata to database
         upload_id = uuid4()
         uploaded_at = datetime.utcnow()
 
@@ -157,6 +146,65 @@ class UploadService:
                 os.remove(dest_path)
             logger.error("upload_failed", filename=file.filename, error=f"Database commit failed: {e}")
             raise RuntimeError(f"Database write failure: {e}")
+
+        # 8. Run ingestion pipeline (extract → normalize → build frames)
+        try:
+            from app.contracts.enums import SourceType as ST
+            from app.contracts.subscriber import SubscriberEventRecord
+            from app.contracts.tower import TowerRecord
+            from app.ingestion.builder.measurement_builder import MeasurementFrameBuilder
+            from app.ingestion.extractors.airtel import AirtelExtractor
+            from app.ingestion.extractors.bsnl import BSNLExtractor
+            from app.ingestion.extractors.jio import JioExtractor
+            from app.ingestion.extractors.spot_dump import SpotDumpExtractor
+            from app.ingestion.extractors.tower_dump import TowerDumpExtractor
+            from app.ingestion.extractors.vi import ViExtractor
+            from app.ingestion.normalizer.normalizer import TelecomNormalizer
+            from app.ingestion.validator.validator import IngestionValidator
+            from app.services.tower_lookup import TowerLookupService
+
+            source_type = detection_res.source_type
+            operator_str = detection_res.operator.value
+
+            if source_type == ST.TOWER_DUMP:
+                extractor = TowerDumpExtractor()
+            elif source_type == ST.SPOT_DUMP:
+                extractor = SpotDumpExtractor()
+            elif operator_str == "Airtel":
+                extractor = AirtelExtractor()
+            elif operator_str == "Jio":
+                extractor = JioExtractor()
+            elif operator_str == "Vi":
+                extractor = ViExtractor()
+            elif operator_str == "BSNL":
+                extractor = BSNLExtractor()
+            else:
+                extractor = AirtelExtractor()
+
+            raw_rows = extractor.extract(dest_path, upload_id=upload_id)
+
+            if source_type == ST.TOWER_DUMP:
+                validator = IngestionValidator()
+                valid_rows = validator.validate_raw_records(raw_rows, source_type.value)
+                normalizer = TelecomNormalizer()
+                normalized_records = normalizer.normalize_records(
+                    valid_rows, operator_str, source_type.value, upload_id, file.filename
+                )
+                towers = [r for r in normalized_records if isinstance(r, TowerRecord)]
+                await self.repo.save_tower_records(towers)
+            else:
+                events = [r for r in raw_rows if isinstance(r, SubscriberEventRecord)]
+                await self.repo.save_subscriber_events(events)
+                tower_lookup = TowerLookupService(self.db_session)
+                builder = MeasurementFrameBuilder(tower_lookup)
+                frames = await builder.build_frames(events)
+                await self.repo.save_measurement_frames(frames)
+
+            await self.db_session.commit()
+            logger.info("pipeline_ingestion_completed", upload_id=str(upload_id))
+        except Exception as e:
+            import traceback
+            logger.error("pipeline_ingestion_failed", upload_id=str(upload_id), error=str(e), traceback=traceback.format_exc())
 
         return {
             "upload_id": upload_id,

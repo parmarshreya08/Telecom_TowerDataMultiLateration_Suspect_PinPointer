@@ -70,7 +70,7 @@ class KalmanTracker:
             [0.0, dt ** 3 / 2, 0.0, dt ** 2],
         ], dtype=np.float64) * q_var
 
-    def initialize_state(self, initial_pos: np.ndarray, residual_rms: float = 0.0, max_init_rms: float = 150.0) -> bool:
+    def initialize_state(self, initial_pos: np.ndarray, residual_rms: float = 0.0, max_init_rms: float = 500.0) -> bool:
         """
         Validate and initialize state vector with first Stage 1 fix.
         Rejects bad initial frames if initial residual RMS is excessively high.
