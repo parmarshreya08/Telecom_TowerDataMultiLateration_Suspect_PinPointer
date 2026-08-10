@@ -1,13 +1,13 @@
 import { useNavigate } from 'react-router-dom'
-import { motion } from 'framer-motion'
+import { motion } from 'motion/react'
 import {
-  Shield, MapPin, Radio, FileSearch, ChevronRight,
+  MapPin, Radio, FileSearch, ChevronRight,
   Cpu, Database, BarChart3, ArrowRight,
   CheckCircle, Zap, LayoutDashboard,
 } from 'lucide-react'
 import { useThemeContext } from '@/contexts/ThemeContext'
-import { useAuthContext } from '@/contexts/AuthContext'
 import { Sun, Moon } from 'lucide-react'
+import { Logo } from '@/components/ui/Logo'
 
 const FEATURES = [
   { icon: FileSearch, title: 'CDR Ingestion',        desc: 'Automatic operator detection for Airtel, Jio, Vi, and BSNL CDR files.' },
@@ -19,7 +19,6 @@ const FEATURES = [
 ]
 
 const PIPELINE_STEPS = [
-  'Officer Login',
   'Upload CDR File',
   'Select Time Range',
   'Validation & Parsing',
@@ -45,7 +44,6 @@ const STACK = [
 export default function LandingPage() {
   const navigate = useNavigate()
   const { isDark, toggleTheme } = useThemeContext()
-  const { isAuthenticated, officer, logout } = useAuthContext()
 
   return (
     <div className="min-h-screen bg-surface-50 dark:bg-surface-950 text-surface-900 dark:text-surface-100">
@@ -54,9 +52,7 @@ export default function LandingPage() {
       <header className="sticky top-0 z-50 border-b border-surface-200 bg-white/80 backdrop-blur dark:border-surface-800 dark:bg-surface-900/80">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-600">
-              <Shield className="h-4 w-4 text-white" />
-            </div>
+            <Logo size={32} />
             <div>
               <span className="text-sm font-bold tracking-wide">E-RAKSHAK</span>
               <span className="ml-2 hidden text-xs text-surface-400 sm:inline">
@@ -68,43 +64,13 @@ export default function LandingPage() {
             <button onClick={toggleTheme} className="rounded-lg p-2 text-surface-500 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors">
               {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </button>
-            {isAuthenticated ? (
-              /* ── Logged-in nav ── */
-              <div className="flex items-center gap-3">
-                <span className="hidden text-xs text-surface-500 sm:block">
-                  {officer?.name?.split(' ')[0]}
-                </span>
-                <button
-                  onClick={() => navigate('/dashboard')}
-                  className="btn btn-md btn-primary text-sm"
-                >
-                  <LayoutDashboard className="h-4 w-4" />
-                  Dashboard
-                </button>
-                <button
-                  onClick={logout}
-                  className="btn btn-md btn-secondary text-sm"
-                >
-                  Sign Out
-                </button>
-              </div>
-            ) : (
-              /* ── Guest nav ── */
-              <>
-                <button
-                  onClick={() => navigate('/login')}
-                  className="btn btn-md btn-secondary text-sm"
-                >
-                  Sign In
-                </button>
-                <button
-                  onClick={() => navigate('/register')}
-                  className="btn btn-md btn-primary text-sm"
-                >
-                  Register
-                </button>
-              </>
-            )}
+            <button
+              onClick={() => navigate('/dashboard')}
+              className="btn btn-md btn-primary text-sm"
+            >
+              <LayoutDashboard className="h-4 w-4" />
+              Dashboard
+            </button>
           </div>
         </div>
       </header>
@@ -135,38 +101,19 @@ export default function LandingPage() {
               filtering — all from a secure, enterprise-grade dashboard.
             </p>
             <div className="flex flex-wrap items-center justify-center gap-4">
-              {isAuthenticated ? (
-                <>
-                  <button
-                    onClick={() => navigate('/dashboard')}
-                    className="btn btn-lg bg-primary-600 text-white hover:bg-primary-500 shadow-glow-primary"
-                  >
-                    <LayoutDashboard className="h-4 w-4" />
-                    Go to Dashboard
-                  </button>
-                  <button
-                    onClick={() => navigate('/investigations/new')}
-                    className="btn btn-lg border border-surface-600 text-surface-200 hover:bg-surface-800"
-                  >
-                    New Investigation <ArrowRight className="h-4 w-4" />
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button
-                    onClick={() => navigate('/register')}
-                    className="btn btn-lg bg-primary-600 text-white hover:bg-primary-500 shadow-glow-primary"
-                  >
-                    Get Started <ArrowRight className="h-4 w-4" />
-                  </button>
-                  <button
-                    onClick={() => navigate('/login')}
-                    className="btn btn-lg border border-surface-600 text-surface-200 hover:bg-surface-800"
-                  >
-                    Sign In
-                  </button>
-                </>
-              )}
+              <button
+                onClick={() => navigate('/dashboard')}
+                className="btn btn-lg bg-primary-600 text-white hover:bg-primary-500 shadow-glow-primary"
+              >
+                <LayoutDashboard className="h-4 w-4" />
+                Go to Dashboard
+              </button>
+              <button
+                onClick={() => navigate('/investigations/new')}
+                className="btn btn-lg border border-surface-600 text-surface-200 hover:bg-surface-800"
+              >
+                New Investigation <ArrowRight className="h-4 w-4" />
+              </button>
             </div>
           </motion.div>
         </div>
@@ -268,9 +215,7 @@ export default function LandingPage() {
             </div>
             <div className="rounded-xl border border-surface-200 bg-white p-6 dark:border-surface-700 dark:bg-surface-800">
               <div className="flex items-center gap-3 mb-5">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary-600">
-                  <Shield className="h-5 w-5 text-white" />
-                </div>
+                <Logo size={40} />
                 <div>
                   <p className="font-semibold text-surface-900 dark:text-surface-100">E-Rakshak</p>
                   <p className="text-xs text-surface-400">Telecom Investigation Platform v1.0</p>
@@ -299,44 +244,22 @@ export default function LandingPage() {
         <div className="mx-auto max-w-2xl text-center">
           <h2 className="mb-3 text-2xl font-bold">Ready to Start an Investigation?</h2>
           <p className="mb-7 text-primary-200 text-sm">
-            {isAuthenticated
-              ? 'You are signed in. Head to the dashboard to manage your cases.'
-              : 'Register your department account and begin uploading CDR files immediately.'
-            }
+            Head to the dashboard to manage your cases and upload CDR files.
           </p>
           <div className="flex flex-wrap items-center justify-center gap-4">
-            {isAuthenticated ? (
-              <>
-                <button
-                  onClick={() => navigate('/dashboard')}
-                  className="btn btn-lg bg-white text-primary-700 hover:bg-primary-50"
-                >
-                  <LayoutDashboard className="h-4 w-4" />
-                  Open Dashboard
-                </button>
-                <button
-                  onClick={() => navigate('/investigations/new')}
-                  className="btn btn-lg border border-primary-400 text-white hover:bg-primary-700"
-                >
-                  New Investigation
-                </button>
-              </>
-            ) : (
-              <>
-                <button
-                  onClick={() => navigate('/register')}
-                  className="btn btn-lg bg-white text-primary-700 hover:bg-primary-50"
-                >
-                  Create Account
-                </button>
-                <button
-                  onClick={() => navigate('/login')}
-                  className="btn btn-lg border border-primary-400 text-white hover:bg-primary-700"
-                >
-                  Officer Login
-                </button>
-              </>
-            )}
+            <button
+              onClick={() => navigate('/dashboard')}
+              className="btn btn-lg bg-white text-primary-700 hover:bg-primary-50"
+            >
+              <LayoutDashboard className="h-4 w-4" />
+              Open Dashboard
+            </button>
+            <button
+              onClick={() => navigate('/investigations/new')}
+              className="btn btn-lg border border-primary-400 text-white hover:bg-primary-700"
+            >
+              New Investigation
+            </button>
           </div>
         </div>
       </section>
@@ -345,7 +268,7 @@ export default function LandingPage() {
       <footer className="border-t border-surface-200 bg-white py-8 px-6 dark:border-surface-800 dark:bg-surface-900">
         <div className="mx-auto max-w-7xl flex flex-col items-center gap-2 sm:flex-row sm:justify-between">
           <div className="flex items-center gap-2 text-sm text-surface-500">
-            <Shield className="h-4 w-4 text-primary-600" />
+            <Logo size={16} />
             <span>E-Rakshak · Surat City Police · Cyber Crime Cell</span>
           </div>
           <p className="text-xs text-surface-400">

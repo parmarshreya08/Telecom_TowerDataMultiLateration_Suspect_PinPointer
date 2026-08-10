@@ -71,6 +71,32 @@ class UploadMetadata(BaseModel):
         description="Timestamp indicating when the upload transaction completed."
     )
 
+    # New fields for Supabase + background processing
+    supabase_path: str = Field(
+        default="",
+        description="Path to file in Supabase Storage.",
+    )
+    supabase_url: str = Field(
+        default="",
+        description="Public URL for the file in Supabase Storage.",
+    )
+    display_name: str = Field(
+        default="",
+        description="User-friendly display name for the file.",
+    )
+    upload_status: str = Field(
+        default="pending",
+        description="Processing status: pending, uploaded, processing, completed, failed.",
+    )
+    error_message: str = Field(
+        default="",
+        description="Error message if processing failed.",
+    )
+    file_source: str = Field(
+        default="local",
+        description="Source of upload: local, url, drive.",
+    )
+
     @field_validator("original_filename", "stored_filename")
     @classmethod
     def validate_filenames(cls, val: str) -> str:

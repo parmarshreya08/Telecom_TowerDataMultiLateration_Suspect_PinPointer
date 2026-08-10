@@ -81,6 +81,10 @@ class LocalizationFix(BaseModel):
         default=None,
         description="Received Signal Strength Indicator in dBm at the fix timestamp.",
     )
+    covariance_json: Optional[dict] = Field(
+        default=None,
+        description="2x2 covariance matrix as JSON [[a,b],[c,d]].",
+    )
     created_at: datetime = Field(
         default_factory=datetime.utcnow,
         description="Timestamp when the fix was computed.",

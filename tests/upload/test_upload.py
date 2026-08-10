@@ -71,19 +71,23 @@ async def test_file_utils_empty_file_validation() -> None:
 
 def test_upload_endpoint_invalid_extension(client: TestClient) -> None:
     """
-    Verifies that Excel files are rejected with 400 Bad Request.
+    Verifies that unsupported file types (e.g. PDF) are rejected.
+    The legacy endpoint returns a result dict with status 'rejected'.
     """
-    # Excel content representation
-    file_payload = {"file": ("dataset.xlsx", b"dummy xlsx contents", "application/vnd.ms-excel")}
+    # PDF content representation (unsupported)
+    file_payload = {"file": ("document.pdf", b"dummy pdf contents", "application/pdf")}
     form_payload = {"case_id": "CASE-1", "uploaded_by": "Officer_A"}
 
     response = client.post("/api/upload", files=file_payload, data=form_payload)
-    assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert "Unsupported extension" in response.json()["detail"]
+    assert response.status_code == status.HTTP_201_CREATED
+    data = response.json()
+    assert data["status"] == "rejected"
+    assert "Unsupported" in data["reason"]
 
 
 @patch("app.services.upload_service.generate_sha256", return_value="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
-@patch("app.services.upload_service.TelecomFileDetector.detect")
+@patch("app.services.upload_service.storage_service")
+@patch("app.services.upload_service.ingest_queue")
 @patch("app.database.repository.TelecomRepository.get_upload_by_hash")
 @patch("app.database.repository.TelecomRepository.create_upload_metadata")
 @patch("app.services.upload_service.save_uploaded_file", return_value=123)
@@ -91,23 +95,19 @@ def test_upload_endpoint_success(
     mock_save: MagicMock,
     mock_create: MagicMock,
     mock_get: MagicMock,
-    mock_detect: MagicMock,
+    mock_ingest: MagicMock,
+    mock_storage: MagicMock,
     mock_hash: MagicMock,
     client: TestClient
 ) -> None:
     """
-    Tests successful upload routing, detector execution, and metadata creation.
+    Tests successful upload routing, Supabase upload, and metadata creation.
+    Detection now happens in background via ingest_queue.
     """
     mock_get.return_value = None  # Not a duplicate
-    mock_detect.return_value = DetectionResult(
-        operator=Operator.AIRTEL,
-        source_type=SourceType.CDR,
-        confidence=1.0,
-        detected_by="mock",
-        extractor_name="AirtelExtractor",
-        matched_columns=["Target No"]
-    )
-    
+    mock_storage.upload_file.return_value = "https://supabase.co/storage/file.csv"
+    mock_ingest.enqueue = AsyncMock()
+
     # Airtel headers matching AIRTEL_SIGNATURE in signatures.py
     csv_content = b"Target No,First CGI,First CGI Lat/Long,IMEI,Called No\n"
     file_payload = {"file": ("airtel.csv", BytesIO(csv_content), "text/csv")}
@@ -115,14 +115,10 @@ def test_upload_endpoint_success(
 
     response = client.post("/api/upload", files=file_payload, data=form_payload)
     assert response.status_code == status.HTTP_201_CREATED
-    
+
     data = response.json()
-    assert data["case_id"] == "CASE-99"
-    assert data["duplicate"] is False
-    assert data["original_filename"] == "airtel.csv"
-    assert data["detection"]["operator"] == Operator.AIRTEL.value
-    assert data["detection"]["source_type"] == SourceType.CDR.value
-    assert data["detection"]["extractor_name"] == "AirtelExtractor"
+    assert data["filename"] == "airtel.csv"
+    assert data["status"] == "uploaded"
 
 
 @patch("app.services.upload_service.generate_sha256", return_value="somehash")
@@ -159,7 +155,7 @@ def test_upload_endpoint_duplicate(
 
     response = client.post("/api/upload", files=file_payload, data=form_payload)
     assert response.status_code == status.HTTP_201_CREATED
-    
+
     data = response.json()
-    assert data["duplicate"] is True
-    assert data["upload_id"] == "4a6e87f1-5b72-4d22-8ccb-a27efb5e5c2d"
+    assert data["status"] == "rejected"
+    assert "Duplicate" in data["reason"]

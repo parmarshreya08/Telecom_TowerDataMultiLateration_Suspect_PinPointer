@@ -82,7 +82,9 @@ class TelecomIngestionPipeline:
             )
 
         # Step 2: File Format & Operator Detection
-        operator_str, file_type_str = self.detector.detect(file_path, original_file_name)
+        detection = self.detector.detect(file_path)
+        operator_str = detection.operator.value
+        file_type_str = detection.source_type.value
 
         # Map to proper Enums
         try:
@@ -91,12 +93,7 @@ class TelecomIngestionPipeline:
             operator = Operator.UNKNOWN
 
         try:
-            if file_type_str == "TowerDump":
-                source_type = SourceType.TOWER_DUMP
-            elif file_type_str == "SpotDump":
-                source_type = SourceType.SPOT_DUMP
-            else:
-                source_type = SourceType.CDR
+            source_type = SourceType(file_type_str)
         except ValueError:
             source_type = SourceType.UNKNOWN
 

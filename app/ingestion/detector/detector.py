@@ -58,10 +58,11 @@ class TelecomFileDetector(BaseDetector):
         """
         logger.info("file_detection_started", path=file_path)
 
-        # 1. Validate File Format
-        if not file_path.lower().endswith(".csv"):
+        # 1. Validate File Format (CSV, XLSX, XLS, TSV all accepted after conversion)
+        valid_exts = (".csv", ".xlsx", ".xls", ".tsv")
+        if not file_path.lower().endswith(valid_exts):
             logger.error("invalid_file_format", path=file_path)
-            raise InvalidFileTypeError("Unsupported file type. Only CSV files are supported.")
+            raise InvalidFileTypeError(f"Unsupported file type. Supported: {', '.join(valid_exts)}")
 
         if not os.path.exists(file_path):
             logger.error("file_not_found", path=file_path)
@@ -85,6 +86,11 @@ class TelecomFileDetector(BaseDetector):
         # Calculate overall confidence as the average of the two confidence percentages
         overall_confidence = round((op_conf + st_conf) / 2.0, 2)
         matched_columns = list(set(op_matched + st_matched))
+
+        # If either classification is unknown, reset confidence and matched columns
+        if operator == Operator.UNKNOWN or source_type == SourceType.UNKNOWN:
+            overall_confidence = 0.0
+            matched_columns = []
 
         logger.info(
             "file_detected",

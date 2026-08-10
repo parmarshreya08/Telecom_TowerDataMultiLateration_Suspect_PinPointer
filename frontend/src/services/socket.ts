@@ -5,7 +5,7 @@
 // ============================================================
 
 import { io, Socket } from 'socket.io-client'
-import { WS_BASE_URL, LS_KEYS } from '@/constants'
+import { WS_BASE_URL } from '@/constants'
 import type { SocketEventType } from '@/types'
 
 type EventCallback<T = unknown> = (data: T) => void
@@ -17,19 +17,10 @@ class ErakshakSocketService {
   private reconnectAttempts = 0
   private readonly maxReconnectAttempts = 5
 
-  /**
-   * TODO: Connect to backend WebSocket server.
-   * Backend WebSocket endpoint not yet implemented.
-   * Call this once auth token is available.
-   */
   connect(investigationId?: string): void {
     if (this.socket?.connected) return
 
-    const token = localStorage.getItem(LS_KEYS.AUTH_TOKEN)
-
-    // TODO: Replace with actual backend WS endpoint
     this.socket = io(WS_BASE_URL, {
-      auth: { token },
       query: investigationId ? { investigation_id: investigationId } : undefined,
       transports: ['websocket'],
       reconnection: true,
@@ -51,10 +42,6 @@ class ErakshakSocketService {
     this.reconnectAttempts = 0
   }
 
-  /**
-   * Subscribe to a specific socket event.
-   * Returns an unsubscribe function.
-   */
   on<T = unknown>(event: SocketEventType, callback: EventCallback<T>): () => void {
     if (!this.listeners.has(event)) {
       this.listeners.set(event, new Set())
@@ -73,10 +60,6 @@ class ErakshakSocketService {
     this.socket?.off(event, callback)
   }
 
-  /**
-   * Emit an event to the server.
-   * TODO: Wire to backend socket event handlers.
-   */
   emit<T = unknown>(event: string, data?: T): void {
     if (this.socket?.connected) {
       this.socket.emit(event, data)
@@ -122,5 +105,4 @@ class ErakshakSocketService {
   }
 }
 
-// Singleton instance — import and use throughout the app
 export const socketService = new ErakshakSocketService()

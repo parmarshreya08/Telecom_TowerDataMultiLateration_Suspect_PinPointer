@@ -3,11 +3,12 @@ import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { motion } from 'framer-motion'
-import { ArrowLeft, FolderPlus, ArrowRight, RefreshCw } from 'lucide-react'
+import { motion } from 'motion/react'
+import { ArrowLeft, FolderPlus, ArrowRight, RefreshCw, Shield } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
+import { investigationApi } from '@/services/api'
 import { generateCaseNumber } from '@/utils'
 
 const schema = z.object({
@@ -33,11 +34,11 @@ export default function NewInvestigationPage() {
   const onSubmit = async (data: FormData) => {
     setIsLoading(true)
     try {
-      // TODO: investigationApi.create(data) — then navigate to upload page
-      await new Promise((r) => setTimeout(r, 800))
-      // Mock created investigation ID
-      navigate('/investigations/inv-001/upload')
-      void data
+      await investigationApi.create(data)
+      navigate(`/investigations/${data.case_number}/upload`)
+    } catch (error: any) {
+      const message = error?.response?.data?.detail || error?.message || 'Failed to create case'
+      alert(message)
     } finally {
       setIsLoading(false)
     }
@@ -56,8 +57,8 @@ export default function NewInvestigationPage() {
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
         {/* Header */}
         <div className="mb-6 flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400">
-            <FolderPlus className="h-5 w-5" />
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400">
+            <FolderPlus className="h-6 w-6" />
           </div>
           <div>
             <h1 className="text-xl font-bold text-surface-900 dark:text-surface-100">New Investigation</h1>

@@ -12,7 +12,7 @@ from app.contracts.enums import Operator, SourceType
 
 AIRTEL_SIGNATURE = {
     "exact": ["target no", "first cgi", "first cgi lat/long", "calling_no", "called_no", "calling no"],
-    "partial": ["airtel", "called"]
+    "partial": ["airtel"]
 }
 
 JIO_SIGNATURE = {
@@ -45,7 +45,7 @@ CDR_SIGNATURE = {
 
 TOWER_DUMP_SIGNATURE = {
     "exact": ["ecgi", "band", "pci", "rsrp", "rsrq", "azimuth", "beamwidth", "range_meters", "frequency_band"],
-    "partial": ["tower", "site", "lat", "long", "antenna", "cell_id"]
+    "partial": ["tower", "site", "antenna", "cell_id"]
 }
 
 SPOT_DUMP_SIGNATURE = {
@@ -56,7 +56,7 @@ SPOT_DUMP_SIGNATURE = {
 # Future source type stubs (LBS, CEIR, IPDR) can be added here
 LBS_SIGNATURE = {
     "exact": ["lbs_latitude", "lbs_longitude", "accuracy_radius"],
-    "partial": ["lbs", "accuracy", "loc"]
+    "partial": ["lbs", "accuracy"]
 }
 
 CEIR_SIGNATURE = {

@@ -1,11 +1,11 @@
 import { NavLink, useLocation } from 'react-router-dom'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion, AnimatePresence } from 'motion/react'
 import {
   LayoutDashboard, FolderSearch, MapPin, FileBarChart,
-  Settings, Shield, ChevronLeft, ChevronRight, Radio,
+  Settings, ChevronLeft, ChevronRight, Radio,
 } from 'lucide-react'
 import { cn } from '@/utils'
-import { useAuthContext } from '@/contexts/AuthContext'
+import { Logo } from '@/components/ui/Logo'
 
 interface SidebarProps {
   open: boolean
@@ -22,7 +22,6 @@ const NAV_ITEMS = [
 
 export function Sidebar({ open, onToggle }: SidebarProps) {
   const location = useLocation()
-  const { officer } = useAuthContext()
 
   return (
     <motion.aside
@@ -32,9 +31,7 @@ export function Sidebar({ open, onToggle }: SidebarProps) {
     >
       {/* Logo */}
       <div className={cn('flex h-16 items-center border-b border-surface-700 px-4', open ? 'gap-3' : 'justify-center')}>
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary-600">
-          <Shield className="h-4 w-4 text-white" />
-        </div>
+        <Logo size={32} />
         <AnimatePresence>
           {open && (
             <motion.div
@@ -107,30 +104,6 @@ export function Sidebar({ open, onToggle }: SidebarProps) {
           </div>
         )}
       </nav>
-
-      {/* Officer info */}
-      <div className={cn('border-t border-surface-700 p-3', open ? 'flex items-center gap-3' : 'flex justify-center')}>
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-700 text-xs font-bold uppercase">
-          {officer?.name?.charAt(0) ?? 'O'}
-        </div>
-        <AnimatePresence>
-          {open && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="overflow-hidden"
-            >
-              <p className="text-xs font-semibold leading-tight truncate max-w-[130px]">
-                {officer?.name ?? 'Officer'}
-              </p>
-              <p className="text-2xs text-surface-400 truncate max-w-[130px]">
-                {officer?.designation ?? ''}
-              </p>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
 
       {/* Toggle button */}
       <button

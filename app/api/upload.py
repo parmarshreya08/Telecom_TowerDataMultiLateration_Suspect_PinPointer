@@ -1,6 +1,6 @@
 """
 Upload Controller Router.
-Exposes POST /api/upload endpoint for ingestion.
+Exposes POST /api/upload and POST /api/case/{case_id}/upload endpoints.
 """
 
 from typing import Any
@@ -18,8 +18,7 @@ router = APIRouter()
 @router.post(
     "/api/upload",
     status_code=status.HTTP_201_CREATED,
-    summary="Upload and classify telecom logs",
-    response_description="Upload metadata and classification results"
+    summary="Upload and classify telecom logs (legacy single-file)",
 )
 async def upload_telecom_file(
     file: UploadFile = File(..., description="Multipart CSV CDR or spot/tower dump file"),
@@ -28,11 +27,10 @@ async def upload_telecom_file(
     db: AsyncSession = Depends(get_db_session)
 ) -> dict[str, Any]:
     """
-    Validates, streams to disk, checks for duplicate checksums, and executes column header detection.
+    Legacy single-file upload endpoint.
     """
     logger.info("api_upload_request_received", filename=file.filename, case_id=case_id)
 
-    # Instantiate UploadService
     service = UploadService(db)
 
     try:
@@ -44,44 +42,71 @@ async def upload_telecom_file(
         return response_data
 
     except ValueError as ex:
-        # Client validation failures (e.g. extension, empty file, mime, size)
         logger.warn("api_upload_validation_failed", error=str(ex))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(ex))
+    except PermissionError as ex:
+        logger.error("api_upload_permission_denied", error=str(ex))
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Storage write access denied.")
+    except OSError as ex:
+        logger.error("api_upload_storage_failure", error=str(ex))
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Storage write failure: {ex}")
+    except RuntimeError as ex:
+        logger.error("api_upload_runtime_failure", error=str(ex))
+        detail_msg = str(ex)
+        status_code = status.HTTP_422_UNPROCESSABLE_ENTITY if "Detector" in detail_msg else status.HTTP_500_INTERNAL_SERVER_ERROR
+        raise HTTPException(status_code=status_code, detail=detail_msg)
+    except Exception as ex:
+        logger.error("api_upload_unexpected_failure", error=str(ex))
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Unexpected error occurred.")
+
+
+@router.post(
+    "/api/case/{case_id}/upload",
+    status_code=status.HTTP_201_CREATED,
+    summary="Upload multiple files to a case",
+)
+async def upload_multiple_files(
+    case_id: str,
+    files: list[UploadFile] = File(..., description="Multiple CSV/XLSX/XLS/TSV files"),
+    uploaded_by: str = Form("Officer", description="Officer or agent executing the upload"),
+    db: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    """
+    Uploads multiple files to a case. Each file is validated, saved to Supabase,
+    and enqueued for background ingestion.
+    Returns per-file results.
+    """
+    logger.info("api_multipart_upload_request", case_id=case_id, file_count=len(files))
+
+    # Enforce max files per upload
+    MAX_FILES = 10
+    if len(files) > MAX_FILES:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(ex)
+            detail=f"Maximum {MAX_FILES} files per upload. You uploaded {len(files)}.",
         )
-    except PermissionError as ex:
-        # Storage permission access issues
-        logger.error("api_upload_permission_denied", error=str(ex))
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Storage write access denied. Check system folder permissions."
+
+    service = UploadService(db)
+
+    try:
+        results = await service.handle_multipart_upload(
+            files=files,
+            case_id=case_id,
+            uploaded_by=uploaded_by,
         )
-    except OSError as ex:
-        # File storage disk full or system write failures
-        logger.error("api_upload_storage_failure", error=str(ex))
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Storage write failure occurred: {str(ex)}"
-        )
-    except RuntimeError as ex:
-        # Service level pipeline processing errors
-        logger.error("api_upload_runtime_failure", error=str(ex))
-        # Determine if it's a detector failure or DB failure
-        detail_msg = str(ex)
-        if "Detector" in detail_msg:
-            status_code = status.HTTP_422_UNPROCESSABLE_ENTITY
-        else:
-            status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
-            
-        raise HTTPException(
-            status_code=status_code,
-            detail=detail_msg
-        )
+
+        return {
+            "case_id": case_id,
+            "results": results,
+            "total": len(results),
+            "successful": sum(1 for r in results if r.get("status") == "uploaded"),
+            "rejected": sum(1 for r in results if r.get("status") == "rejected"),
+            "failed": sum(1 for r in results if r.get("status") == "failed"),
+        }
+
+    except ValueError as ex:
+        logger.warn("api_upload_validation_failed", error=str(ex))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(ex))
     except Exception as ex:
-        # Unexpected server-side failures
         logger.error("api_upload_unexpected_failure", error=str(ex))
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred while processing the upload transaction."
-        )
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Unexpected error occurred.")

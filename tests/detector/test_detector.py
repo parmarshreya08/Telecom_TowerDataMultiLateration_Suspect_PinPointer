@@ -116,11 +116,11 @@ def test_detect_spot_dump(tmp_path: Any, detector: TelecomFileDetector) -> None:
 
 def test_detect_unsupported_file_extension(detector: TelecomFileDetector) -> None:
     """
-    Ensures non-CSV files throw InvalidFileTypeError.
+    Ensures truly unsupported files (e.g. .docx) throw InvalidFileTypeError.
     """
     with pytest.raises(InvalidFileTypeError) as excinfo:
-        detector.detect("unsupported_extension.xlsx")
-    assert "Only CSV files are supported" in str(excinfo.value)
+        detector.detect("unsupported_extension.docx")
+    assert "Unsupported file type" in str(excinfo.value)
 
 
 def test_detect_file_not_found(detector: TelecomFileDetector) -> None:

@@ -1,7 +1,6 @@
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Bell, Sun, Moon, Menu, LogOut, ChevronRight, Home } from 'lucide-react'
+import { Bell, Sun, Moon, Menu, ChevronRight, Home } from 'lucide-react'
 import { useThemeContext } from '@/contexts/ThemeContext'
-import { useAuthContext } from '@/contexts/AuthContext'
 import { cn } from '@/utils'
 
 interface TopbarProps {
@@ -24,7 +23,6 @@ function useBreadcrumb() {
 
 export function Topbar({ onToggleSidebar, unreadNotifications, onOpenNotifications }: TopbarProps) {
   const { isDark, toggleTheme } = useThemeContext()
-  const { officer, logout }     = useAuthContext()
   const navigate                = useNavigate()
   const breadcrumb              = useBreadcrumb()
 
@@ -95,30 +93,6 @@ export function Topbar({ onToggleSidebar, unreadNotifications, onOpenNotificatio
           )}
         </button>
 
-        {/* Profile */}
-        <div className="ml-1 flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-surface-100 dark:hover:bg-surface-700 cursor-pointer transition-colors"
-          onClick={() => navigate('/profile')}
-        >
-          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary-600 text-xs font-bold text-white">
-            {officer?.name?.charAt(0) ?? 'O'}
-          </div>
-          <div className="hidden md:block">
-            <p className="text-xs font-semibold text-surface-800 dark:text-surface-200 leading-tight">
-              {officer?.name?.split(' ').slice(0, 2).join(' ') ?? 'Officer'}
-            </p>
-            <p className="text-2xs text-surface-400">{officer?.designation ?? ''}</p>
-          </div>
-        </div>
-
-        {/* Logout */}
-        <button
-          onClick={logout}
-          className="rounded-lg p-2 text-surface-500 hover:bg-danger-light hover:text-danger dark:hover:bg-red-900/20 dark:hover:text-red-400 transition-colors"
-          aria-label="Sign out"
-          title="Sign out"
-        >
-          <LogOut className="h-4 w-4" />
-        </button>
       </div>
     </header>
   )

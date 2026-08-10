@@ -1,83 +1,246 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
-  Share2, Download,
+  Share2, Download, FileText, Map, Globe,
   Navigation, Radio, Wifi, WifiOff, Clock,
-  ArrowLeft, Crosshair, PlayCircle,
+  ArrowLeft, Crosshair, PlayCircle, RefreshCw, AlertCircle,
+  Copy, Check,
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { InvestigationMap } from '@/components/map/InvestigationMap'
-import { InvestigationTimeline } from '@/components/investigation/InvestigationTimeline'
 import { ShareLocationModal } from '@/components/investigation/ShareLocationModal'
-import { MOCK_INVESTIGATIONS } from '@/mock/investigations'
-import { MOCK_PATH_POINTS, MOCK_TOWERS } from '@/mock/tracking'
 import {
   formatCoordinate, formatDateTime, formatAccuracy,
-  cn,
+  downloadBlob, cn,
 } from '@/utils'
 import { TRACKING_STATUS_COLORS } from '@/constants'
-import { trackingApi } from '@/services/api'
-import type { LocalizationFix, GeoJSONFeatureCollection } from '@/types'
+import { investigationApi, trackingApi, exportApi } from '@/services/api'
+import type { GeoJSONFeatureCollection, Investigation, TowerRecord } from '@/types'
+
+interface LocalFix {
+  fix_id: string
+  case_id: string
+  subscriber_identifier: string
+  timestamp: string
+  latitude: number
+  longitude: number
+  confidence_radius_meters: number
+  velocity_east: number
+  velocity_north: number
+  gdop: number
+  residual_rms: number
+  ta_inner_m?: number
+  ta_outer_m?: number
+  rss_i_dbm?: number
+}
+
+function parseFixes(geo: GeoJSONFeatureCollection, caseId: string): LocalFix[] {
+  return geo.features
+    .filter((f) => f.geometry.type === 'Point')
+    .map((f, idx) => ({
+      fix_id: String(f.id || idx),
+      case_id: caseId,
+      subscriber_identifier: String(f.properties?.subscriber_identifier || 'Target'),
+      timestamp: String(f.properties?.timestamp || new Date().toISOString()),
+      latitude: (f.geometry as { coordinates: [number, number] }).coordinates[1],
+      longitude: (f.geometry as { coordinates: [number, number] }).coordinates[0],
+      confidence_radius_meters: Number(f.properties?.confidence_radius_meters || 100),
+      velocity_east: Number(f.properties?.velocity_east || 0),
+      velocity_north: Number(f.properties?.velocity_north || 0),
+      gdop: Number(f.properties?.gdop || 0),
+      residual_rms: Number(f.properties?.residual_rms || 0),
+      ta_inner_m: f.properties?.ta_inner_m != null ? Number(f.properties.ta_inner_m) : undefined,
+      ta_outer_m: f.properties?.ta_outer_m != null ? Number(f.properties.ta_outer_m) : undefined,
+      rss_i_dbm: f.properties?.rss_i_dbm != null ? Number(f.properties.rss_i_dbm) : undefined,
+    }))
+}
 
 export default function LiveInvestigationPage() {
-  const { id = 'inv-001' } = useParams()
+  const { id = '' } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const investigation = MOCK_INVESTIGATIONS.find((i) => i.id === id) ?? MOCK_INVESTIGATIONS[0]
 
-  const [fixes, setFixes] = useState<LocalizationFix[]>([])
+  const [investigation, setInvestigation] = useState<Investigation | null>(null)
+  const [fixes, setFixes] = useState<LocalFix[]>([])
   const [geojson, setGeojson] = useState<GeoJSONFeatureCollection | null>(null)
+  const [towers, setTowers] = useState<TowerRecord[]>([])
   const [loading, setLoading] = useState(false)
+  const [initialLoading, setInitialLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [shareOpen, setShareOpen] = useState(false)
   const [centerTrigger, setCenterTrigger] = useState(false)
   const [autoFollow, setAutoFollow] = useState(true)
+  const [copied, setCopied] = useState(false)
+  const [exporting, setExporting] = useState<string | null>(null)
 
-  const loadGeoJSON = useCallback(async () => {
+  // Time range filter
+  const [timeStart, setTimeStart] = useState('')
+  const [timeEnd, setTimeEnd] = useState('')
+
+  const loadCaseData = useCallback(async (start?: string, end?: string) => {
+    if (!id) return
+    setInitialLoading(true)
     try {
-      const data = await trackingApi.getGeoJSON(id)
-      setGeojson(data)
-    } catch {
-      // No cached data yet
+      const caseData = await investigationApi.getById(id).catch(() => ({
+        id,
+        case_name: `Investigation ${id}`,
+        case_number: id,
+        suspect_name: `Target ${id}`,
+        status: 'Active' as const,
+        created_by: 'Officer',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }))
+      setInvestigation(caseData)
+
+      const geo = await trackingApi.getGeoJSON(id, start || undefined, end || undefined).catch(() => null)
+      if (geo) {
+        setGeojson(geo)
+        setFixes(parseFixes(geo, id))
+      }
+
+      const towerData = await trackingApi.listAllTowers().catch(() => ({ towers: [], total: 0 }))
+      if (towerData.towers.length > 0) {
+        setTowers(towerData.towers.map((t) => ({
+          tower_id: t.tower_id,
+          operator: t.operator as TowerRecord['operator'],
+          radio: t.radio as TowerRecord['radio'],
+          mcc: 0, mnc: 0, lac: 0, cell_id: 0,
+          cgi: t.cgi,
+          latitude: t.latitude,
+          longitude: t.longitude,
+          azimuth: t.azimuth,
+          beamwidth: t.beamwidth,
+          range_meters: t.range_meters,
+          site_address: t.site_address,
+        })))
+      }
+    } catch (err: unknown) {
+      setError((err as Error)?.message || 'Failed to load case data')
+    } finally {
+      setInitialLoading(false)
     }
   }, [id])
 
   useEffect(() => {
-    loadGeoJSON()
-  }, [loadGeoJSON])
+    loadCaseData()
+  }, [loadCaseData])
+
+  const applyTimeFilter = () => {
+    loadCaseData(timeStart || undefined, timeEnd || undefined)
+  }
+
+  const clearTimeFilter = () => {
+    setTimeStart('')
+    setTimeEnd('')
+    loadCaseData()
+  }
 
   const handleRunLocalization = async () => {
+    if (!id) return
     setLoading(true)
     setError(null)
     try {
-      await trackingApi.runLocalization(id)
-      setFixes([])
-      await loadGeoJSON()
+      const res = await trackingApi.runLocalization(id)
+      if (res.geojson) {
+        setGeojson(res.geojson)
+        setFixes(parseFixes(res.geojson, id))
+      }
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? 'Localization failed'
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? (err as Error)?.message ?? 'Localization failed'
       setError(msg)
     } finally {
       setLoading(false)
     }
   }
 
+  // ── Export handlers ──
+  const getExportParams = () => {
+    const params: Record<string, string> = {}
+    if (timeStart) params.start = timeStart
+    if (timeEnd) params.end = timeEnd
+    return params
+  }
+
+  const handleExportCSV = async () => {
+    if (!id) return
+    setExporting('csv')
+    try {
+      const blob = await exportApi.downloadCSV(id, getExportParams())
+      downloadBlob(blob, `e-rakshak_${id}_fixes.csv`)
+    } catch (error) {
+      console.error('Export failed:', error)
+      alert('Export failed. Please try again.')
+    } finally { setExporting(null) }
+  }
+
+  const handleExportKML = async () => {
+    if (!id) return
+    setExporting('kml')
+    try {
+      const blob = await exportApi.downloadKML(id, getExportParams())
+      downloadBlob(blob, `e-rakshak_${id}_fixes.kml`)
+    } catch (error) {
+      console.error('Export failed:', error)
+      alert('Export failed. Please try again.')
+    } finally { setExporting(null) }
+  }
+
+  const handleExportPDF = async () => {
+    if (!id) return
+    setExporting('pdf')
+    try {
+      const blob = await exportApi.downloadPDF(id, getExportParams())
+      downloadBlob(blob, `e-rakshak_${id}_forensic_report.pdf`)
+    } catch (error) {
+      console.error('Export failed:', error)
+      alert('Export failed. Please try again.')
+    } finally { setExporting(null) }
+  }
+
+  const handleGoogleMapsLink = () => {
+    if (fixes.length === 0) return
+    const center = fixes.length === 1
+      ? { lat: fixes[0].latitude, lng: fixes[0].longitude }
+      : {
+          lat: fixes.reduce((s, f) => s + f.latitude, 0) / fixes.length,
+          lng: fixes.reduce((s, f) => s + f.longitude, 0) / fixes.length,
+        }
+    const url = `https://www.google.com/maps?q=${center.lat},${center.lng}&z=15`
+    navigator.clipboard.writeText(url).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
+  const openGoogleMaps = () => {
+    if (fixes.length === 0) return
+    const center = fixes.length === 1
+      ? { lat: fixes[0].latitude, lng: fixes[0].longitude }
+      : {
+          lat: fixes.reduce((s, f) => s + f.latitude, 0) / fixes.length,
+          lng: fixes.reduce((s, f) => s + f.longitude, 0) / fixes.length,
+        }
+    window.open(`https://www.google.com/maps?q=${center.lat},${center.lng}&z=15`, '_blank')
+  }
+
   const latestFix = fixes.length > 0 ? fixes[fixes.length - 1] : null
 
-  const pathPoints = fixes.length > 0
-    ? fixes.map((f) => ({
-        latitude: f.latitude,
-        longitude: f.longitude,
-        timestamp: f.timestamp,
-        accuracy_meters: f.confidence_radius_meters,
-        algorithm: 'Kalman' as const,
-      }))
-    : MOCK_PATH_POINTS
+  const pathPoints = fixes.map((f) => ({
+    latitude: f.latitude,
+    longitude: f.longitude,
+    timestamp: f.timestamp,
+    accuracy_meters: f.confidence_radius_meters,
+    algorithm: 'Kalman' as const,
+  }))
 
-  const towers = MOCK_TOWERS
+  const caseName = investigation?.case_name || id
+  const caseNumber = investigation?.case_number || id
+  const suspectName = investigation?.suspect_name || 'Target'
 
   return (
     <div className="flex h-[calc(100vh-4rem)] flex-col -m-6">
 
-      {/* ── Topbar ─────────────────────────────────────────── */}
+      {/* ── Topbar ── */}
       <div className="flex shrink-0 items-center justify-between border-b border-surface-200
                       bg-white px-5 py-3 dark:border-surface-700 dark:bg-surface-900">
         <div className="flex items-center gap-3">
@@ -93,17 +256,17 @@ export default function LiveInvestigationPage() {
           <div>
             <div className="flex items-center gap-2">
               <span className="text-sm font-semibold text-surface-900 dark:text-surface-100">
-                {investigation.case_name}
+                {caseName}
               </span>
-              <span className={cn('flex items-center gap-1.5 text-xs font-medium', TRACKING_STATUS_COLORS['Idle'])}>
+              <span className={cn('flex items-center gap-1.5 text-xs font-medium', TRACKING_STATUS_COLORS[fixes.length > 0 ? 'Live' : 'Idle'])}>
                 {fixes.length > 0 && (
                   <span className="inline-block h-1.5 w-1.5 rounded-full bg-green-400 animate-ping-slow" />
                 )}
-                {fixes.length > 0 ? 'live' : 'idle'}
+                {fixes.length > 0 ? 'Multilateration Active' : 'Idle / Ingested'}
               </span>
             </div>
             <p className="text-xs text-surface-400">
-              {investigation.case_number} · {investigation.suspect_name}
+              {caseNumber} · {suspectName}
             </p>
           </div>
         </div>
@@ -126,86 +289,135 @@ export default function LiveInvestigationPage() {
           <Button
             size="sm"
             variant="primary"
-            icon={loading ? undefined : <PlayCircle className="h-3.5 w-3.5" />}
+            icon={loading ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <PlayCircle className="h-3.5 w-3.5" />}
             onClick={handleRunLocalization}
             disabled={loading}
           >
-            {loading ? 'Running…' : 'Run Localization'}
+            {loading ? 'Running Engine…' : 'Run Multilateration Engine'}
           </Button>
 
           <Button size="sm" variant="secondary" icon={<Share2 className="h-3.5 w-3.5" />} onClick={() => setShareOpen(true)}>
             Share
           </Button>
-          <Button size="sm" variant="secondary" icon={<Download className="h-3.5 w-3.5" />} onClick={() => navigate('/reports')}>
-            Export
-          </Button>
         </div>
       </div>
 
-      {/* ── Main split ─────────────────────────────────────── */}
+      {/* ── Main split ── */}
       <div className="flex flex-1 overflow-hidden">
 
-        {/* LEFT: Map — 70% */}
+        {/* LEFT: Map */}
         <div className="relative flex-1 min-w-0">
-          <InvestigationMap
-            currentLocation={latestFix ? {
-              latitude: latestFix.latitude,
-              longitude: latestFix.longitude,
-              raw_latitude: latestFix.latitude,
-              raw_longitude: latestFix.longitude,
-              velocity_m_s: Math.sqrt(
-                (latestFix.velocity_east ?? 0) ** 2 + (latestFix.velocity_north ?? 0) ** 2
-              ),
-              clock_bias_meters: 0,
-              residual_rms: latestFix.residual_rms ?? 0,
-              gdop: latestFix.gdop ?? 0,
-              adaptive_R_scale: 1,
-              adaptive_Q_scale: 1,
-              geojson_heatmap: null,
-              timestamp: latestFix.timestamp,
-              accuracy_meters: latestFix.confidence_radius_meters,
-              algorithm_used: 'Kalman',
-              confidence: 0.95,
-            } : undefined}
-            pathPoints={pathPoints}
-            towers={towers}
-            onCenterRequest={() => setCenterTrigger((v) => !v)}
-            centerTrigger={centerTrigger}
-            autoFollow={autoFollow && fixes.length > 0}
-            geojson={geojson ?? undefined}
-          />
+          {initialLoading ? (
+            <div className="flex h-full flex-col items-center justify-center bg-surface-100 dark:bg-surface-950">
+              <RefreshCw className="h-8 w-8 text-primary-500 animate-spin mb-2" />
+              <p className="text-sm text-surface-600 dark:text-surface-300">Loading geospatial layers...</p>
+            </div>
+          ) : (
+            <InvestigationMap
+              currentLocation={latestFix ? {
+                latitude: latestFix.latitude,
+                longitude: latestFix.longitude,
+                raw_latitude: latestFix.latitude,
+                raw_longitude: latestFix.longitude,
+                velocity_m_s: Math.sqrt(
+                  (latestFix.velocity_east ?? 0) ** 2 + (latestFix.velocity_north ?? 0) ** 2
+                ),
+                clock_bias_meters: 0,
+                residual_rms: latestFix.residual_rms ?? 0,
+                gdop: latestFix.gdop ?? 0,
+                adaptive_R_scale: 1,
+                adaptive_Q_scale: 1,
+                geojson_heatmap: null,
+                timestamp: latestFix.timestamp,
+                accuracy_meters: latestFix.confidence_radius_meters,
+                algorithm_used: 'Multilateration',
+                confidence: 0.95,
+              } : undefined}
+              pathPoints={pathPoints}
+              towers={towers}
+              onCenterRequest={() => setCenterTrigger((v) => !v)}
+              centerTrigger={centerTrigger}
+              autoFollow={autoFollow && fixes.length > 0}
+              geojson={geojson ?? undefined}
+            />
+          )}
         </div>
 
-        {/* RIGHT: Detail panel — 30% / 320px */}
+        {/* RIGHT: Detail panel */}
         <div className="flex w-80 shrink-0 flex-col overflow-y-auto border-l border-surface-200
                         bg-surface-50 dark:border-surface-700 dark:bg-surface-900 scrollbar-thin">
 
           {error && (
-            <div className="border-b border-danger/20 bg-danger-light px-4 py-3 text-sm text-danger dark:bg-danger/10">
-              {error}
+            <div className="border-b border-danger/20 bg-danger-light px-4 py-3 text-xs text-danger dark:bg-danger/10 flex items-start gap-2">
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-danger" />
+              <div>
+                <p className="font-semibold">Localization Status</p>
+                <p className="mt-0.5">{error}</p>
+              </div>
             </div>
           )}
 
-          {/* ── Location block ── */}
-          <Section icon={<Navigation className="h-4 w-4 text-primary-600" />} label="Current Location">
+          {/* ── Time Range Filter ── */}
+          <Section icon={<Clock className="h-4 w-4 text-primary-600" />} label="Time Range Filter">
+            <div className="space-y-2">
+              <div>
+                <label className="text-2xs text-surface-400 block mb-1">Start</label>
+                <input
+                  type="datetime-local"
+                  value={timeStart}
+                  onChange={(e) => setTimeStart(e.target.value)}
+                  className="w-full rounded-lg border border-surface-300 bg-white px-2.5 py-1.5 text-xs
+                             dark:border-surface-600 dark:bg-surface-800 dark:text-surface-200"
+                />
+              </div>
+              <div>
+                <label className="text-2xs text-surface-400 block mb-1">End</label>
+                <input
+                  type="datetime-local"
+                  value={timeEnd}
+                  onChange={(e) => setTimeEnd(e.target.value)}
+                  className="w-full rounded-lg border border-surface-300 bg-white px-2.5 py-1.5 text-xs
+                             dark:border-surface-600 dark:bg-surface-800 dark:text-surface-200"
+                />
+              </div>
+              <div className="flex gap-2">
+                <Button size="sm" variant="primary" className="flex-1" onClick={applyTimeFilter}>
+                  Apply
+                </Button>
+                <Button size="sm" variant="secondary" className="flex-1" onClick={clearTimeFilter}>
+                  Clear
+                </Button>
+              </div>
+              <p className="text-2xs text-surface-400">
+                {fixes.length} fixes{timeStart || timeEnd ? ' in range' : ' total'}
+              </p>
+            </div>
+          </Section>
+
+          {/* ── Suspect Pin Pointer ── */}
+          <Section icon={<Navigation className="h-4 w-4 text-primary-600" />} label="Suspect Pin Pointer">
             {latestFix ? (
               <div className="space-y-2">
-                <DataRow label="Latitude" value={formatCoordinate(latestFix.latitude)} />
-                <DataRow label="Longitude" value={formatCoordinate(latestFix.longitude)} />
+                <DataRow label="Latitude" value={formatCoordinate(latestFix.latitude)} highlight />
+                <DataRow label="Longitude" value={formatCoordinate(latestFix.longitude)} highlight />
                 <DataRow label="Accuracy" value={formatAccuracy(latestFix.confidence_radius_meters)} />
                 <DataRow label="GDOP" value={(latestFix.gdop ?? 0).toFixed(2)} />
-                <DataRow label="Residual" value={(latestFix.residual_rms ?? 0).toFixed(4)} />
+                <DataRow label="RMS Residual" value={(latestFix.residual_rms ?? 0).toFixed(4)} />
                 <DataRow label="Timestamp" value={formatDateTime(latestFix.timestamp)} />
               </div>
             ) : (
-              <div className="flex items-center gap-2 text-xs text-surface-400 py-2">
-                <WifiOff className="h-4 w-4" />
-                <span>Click "Run Localization" to start</span>
+              <div className="flex flex-col items-center justify-center text-center py-6 text-xs text-surface-400">
+                <WifiOff className="h-6 w-6 mb-2 text-surface-400" />
+                <p className="font-medium text-surface-600 dark:text-surface-300">No localization fixes yet</p>
+                <p className="text-2xs text-surface-400 mt-1 mb-3">Click "Run Multilateration Engine" to execute JPL trilateration + Kalman filtering over ingested frames.</p>
+                <Button size="sm" variant="primary" icon={<PlayCircle className="h-3.5 w-3.5" />} onClick={handleRunLocalization} disabled={loading}>
+                  Run Engine
+                </Button>
               </div>
             )}
           </Section>
 
-          {/* ── TA Band / Signal block ── */}
+          {/* ── Signal Parameters ── */}
           {latestFix && (latestFix.ta_inner_m != null || latestFix.rss_i_dbm != null) && (
             <Section icon={<Wifi className="h-4 w-4 text-primary-600" />} label="Signal Parameters">
               <div className="space-y-2">
@@ -222,19 +434,62 @@ export default function LiveInvestigationPage() {
             </Section>
           )}
 
-          {/* ── Investigation block ── */}
-          <Section icon={<Radio className="h-4 w-4 text-primary-600" />} label="Investigation">
+          {/* ── Investigation Metadata ── */}
+          <Section icon={<Radio className="h-4 w-4 text-primary-600" />} label="Investigation Metadata">
             <div className="space-y-2">
-              <DataRow label="Case ID" value={investigation.case_number} />
-              <DataRow label="Officer" value={investigation.created_by} />
-              <DataRow label="Status" value={investigation.status} />
-              {latestFix && <DataRow label="Fixes" value={`${fixes.length} points`} highlight />}
+              <DataRow label="Case ID" value={caseNumber} />
+              <DataRow label="Officer" value={investigation?.created_by || 'Officer'} />
+              <DataRow label="Computed Fixes" value={`${fixes.length} points`} highlight />
+              <DataRow label="GeoJSON Features" value={geojson ? `${geojson.features.length} layers` : 'None'} />
             </div>
           </Section>
 
-          {/* ── Timeline ── */}
-          <Section icon={<Clock className="h-4 w-4 text-primary-600" />} label="Timeline">
-            <InvestigationTimeline events={investigation.timeline} compact />
+          {/* ── Export & Share ── */}
+          <Section icon={<Download className="h-4 w-4 text-primary-600" />} label="Export & Share">
+            <div className="space-y-2">
+              <Button
+                size="sm" variant="primary" className="w-full justify-start"
+                icon={exporting === 'pdf' ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}
+                onClick={handleExportPDF}
+                disabled={exporting !== null || fixes.length === 0}
+              >
+                Export PDF Report
+              </Button>
+              <Button
+                size="sm" variant="secondary" className="w-full justify-start"
+                icon={exporting === 'csv' ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+                onClick={handleExportCSV}
+                disabled={exporting !== null || fixes.length === 0}
+              >
+                Export CSV
+              </Button>
+              <Button
+                size="sm" variant="secondary" className="w-full justify-start"
+                icon={exporting === 'kml' ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Map className="h-3.5 w-3.5" />}
+                onClick={handleExportKML}
+                disabled={exporting !== null || fixes.length === 0}
+              >
+                Export KML (Google Earth)
+              </Button>
+              <div className="border-t border-surface-200 dark:border-surface-700 pt-2 mt-2">
+                <Button
+                  size="sm" variant="secondary" className="w-full justify-start"
+                  icon={copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+                  onClick={handleGoogleMapsLink}
+                  disabled={fixes.length === 0}
+                >
+                  {copied ? 'Link Copied!' : 'Copy Google Maps Link'}
+                </Button>
+                <Button
+                  size="sm" variant="secondary" className="w-full justify-start mt-1"
+                  icon={<Globe className="h-3.5 w-3.5" />}
+                  onClick={openGoogleMaps}
+                  disabled={fixes.length === 0}
+                >
+                  Open in Google Maps
+                </Button>
+              </div>
+            </div>
           </Section>
 
         </div>
@@ -243,8 +498,8 @@ export default function LiveInvestigationPage() {
       <ShareLocationModal
         open={shareOpen}
         onClose={() => setShareOpen(false)}
-        latitude={latestFix?.latitude ?? MOCK_PATH_POINTS[0].latitude}
-        longitude={latestFix?.longitude ?? MOCK_PATH_POINTS[0].longitude}
+        latitude={latestFix?.latitude ?? 21.1702}
+        longitude={latestFix?.longitude ?? 72.8311}
       />
     </div>
   )
@@ -274,7 +529,7 @@ function DataRow({ label, value, highlight, dim }: {
       <span className="shrink-0 text-2xs text-surface-400">{label}</span>
       <span className={cn(
         'text-right text-xs font-medium',
-        highlight ? 'text-primary-600 dark:text-primary-400' :
+        highlight ? 'text-primary-600 dark:text-primary-400 font-bold' :
         dim       ? 'text-surface-400'                       :
         'text-surface-700 dark:text-surface-300'
       )}>

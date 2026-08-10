@@ -25,9 +25,6 @@ class Settings(BaseSettings):
     HOST: str = Field(default="0.0.0.0")
     PORT: int = Field(default=8000)
 
-    # Security Configs
-    API_KEY_SECRET: str = Field(default="change-this-to-a-secure-random-key-in-production")
-
     # Database Settings
     DATABASE_URL: str = Field(
         ...,
@@ -43,11 +40,10 @@ class Settings(BaseSettings):
     MAX_CONTENT_LENGTH_MB: int = Field(default=100)
     ALLOWED_EXTENSIONS: str = Field(default="csv,xlsx,xls,txt,docx,pdf")
 
-    # Cloudinary Settings (direct-to-storage uploads from the browser)
-    CLOUDINARY_CLOUD_NAME: str = Field(default="")
-    CLOUDINARY_API_KEY: str = Field(default="")
-    CLOUDINARY_API_SECRET: str = Field(default="")
-    CLOUDINARY_UPLOAD_FOLDER: str = Field(default="erakshak-uploads")
+    # Supabase Storage Settings
+    SUPABASE_URL: str = Field(default="")
+    SUPABASE_KEY: str = Field(default="")
+    SUPABASE_BUCKET: str = Field(default="erakshak-uploads")
 
     # Google Drive Picker Settings (Drive import via frontend OAuth popup)
     GOOGLE_CLIENT_ID: str = Field(default="")

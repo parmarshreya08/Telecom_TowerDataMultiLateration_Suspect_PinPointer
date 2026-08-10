@@ -23,7 +23,6 @@ class OperatorMapper:
     def map_airtel_cdr(
         raw: dict[str, Any], upload_id: Any, source_file: str, record_number: int
     ) -> SubscriberEventRecord:
-        # Standardize Airtel values
         lac_val = raw.get("lac")
         cell_id_val = raw.get("cell_id")
         lac = int(lac_val) if lac_val and str(lac_val).isdigit() else None
@@ -34,11 +33,10 @@ class OperatorMapper:
         mcc = int(mcc_val) if str(mcc_val).isdigit() else 404
         mnc = int(mnc_val) if str(mnc_val).isdigit() else 45
 
-        cgi = f"{mcc}-{mnc}-{lac or 0}-{cell_id or 0}"
-        dt = parse_telecom_datetime(raw.get("datetime", datetime.utcnow()))
+        cgi = str(raw.get("cgi", f"{mcc}-{mnc}-{lac or 0}-{cell_id or 0}"))
+        dt = parse_telecom_datetime(raw.get("timestamp", raw.get("datetime", datetime.utcnow())))
 
-        # Determine CallType enum
-        raw_type = str(raw.get("type", "")).upper()
+        raw_type = str(raw.get("call_type", raw.get("type", ""))).upper()
         if "MOC" in raw_type or "OUT" in raw_type:
             call_type = CallType.OUTGOING
         elif "MTC" in raw_type or "INC" in raw_type:
@@ -55,19 +53,19 @@ class OperatorMapper:
             upload_id=upload_id,
             operator=Operator.AIRTEL,
             source_type=SourceType.CDR,
-            phone_number=raw.get("calling_no"),
+            phone_number=raw.get("phone_number", raw.get("calling_no")),
             imei=raw.get("imei"),
             imsi=raw.get("imsi"),
             timestamp=dt,
             call_type=call_type,
-            duration_seconds=int(raw.get("duration", 0)),
+            duration_seconds=int(raw.get("duration_seconds", raw.get("duration", 0))),
             cgi=cgi,
             mcc=mcc,
             mnc=mnc,
             lac=lac,
             cell_id=cell_id,
-            tower_latitude=OperatorMapper._safe_float(raw.get("first_cgi_lat")),
-            tower_longitude=OperatorMapper._safe_float(raw.get("first_cgi_lon")),
+            tower_latitude=OperatorMapper._safe_float(raw.get("tower_latitude", raw.get("first_cgi_lat"))),
+            tower_longitude=OperatorMapper._safe_float(raw.get("tower_longitude", raw.get("first_cgi_lon"))),
             signal_strength=OperatorMapper._safe_float(raw.get("signal_strength")),
             timing_advance=OperatorMapper._safe_int(raw.get("timing_advance")),
             rtt=OperatorMapper._safe_float(raw.get("rtt")),
@@ -100,9 +98,8 @@ class OperatorMapper:
     def map_jio_cdr(
         raw: dict[str, Any], upload_id: Any, source_file: str, record_number: int
     ) -> SubscriberEventRecord:
-        # Standardize Jio values
-        cgi = str(raw.get("cgi_code", "405-855-0-0"))
-        dt = parse_telecom_datetime(raw.get("start_time", datetime.utcnow()))
+        cgi = str(raw.get("cgi", raw.get("cgi_code", "405-855-0-0")))
+        dt = parse_telecom_datetime(raw.get("timestamp", raw.get("start_time", datetime.utcnow())))
 
         parts = cgi.split("-")
         mcc = int(parts[0]) if len(parts) > 0 and parts[0].isdigit() else 405
@@ -110,11 +107,11 @@ class OperatorMapper:
         lac = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else None
         cell_id = int(parts[3]) if len(parts) > 3 and parts[3].isdigit() else None
 
-        sig_strength = float(raw.get("signal_dbm")) if raw.get("signal_dbm") else None
-        ta = int(raw.get("ta")) if raw.get("ta") else None
-        rtt = float(raw.get("rtt")) if raw.get("rtt") else None
+        sig_strength = OperatorMapper._safe_float(raw.get("signal_strength", raw.get("signal_dbm")))
+        ta = OperatorMapper._safe_int(raw.get("timing_advance", raw.get("ta")))
+        rtt = OperatorMapper._safe_float(raw.get("rtt"))
 
-        raw_type = str(raw.get("direction", "")).upper()
+        raw_type = str(raw.get("call_type", raw.get("direction", ""))).upper()
         if "OUT" in raw_type:
             call_type = CallType.OUTGOING
         elif "IN" in raw_type:
@@ -131,12 +128,12 @@ class OperatorMapper:
             upload_id=upload_id,
             operator=Operator.JIO,
             source_type=SourceType.CDR,
-            phone_number=raw.get("calling_party"),
-            imei=raw.get("imei_number"),
-            imsi=raw.get("imsi_code"),
+            phone_number=raw.get("phone_number", raw.get("calling_party")),
+            imei=raw.get("imei", raw.get("imei_number")),
+            imsi=raw.get("imsi", raw.get("imsi_code")),
             timestamp=dt,
             call_type=call_type,
-            duration_seconds=int(raw.get("duration_sec", 0)),
+            duration_seconds=int(raw.get("duration_seconds", raw.get("duration_sec", 0))),
             cgi=cgi,
             mcc=mcc,
             mnc=mnc,
@@ -154,12 +151,16 @@ class OperatorMapper:
     def map_vi_cdr(
         raw: dict[str, Any], upload_id: Any, source_file: str, record_number: int
     ) -> SubscriberEventRecord:
-        # Standardize Vi values
-        date_str = str(raw.get("call_date", ""))
-        time_str = str(raw.get("call_time", ""))
-        dt = parse_telecom_datetime(f"{date_str} {time_str}".strip())
+        # Support both normalized keys (timestamp, call_date+call_time) and raw keys
+        ts_val = raw.get("timestamp")
+        if ts_val:
+            dt = parse_telecom_datetime(ts_val)
+        else:
+            date_str = str(raw.get("call_date", ""))
+            time_str = str(raw.get("call_time", ""))
+            dt = parse_telecom_datetime(f"{date_str} {time_str}".strip())
         
-        cgi = str(raw.get("cell_global_id", "404-20-0-0"))
+        cgi = str(raw.get("cgi", raw.get("cell_global_id", "404-20-0-0")))
         parts = cgi.split("-")
         mcc = int(parts[0]) if len(parts) > 0 and parts[0].isdigit() else 404
         mnc = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 20
@@ -183,12 +184,12 @@ class OperatorMapper:
             upload_id=upload_id,
             operator=Operator.VI,
             source_type=SourceType.CDR,
-            phone_number=raw.get("msisdn"),
+            phone_number=raw.get("phone_number", raw.get("msisdn")),
             imei=raw.get("imei"),
             imsi=raw.get("imsi"),
             timestamp=dt,
             call_type=call_type,
-            duration_seconds=int(raw.get("call_duration", 0)),
+            duration_seconds=int(raw.get("duration_seconds", raw.get("call_duration", 0))),
             cgi=cgi,
             mcc=mcc,
             mnc=mnc,
@@ -206,9 +207,8 @@ class OperatorMapper:
     def map_bsnl_cdr(
         raw: dict[str, Any], upload_id: Any, source_file: str, record_number: int
     ) -> SubscriberEventRecord:
-        # Standardize BSNL values
-        cgi = str(raw.get("cgi", "404-81-0-0"))
-        dt = parse_telecom_datetime(raw.get("timestamp_str", datetime.utcnow()))
+        cgi = str(raw.get("cgi", raw.get("cell_global_id", "404-81-0-0")))
+        dt = parse_telecom_datetime(raw.get("timestamp", raw.get("timestamp_str", datetime.utcnow())))
         
         parts = cgi.split("-")
         mcc = int(parts[0]) if len(parts) > 0 and parts[0].isdigit() else 404
@@ -216,7 +216,7 @@ class OperatorMapper:
         lac = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else None
         cell_id = int(parts[3]) if len(parts) > 3 and parts[3].isdigit() else None
 
-        raw_type = str(raw.get("call_direction", "")).upper()
+        raw_type = str(raw.get("call_type", raw.get("call_direction", ""))).upper()
         if "OUT" in raw_type:
             call_type = CallType.OUTGOING
         elif "IN" in raw_type:
@@ -233,12 +233,12 @@ class OperatorMapper:
             upload_id=upload_id,
             operator=Operator.BSNL,
             source_type=SourceType.CDR,
-            phone_number=raw.get("target_number"),
-            imei=raw.get("equipment_imei"),
-            imsi=raw.get("subscriber_imsi"),
+            phone_number=raw.get("phone_number", raw.get("target_number")),
+            imei=raw.get("imei", raw.get("equipment_imei")),
+            imsi=raw.get("imsi", raw.get("subscriber_imsi")),
             timestamp=dt,
             call_type=call_type,
-            duration_seconds=int(raw.get("duration_sec", 0)),
+            duration_seconds=int(raw.get("duration_seconds", raw.get("duration_sec", 0))),
             cgi=cgi,
             mcc=mcc,
             mnc=mnc,
@@ -305,8 +305,8 @@ class OperatorMapper:
             lac=lac,
             cell_id=cell_id,
             cgi=cgi,
-            latitude=float(raw.get("latitude", 0.0)),
-            longitude=float(raw.get("longitude", 0.0)),
+            latitude=OperatorMapper._safe_float(raw.get("latitude")) or 0.0,
+            longitude=OperatorMapper._safe_float(raw.get("longitude")) or 0.0,
             azimuth=azimuth,
             beamwidth=beam,
             range_meters=range_m,

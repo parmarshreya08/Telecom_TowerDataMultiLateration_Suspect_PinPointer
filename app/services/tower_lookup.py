@@ -5,7 +5,7 @@ Falls back to OpenCellID API when tower not found locally.
 Includes in-memory caching to optimize pipeline processing performance.
 """
 
-from typing import Optional
+from typing import Any, Optional
 from uuid import uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,6 +16,8 @@ from app.database.repository import TelecomRepository
 from app.services.cgi_decoder import CgiDecoder
 from app.services.opencellid import OpenCellIDService
 
+_tower_cache: dict[str, TowerRecord] = {}
+
 
 class TowerLookupService:
     """
@@ -24,7 +26,6 @@ class TowerLookupService:
 
     def __init__(self, db_session: AsyncSession) -> None:
         self.repo = TelecomRepository(db_session)
-        self._cache: dict[str, TowerRecord] = {}
         self._opencellid = OpenCellIDService()
 
     async def find_by_cgi(self, cgi: str) -> Optional[TowerRecord]:
@@ -41,12 +42,12 @@ class TowerLookupService:
         if not cgi:
             return None
 
-        if cgi in self._cache:
-            return self._cache[cgi]
+        if cgi in _tower_cache:
+            return _tower_cache[cgi]
 
         tower = await self.repo.get_tower_by_cgi(cgi)
         if tower:
-            self._cache[cgi] = tower
+            _tower_cache[cgi] = tower
             return tower
 
         # OpenCellID fallback
@@ -72,7 +73,7 @@ class TowerLookupService:
                     longitude=oc_result["longitude"],
                     range_meters=oc_result.get("range_meters"),
                 )
-                self._cache[cgi] = tower
+                _tower_cache[cgi] = tower
                 return tower
 
         return None

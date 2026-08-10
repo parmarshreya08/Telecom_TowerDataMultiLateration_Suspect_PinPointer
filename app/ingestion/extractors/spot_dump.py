@@ -3,6 +3,7 @@ Spot Dump data extractor.
 Extracts phone numbers active under a particular cell sector inside a time window.
 """
 
+import math
 from typing import Any, Optional
 from uuid import UUID
 import pandas as pd
@@ -28,31 +29,19 @@ class SpotDumpExtractor(BaseExtractor):
             List of raw dictionaries.
         """
         logger.info("extracting_spot_dump", path=file_path)
-        try:
-            try:
-                df = pd.read_csv(file_path) if file_path.endswith('.csv') else pd.read_excel(file_path)
-                records = df.to_dict(orient="records")
-                return [{str(k): v for k, v in r.items()} for r in records]
-            except Exception as e:
-                logger.warn("spot_dump_extractor_using_mock_fallback", error=str(e))
-                return [
-                    {
-                        "cell_site_cgi": "404-45-1234-5678",
-                        "event_timestamp": "2026-07-29T10:00:00Z",
-                        "phone_number": "919876543210",
-                        "imei": "358765432109876",
-                        "imsi": "404450123456789",
-                        "event_description": "LOCATION_UPDATE"
-                    },
-                    {
-                        "cell_site_cgi": "404-45-1234-5678",
-                        "event_timestamp": "2026-07-29T10:02:15Z",
-                        "phone_number": "919000011111",
-                        "imei": "860000123456789",
-                        "imsi": "405854321098765",
-                        "event_description": "CALL_INCOMING"
-                    }
-                ]
-        except Exception as ex:
-            logger.error("spot_dump_extraction_failed", error=str(ex))
-            raise ExtractionFailureError(f"Spot dump parsing failed: {ex}") from ex
+        ext = file_path.lower()
+        if ext.endswith('.csv'):
+            df = pd.read_csv(file_path)
+        elif ext.endswith(('.xlsx', '.xls')):
+            df = pd.read_excel(file_path)
+        elif ext.endswith('.tsv'):
+            df = pd.read_csv(file_path, sep='\t')
+        else:
+            raise ExtractionFailureError(f"Unsupported spot dump format: {file_path}")
+        records = df.to_dict(orient="records")
+        def _clean_nan(val):
+            if isinstance(val, float) and math.isnan(val):
+                return None
+            return val
+        records = [{k: _clean_nan(v) for k, v in r.items()} for r in records]
+        return [{str(k).strip(): v for k, v in r.items()} for r in records]

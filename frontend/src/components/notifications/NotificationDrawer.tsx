@@ -1,4 +1,4 @@
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion, AnimatePresence } from 'motion/react'
 import { X, Bell, CheckCheck, MapPin, Radio, WifiOff, AlertCircle, FileText, Upload } from 'lucide-react'
 import type { Notification, NotificationType } from '@/types'
 import { formatTimeAgo } from '@/utils'

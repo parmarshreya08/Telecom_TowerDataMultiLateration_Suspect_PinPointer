@@ -7,6 +7,7 @@ localization fixes (GeoJSON) for an investigation case.
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -16,6 +17,15 @@ from app.database.session import get_db_session
 from app.localization.engine import LocalizationEngine
 
 router = APIRouter()
+
+
+class CreateCaseRequest(BaseModel):
+    case_name: str = Field(..., min_length=1, max_length=255)
+    case_number: str = Field(..., min_length=1, max_length=100)
+    suspect_name: str = Field(default="", max_length=255)
+    mobile_number: str = Field(default="", max_length=20)
+    description: str = Field(default="", max_length=2000)
+    officer_notes: str = Field(default="", max_length=2000)
 
 
 def _fixes_to_geojson(fixes: list[Any]) -> dict[str, Any]:
@@ -53,6 +63,99 @@ def _fixes_to_geojson(fixes: list[Any]) -> dict[str, Any]:
             "fix_count": len(fixes),
             "generated_at": datetime.now(timezone.utc).isoformat(),
         },
+    }
+
+
+@router.post(
+    "/api/cases",
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a new investigation case",
+)
+async def create_case(
+    body: CreateCaseRequest,
+    db: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    """
+    Registers a new investigation case. Cases are lightweight identifiers;
+    actual data is associated when files are uploaded with this case_id.
+    """
+    from datetime import datetime, timezone
+    from app.database.models.telecom import CaseModel
+
+    now = datetime.now(timezone.utc)
+
+    case = CaseModel(
+        case_id=body.case_number,
+        case_name=body.case_name,
+        case_number=body.case_number,
+        suspect_name=body.suspect_name,
+        mobile_number=body.mobile_number,
+        description=body.description,
+        officer_notes=body.officer_notes,
+        status="Active",
+        created_by="Officer",
+        created_at=now,
+        updated_at=now,
+    )
+
+    repo = TelecomRepository(db)
+    await repo.create_case(case)
+    await db.commit()
+
+    return {
+        "id": body.case_number,
+        "case_name": body.case_name,
+        "case_number": body.case_number,
+        "suspect_name": body.suspect_name,
+        "mobile_number": body.mobile_number,
+        "description": body.description,
+        "officer_notes": body.officer_notes,
+        "status": "Active",
+        "created_by": "Officer",
+        "created_at": now.isoformat(),
+        "updated_at": now.isoformat(),
+        "tracking_status": "Idle",
+        "uploads": [],
+        "timeline": [],
+        "fix_count": 0,
+    }
+
+
+@router.get(
+    "/api/towers/list",
+    status_code=status.HTTP_200_OK,
+    summary="List all registered cell towers",
+)
+async def list_towers(
+    db: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    """
+    Returns all registered towers. Used by the frontend map to display tower locations.
+    """
+    from sqlalchemy import select
+    from app.database.models.telecom import TowerRecordModel
+
+    stmt = select(TowerRecordModel).order_by(TowerRecordModel.operator, TowerRecordModel.cgi)
+    result = await db.execute(stmt)
+    models = result.scalars().all()
+
+    return {
+        "towers": [
+            {
+                "tower_id": str(m.tower_id),
+                "operator": m.operator,
+                "radio": m.radio,
+                "cgi": m.cgi,
+                "latitude": m.latitude,
+                "longitude": m.longitude,
+                "azimuth": m.azimuth,
+                "beamwidth": m.beamwidth,
+                "range_meters": m.range_meters,
+                "site_address": m.site_address,
+            }
+            for m in models
+        ],
+        "total": len(models),
     }
 
 
@@ -179,13 +282,20 @@ async def lookup_tower(
 )
 async def get_case_localization_geojson(
     case_id: str,
+    start: str | None = None,
+    end: str | None = None,
     db: AsyncSession = Depends(get_db_session),
 ) -> dict[str, Any]:
     """
     Returns the previously computed GeoJSON fixes for a case, without recomputation.
+    Optional query params: start (ISO datetime), end (ISO datetime).
     """
+    from datetime import datetime as _dt
+
     repo = TelecomRepository(db)
-    fixes = await repo.get_localization_fixes(case_id)
+    start_dt = _dt.fromisoformat(start) if start else None
+    end_dt = _dt.fromisoformat(end) if end else None
+    fixes = await repo.get_localization_fixes(case_id, start_time=start_dt, end_time=end_dt)
 
     if not fixes:
         raise HTTPException(
@@ -243,3 +353,144 @@ async def get_forensic_report(
     ]
 
     return generate_forensic_report(case_id, contract_fixes)
+
+
+@router.get(
+    "/api/cases",
+    status_code=status.HTTP_200_OK,
+    summary="List all investigation cases",
+)
+async def list_cases(
+    db: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    repo = TelecomRepository(db)
+    cases = await repo.get_all_cases()
+
+    return {
+        "items": cases,
+        "total": len(cases),
+        "page": 1,
+        "page_size": max(len(cases), 10),
+        "total_pages": 1,
+    }
+
+
+@router.get(
+    "/api/case/{case_id}",
+    status_code=status.HTTP_200_OK,
+    summary="Get investigation case details",
+)
+async def get_case_detail(
+    case_id: str,
+    db: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    from sqlalchemy import select as sa_select
+    from app.database.models.telecom import CaseModel
+
+    repo = TelecomRepository(db)
+    uploads = await repo.get_uploads_by_case(case_id)
+    fixes = await repo.get_localization_fixes(case_id)
+    events = await repo.get_subscriber_events_by_case(case_id, limit=1)
+
+    case_stmt = sa_select(CaseModel).where(CaseModel.case_id == case_id)
+    case_result = await db.execute(case_stmt)
+    case_model = case_result.scalar_one_or_none()
+
+    if not case_model and not uploads and not fixes:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Case '{case_id}' not found.",
+        )
+
+    phone_number = events[0].phone_number if events and events[0].phone_number else "Unknown"
+
+    return {
+        "id": case_id,
+        "case_name": case_model.case_name if case_model else f"Investigation {case_id}",
+        "case_number": case_model.case_number if case_model else case_id,
+        "suspect_name": case_model.suspect_name if case_model else (f"Target ({phone_number})" if phone_number != "Unknown" else f"Target {case_id}"),
+        "mobile_number": case_model.mobile_number if case_model and case_model.mobile_number else phone_number,
+        "description": case_model.description if case_model else f"Telecom multi-lateration analysis case {case_id}",
+        "officer_notes": case_model.officer_notes if case_model else f"Ingested {len(uploads)} file uploads, {len(fixes)} localization fixes computed.",
+        "status": case_model.status if case_model else ("Completed" if fixes else "Active"),
+        "created_by": case_model.created_by if case_model else (uploads[0].uploaded_by if uploads else "Officer"),
+        "created_at": (case_model.created_at.isoformat() if case_model and case_model.created_at else (uploads[0].uploaded_at.isoformat() if uploads else "")),
+        "updated_at": (case_model.updated_at.isoformat() if case_model and case_model.updated_at else (uploads[-1].uploaded_at.isoformat() if uploads else "")),
+        "tracking_status": "Completed" if fixes else "Idle",
+        "uploads": [
+            {
+                "upload_id": str(u.upload_id),
+                "case_id": u.case_id,
+                "source_type": u.source_type,
+                "operator": u.operator,
+                "original_filename": u.original_filename,
+                "stored_filename": u.stored_filename,
+                "sha256": u.sha256,
+                "mime_type": u.mime_type,
+                "file_size_bytes": u.file_size_bytes,
+                "uploaded_by": u.uploaded_by,
+                "uploaded_at": u.uploaded_at.isoformat(),
+            }
+            for u in uploads
+        ],
+        "fix_count": len(fixes),
+    }
+
+
+@router.get(
+    "/api/case/{case_id}/events",
+    status_code=status.HTTP_200_OK,
+    summary="Get normalized subscriber CDR records for a case",
+)
+async def get_case_events(
+    case_id: str,
+    limit: int = 500,
+    db: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    repo = TelecomRepository(db)
+    events = await repo.get_subscriber_events_by_case(case_id, limit=limit)
+    return {
+        "case_id": case_id,
+        "events": [
+            {
+                "event_id": str(e.event_id),
+                "upload_id": str(e.upload_id),
+                "operator": e.operator,
+                "source_type": e.source_type,
+                "phone_number": e.phone_number,
+                "imei": e.imei,
+                "imsi": e.imsi,
+                "timestamp": e.timestamp.isoformat(),
+                "call_type": e.call_type,
+                "duration_seconds": e.duration_seconds,
+                "cgi": e.cgi,
+                "mcc": e.mcc,
+                "mnc": e.mnc,
+                "lac": e.lac,
+                "cell_id": e.cell_id,
+                "tower_latitude": e.tower_latitude,
+                "tower_longitude": e.tower_longitude,
+                "signal_strength": e.signal_strength,
+                "timing_advance": e.timing_advance,
+                "rtt": e.rtt,
+                "source_file": e.source_file,
+                "record_number": e.record_number,
+                "raw_fields": e.raw_fields,
+            }
+            for e in events
+        ],
+        "total": len(events),
+    }
+
+
+@router.get(
+    "/api/dashboard/stats",
+    status_code=status.HTTP_200_OK,
+    summary="Get system-wide dashboard statistics",
+)
+async def get_dashboard_stats(
+    db: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    repo = TelecomRepository(db)
+    return await repo.get_dashboard_stats()
+

@@ -49,7 +49,7 @@ class IngestionValidator:
             # 1. Phone number validation (for CDR or SpotDump)
             if file_type in ("CDR", "SpotDump"):
                 # Check potential target/subscriber identifier keys
-                phone_keys = ["calling_no", "calling_party", "msisdn", "target_number", "phone_number"]
+                phone_keys = ["calling_no", "calling_party", "msisdn", "target_number", "phone_number", "target_number"]
                 phone_val = None
                 for key in phone_keys:
                     if key in record:
@@ -76,7 +76,7 @@ class IngestionValidator:
 
             # 3. Timestamps validation (for CDR or SpotDump)
             if file_type in ("CDR", "SpotDump"):
-                time_keys = ["datetime", "start_time", "call_date", "timestamp_str", "event_timestamp"]
+                time_keys = ["datetime", "start_time", "call_date", "timestamp_str", "event_timestamp", "timestamp"]
                 time_val = None
                 for key in time_keys:
                     if key in record:

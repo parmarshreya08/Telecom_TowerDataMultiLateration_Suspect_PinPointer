@@ -1,10 +1,9 @@
 // ============================================================
 // E-Rakshak — Axios API Client
-// TODO: Wire authentication token + API key from auth context
 // ============================================================
 
 import axios from 'axios'
-import { API_BASE_URL, API_KEY_HEADER, LS_KEYS } from '@/constants'
+import { API_BASE_URL } from '@/constants'
 import type {
   HealthStatus,
   UploadResponse,
@@ -12,55 +11,69 @@ import type {
   CreateInvestigationData,
   DashboardStats,
   PaginatedResponse,
-  ReportRecord,
-  Notification,
   ForensicReport,
   GeoJSONFeatureCollection,
+  UploadResult,
+  BatchUploadResponse,
+  FileListResponse,
 } from '@/types'
 
-// ── Axios instance ─────────────────────────────────────────
+// Axios instance
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
   timeout: 60_000,
   headers: { 'Content-Type': 'application/json' },
 })
 
-// Request interceptor — attach auth token and API key
-apiClient.interceptors.request.use((config) => {
-  const token = localStorage.getItem(LS_KEYS.AUTH_TOKEN)
-  if (token) config.headers.Authorization = `Bearer ${token}`
+// Request interceptor — no auth required
+apiClient.interceptors.request.use((config) => config)
 
-  // TODO: Replace with env var once backend wires API key validation
-  const apiKey = import.meta.env.VITE_API_KEY
-  if (apiKey) config.headers[API_KEY_HEADER] = apiKey
-
-  return config
-})
-
-// Response interceptor — handle 401/403 globally
+// Response interceptor
 apiClient.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem(LS_KEYS.AUTH_TOKEN)
-      localStorage.removeItem(LS_KEYS.OFFICER)
-      window.location.href = '/login'
-    }
-    return Promise.reject(error)
-  }
+  (error) => Promise.reject(error)
 )
 
-// ── Health ─────────────────────────────────────────────────
+// Health
 export const healthApi = {
   check: () => apiClient.get<HealthStatus>('/health').then((r) => r.data),
 }
 
-// ── Upload ─────────────────────────────────────────────────
+// Upload (multi-file + URL)
 export const uploadApi = {
-  /**
-   * POST /api/upload — multipart form data
-   * TODO: Backend requires: file, case_id, uploaded_by
-   */
+  uploadFiles: (
+    files: File[],
+    caseId: string,
+    uploadedBy: string = 'Officer',
+    onProgress?: (pct: number) => void
+  ): Promise<BatchUploadResponse> => {
+    const form = new FormData()
+    files.forEach((f) => form.append('files', f))
+    form.append('uploaded_by', uploadedBy)
+
+    return apiClient
+      .post<BatchUploadResponse>(`/api/case/${caseId}/upload`, form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        onUploadProgress: (e) => {
+          if (onProgress && e.total) {
+            onProgress(Math.round((e.loaded * 100) / e.total))
+          }
+        },
+      })
+      .then((r) => r.data)
+  },
+
+  uploadFromUrl: (
+    caseId: string,
+    url: string,
+    filename: string = ''
+  ): Promise<UploadResult> => {
+    return apiClient
+      .post<UploadResult>(`/api/case/${caseId}/upload/url`, { url, filename })
+      .then((r) => r.data)
+  },
+
+  // Legacy single-file upload
   uploadFile: (
     file: File,
     caseId: string,
@@ -85,59 +98,61 @@ export const uploadApi = {
   },
 }
 
-// ── Investigations ─────────────────────────────────────────
-// TODO: These endpoints don't exist in backend yet — implement when ready
+// File management
+export const fileApi = {
+  listCaseFiles: (caseId: string): Promise<FileListResponse> =>
+    apiClient.get<FileListResponse>(`/api/case/${caseId}/files`).then((r) => r.data),
+
+  getFileStatus: (
+    uploadId: string
+  ): Promise<{ upload_id: string; upload_status: string; error_message?: string }> =>
+    apiClient.get(`/api/file/${uploadId}/status`).then((r) => r.data),
+
+  renameFile: (uploadId: string, displayName: string): Promise<void> =>
+    apiClient.patch(`/api/file/${uploadId}`, { display_name: displayName }).then((r) => r.data),
+
+  deleteFile: (uploadId: string): Promise<void> =>
+    apiClient.delete(`/api/file/${uploadId}`).then((r) => r.data),
+
+  batchDelete: (caseId: string, uploadIds: string[]): Promise<void> =>
+    apiClient.post(`/api/case/${caseId}/files/batch-delete`, { upload_ids: uploadIds }).then((r) => r.data),
+
+  reinitializeCase: (caseId: string): Promise<void> =>
+    apiClient.delete(`/api/case/${caseId}/files`).then((r) => r.data),
+}
+
+// Investigations
 export const investigationApi = {
   list: (params?: { status?: string; page?: number; page_size?: number }) =>
     apiClient
-      .get<PaginatedResponse<Investigation>>('/api/investigations', { params })
+      .get<PaginatedResponse<Investigation>>('/api/cases', { params })
       .then((r) => r.data),
 
   getById: (id: string) =>
-    apiClient.get<Investigation>(`/api/investigations/${id}`).then((r) => r.data),
+    apiClient.get<Investigation>(`/api/case/${id}`).then((r) => r.data),
+
+  getCaseEvents: (caseId: string, limit: number = 500) =>
+    apiClient
+      .get<{ case_id: string; events: unknown[]; total: number }>(`/api/case/${caseId}/events`, {
+        params: { limit },
+      })
+      .then((r) => r.data),
 
   create: (data: CreateInvestigationData) =>
-    apiClient.post<Investigation>('/api/investigations', data).then((r) => r.data),
+    apiClient.post<Investigation>('/api/cases', data).then((r) => r.data),
 
   update: (id: string, data: Partial<CreateInvestigationData>) =>
-    apiClient.patch<Investigation>(`/api/investigations/${id}`, data).then((r) => r.data),
+    apiClient.patch<Investigation>(`/api/case/${id}`, data).then((r) => r.data),
 
   delete: (id: string) =>
-    apiClient.delete(`/api/investigations/${id}`).then((r) => r.data),
+    apiClient.delete(`/api/case/${id}`).then((r) => r.data),
 
   getDashboardStats: () =>
     apiClient.get<DashboardStats>('/api/dashboard/stats').then((r) => r.data),
 }
 
-// ── Auth ───────────────────────────────────────────────────
-// TODO: Backend auth endpoints not yet implemented
-export const authApi = {
-  login: (email: string, password: string) =>
-    apiClient
-      .post<{ access_token: string; token_type: string; officer: unknown }>(
-        '/api/auth/login',
-        { email, password }
-      )
-      .then((r) => r.data),
-
-  register: (data: unknown) =>
-    apiClient.post('/api/auth/register', data).then((r) => r.data),
-
-  logout: () =>
-    apiClient.post('/api/auth/logout').then((r) => r.data),
-
-  me: () =>
-    apiClient.get('/api/auth/me').then((r) => r.data),
-
-  googleOAuth: () => {
-    // TODO: Redirect to Google OAuth endpoint
-    window.location.href = `${API_BASE_URL}/api/auth/google`
-  },
-}
-
-// ── Tracking / Localization ────────────────────────────────
+// Tracking / Localization
 export const trackingApi = {
-  /** POST /api/case/{case_id}/localize — run trilateration + Kalman on stored frames */
   runLocalization: (caseId: string) =>
     apiClient
       .post<{ case_id: string; fix_count: number; geojson: GeoJSONFeatureCollection }>(
@@ -145,13 +160,15 @@ export const trackingApi = {
       )
       .then((r) => r.data),
 
-  /** GET /api/case/{case_id}/localize/geojson — read cached GeoJSON fixes */
-  getGeoJSON: (caseId: string) =>
-    apiClient
-      .get<GeoJSONFeatureCollection>(`/api/case/${caseId}/localize/geojson`)
-      .then((r) => r.data),
+  getGeoJSON: (caseId: string, start?: string, end?: string) => {
+    const params: Record<string, string> = {}
+    if (start) params.start = start
+    if (end) params.end = end
+    return apiClient
+      .get<GeoJSONFeatureCollection>(`/api/case/${caseId}/localize/geojson`, { params })
+      .then((r) => r.data)
+  },
 
-  /** GET /api/case/{case_id}/uploads — list uploads for a case */
   getCaseUploads: (caseId: string) =>
     apiClient
       .get<{ case_id: string; uploads: unknown[]; total: number }>(
@@ -159,7 +176,6 @@ export const trackingApi = {
       )
       .then((r) => r.data),
 
-  /** GET /api/towers?cgi=... — lookup tower by CGI */
   lookupTower: (cgi: string) =>
     apiClient
       .get<{ tower_id: string; latitude: number; longitude: number; azimuth?: number; beamwidth?: number }>(
@@ -167,41 +183,51 @@ export const trackingApi = {
         { params: { cgi } }
       )
       .then((r) => r.data),
+
+  listAllTowers: () =>
+    apiClient
+      .get<{ towers: Array<{ tower_id: string; operator: string; radio: string; cgi: string; latitude: number; longitude: number; azimuth?: number; beamwidth?: number; range_meters?: number; site_address?: string }>; total: number }>(
+        '/api/towers/list'
+      )
+      .then((r) => r.data),
 }
 
-// ── Reports / Export ───────────────────────────────────────
+// Reports / Export
 export const reportApi = {
-  /** GET /api/case/{case_id}/report — forensic report for a case */
   getForensicReport: (caseId: string) =>
     apiClient
       .get<ForensicReport>(`/api/case/${caseId}/report`)
       .then((r) => r.data),
-
-  list: (investigationId: string) =>
-    apiClient
-      .get<ReportRecord[]>(`/api/investigations/${investigationId}/reports`)
-      .then((r) => r.data),
-
-  generate: (investigationId: string, format: string) =>
-    apiClient
-      .post(`/api/investigations/${investigationId}/reports/generate`, { format })
-      .then((r) => r.data),
-
-  download: (reportId: string) =>
-    apiClient
-      .get(`/api/reports/${reportId}/download`, { responseType: 'blob' })
-      .then((r) => r.data),
 }
 
-// ── Notifications ──────────────────────────────────────────
-// TODO: Backend notification endpoints not yet implemented
-export const notificationApi = {
-  list: () =>
-    apiClient.get<Notification[]>('/api/notifications').then((r) => r.data),
+// Export downloads — returns Blob for file save
+export interface ExportParams {
+  start?: string
+  end?: string
+}
 
-  markRead: (id: string) =>
-    apiClient.patch(`/api/notifications/${id}/read`).then((r) => r.data),
+export const exportApi = {
+  downloadCSV: (caseId: string, params?: ExportParams) =>
+    apiClient
+      .get(`/api/case/${caseId}/export/csv`, {
+        params,
+        responseType: 'blob',
+      })
+      .then((r) => r.data as Blob),
 
-  markAllRead: () =>
-    apiClient.post('/api/notifications/read-all').then((r) => r.data),
+  downloadKML: (caseId: string, params?: ExportParams) =>
+    apiClient
+      .get(`/api/case/${caseId}/export/kml`, {
+        params,
+        responseType: 'blob',
+      })
+      .then((r) => r.data as Blob),
+
+  downloadPDF: (caseId: string, params?: ExportParams) =>
+    apiClient
+      .get(`/api/case/${caseId}/export/pdf`, {
+        params,
+        responseType: 'blob',
+      })
+      .then((r) => r.data as Blob),
 }

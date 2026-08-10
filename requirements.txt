@@ -23,8 +23,11 @@ scipy>=1.14.0
 pyproj>=3.6.1
 shapely>=2.0.0
 
-# Cloud Storage (Cloudinary + Google Drive)
-cloudinary>=1.40.0
+# Cloud Storage (Supabase Storage)
+supabase>=2.0.0
+openpyxl>=3.1.0
+
+# Google Drive (v2)
 google-auth>=2.30.0
 google-api-python-client>=2.120.0
 
@@ -36,6 +39,9 @@ colorama>=0.4.6  # For colored logs locally
 pytest>=8.2.2
 pytest-asyncio>=0.23.7
 httpx>=0.27.0
+
+# Export Generation
+reportlab>=4.2.0
 
 # Code Quality & Linting (Dev)
 black>=24.4.2

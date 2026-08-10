@@ -131,7 +131,8 @@ class JPLTrilateration:
             abs_residuals = np.abs(d)
             weights = np.where(abs_residuals > adaptive_threshold, adaptive_threshold / abs_residuals, 1.0)
 
-            WA_weighted = weights[:, None] * A
+            # Combine Huber robust weights with uncertainty weighting (fix: apply on top of WA, not raw A)
+            WA_weighted = weights[:, None] * WA
             try:
                 last_ATA_inv = np.linalg.inv(A.T @ WA_weighted)
                 M = last_ATA_inv @ WA_weighted.T

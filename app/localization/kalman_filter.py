@@ -130,9 +130,23 @@ class KalmanTracker:
 
         R_k = self.R_base * total_r_scale
 
-        # 4. Measurement Update Step
+        # 4. Measurement Update Step with Mahalanobis gating
         y = z_trilat - (self.H @ self.x)
         S = self.H @ self.P @ self.H.T + R_k
+
+        # Mahalanobis distance gating: reject outlier measurements (chi2, 2 DOF, 99%)
+        from scipy.stats import chi2 as _chi2
+        mahal_sq = (y.T @ np.linalg.inv(S) @ y).item()
+        if mahal_sq > _chi2.ppf(0.99, 2):
+            return {
+                "position": np.array([self.x[0, 0], self.x[1, 0]]),
+                "velocity": np.array([self.x[2, 0], self.x[3, 0]]),
+                "covariance": self.P[:2, :2],
+                "adaptive_R_scale": total_r_scale,
+                "initialized": True,
+                "rejected": True,
+            }
+
         K = self.P @ self.H.T @ np.linalg.inv(S)
 
         self.x = self.x + (K @ y)

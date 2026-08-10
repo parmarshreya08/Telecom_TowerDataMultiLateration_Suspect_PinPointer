@@ -20,7 +20,7 @@ Sector Wedge Model (Phase B):
     wedge per tower. The intersection of all wedges bounds the solution.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional
 from uuid import uuid4
 
@@ -36,6 +36,8 @@ from app.localization.sector_wedge import point_in_sector
 from app.localization.trilateration import JPLTrilateration
 
 # One LTE timing advance index step approximates 78.12 meters (matches builder).
+from scipy.stats import chi2
+
 _TA_METERS = 78.12
 
 
@@ -217,7 +219,7 @@ class LocalizationEngine:
                 lat, lon = GISUtils.utm_to_latlon(
                     float(smoothed_pos[0]), float(smoothed_pos[1]), zone=zone
                 )
-                confidence_radius = float(np.sqrt(np.trace(covariance)))
+                confidence_radius = float(np.sqrt(chi2.ppf(0.95, 2) * np.trace(covariance)))
 
                 ta_inner = None
                 ta_outer = None
@@ -238,6 +240,8 @@ class LocalizationEngine:
                         rss_i = r
                         break
 
+                cov_list = covariance[:2, :2].tolist() if covariance is not None and len(covariance) >= 2 else None
+
                 fixes.append(
                     LocalizationFix(
                         fix_id=uuid4(),
@@ -255,6 +259,7 @@ class LocalizationEngine:
                         ta_inner_m=ta_inner,
                         ta_outer_m=ta_outer,
                         rss_i_dbm=rss_i,
+                        covariance_json={"matrix": cov_list} if cov_list else None,
                     )
                 )
 
@@ -307,7 +312,10 @@ class LocalizationEngine:
             features.append(point_feature)
 
             if include_ellipses and fix.confidence_radius_meters > 0:
-                cov = np.eye(2) * (fix.confidence_radius_meters ** 2)
+                if fix.covariance_json and fix.covariance_json.get("matrix"):
+                    cov = np.array(fix.covariance_json["matrix"], dtype=np.float64)
+                else:
+                    cov = np.eye(2) * (fix.confidence_radius_meters ** 2)
                 ellipse = GISUtils.generate_confidence_ellipse_geojson(
                     e, n, cov, confidence_level=0.95, zone=zone,
                     rss_i_dbm=fix.rss_i_dbm or -100.0,
@@ -330,7 +338,7 @@ class LocalizationEngine:
             "metadata": {
                 "case_id": fixes[0].case_id if fixes else None,
                 "fix_count": len(fixes),
-                "generated_at": datetime.utcnow().isoformat(),
+                "generated_at": datetime.now(timezone.utc).isoformat(),
             },
         }
 
@@ -378,6 +386,6 @@ class LocalizationEngine:
             "features": features,
             "metadata": {
                 "feature_count": len(features),
-                "generated_at": datetime.utcnow().isoformat(),
+                "generated_at": datetime.now(timezone.utc).isoformat(),
             },
         }

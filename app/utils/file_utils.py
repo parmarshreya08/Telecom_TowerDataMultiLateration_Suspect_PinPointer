@@ -5,11 +5,27 @@ File validation, saving, and hashing utilities for E-Rakshak.
 import hashlib
 import os
 import re
+from pathlib import Path
 from uuid import uuid4
 
 from fastapi import UploadFile
 
 from app.core.logging import logger
+
+# Supported file extensions
+SUPPORTED_EXTENSIONS = {".csv", ".xlsx", ".xls", ".tsv"}
+
+# MIME types mapped to extensions
+MIME_TYPE_MAP = {
+    "text/csv": ".csv",
+    "application/csv": ".csv",
+    "text/x-csv": ".csv",
+    "text/comma-separated-values": ".csv",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
+    "application/vnd.ms-excel": ".xls",
+    "text/tab-separated-values": ".tsv",
+    "application/octet-stream": None,  # Allow but verify extension
+}
 
 
 def create_upload_directory(directory_path: str) -> None:
@@ -27,35 +43,39 @@ def create_upload_directory(directory_path: str) -> None:
 
 def safe_filename(original_name: str) -> str:
     """
-    Generates a unique secure stored filename based on UUID, preserving CSV extension.
+    Generates a unique secure stored filename based on UUID, preserving original extension.
     """
-    ext = "csv"
-    if original_name and "." in original_name:
-        ext_check = original_name.rsplit(".", 1)[1].lower()
-        if ext_check == "csv":
-            ext = "csv"
-    return f"{uuid4()}.{ext}"
+    ext = Path(original_name).suffix.lower() if original_name else ".csv"
+    if ext not in SUPPORTED_EXTENSIONS:
+        ext = ".csv"
+    return f"{uuid4()}{ext}"
 
 
-async def validate_uploaded_file(upload_file: UploadFile, max_size_mb: int = 100) -> None:
+async def validate_uploaded_file(upload_file: UploadFile, max_size_mb: int = 100) -> str:
     """
-    Validates uploaded file constraints: CSV format extension, mime type, and maximum size limits.
+    Validates uploaded file constraints: extension, mime type, and maximum size limits.
     Does not load the file into memory.
+    Returns the detected file extension.
     """
     filename = upload_file.filename or ""
-    
+
     # 1. Extension Check
-    if not filename.lower().endswith(".csv"):
+    ext = Path(filename).suffix.lower()
+    if ext not in SUPPORTED_EXTENSIONS:
         logger.warn("file_validation_failed", filename=filename, reason="unsupported_extension")
-        raise ValueError("Unsupported extension. Only CSV files are supported.")
+        raise ValueError(
+            f"Unsupported file format '{ext}'. "
+            f"Supported: {', '.join(sorted(SUPPORTED_EXTENSIONS))}"
+        )
 
     # 2. MIME type check
-    content_type = upload_file.content_type or ""
-    allowed_mimes = ["text/csv", "application/csv", "text/x-csv", "text/comma-separated-values", "application/octet-stream"]
-    is_valid_mime = any(mime in content_type.lower() for mime in allowed_mimes)
+    content_type = (upload_file.content_type or "").lower()
+    allowed_mimes = list(MIME_TYPE_MAP.keys())
+    is_valid_mime = any(mime in content_type for mime in allowed_mimes)
+
     if not is_valid_mime:
         logger.warn("file_validation_failed", filename=filename, content_type=content_type, reason="invalid_mime_type")
-        raise ValueError(f"Invalid MIME type: {content_type}. Only CSV files are allowed.")
+        raise ValueError(f"Invalid MIME type: {content_type}. Only CSV, XLSX, XLS, TSV files are allowed.")
 
     # 3. Size check (streaming / seek check)
     try:
@@ -75,13 +95,15 @@ async def validate_uploaded_file(upload_file: UploadFile, max_size_mb: int = 100
     max_bytes = max_size_mb * 1024 * 1024
     if size > max_bytes:
         logger.warn(
-            "file_validation_failed", 
-            filename=filename, 
-            size_bytes=size, 
-            limit_bytes=max_bytes, 
+            "file_validation_failed",
+            filename=filename,
+            size_bytes=size,
+            limit_bytes=max_bytes,
             reason="file_size_exceeded"
         )
-        raise ValueError(f"File size exceeds the maximum limit of {max_size_mb} MB.")
+        raise ValueError(f"File size ({size / 1024 / 1024:.1f} MB) exceeds the maximum limit of {max_size_mb} MB.")
+
+    return ext
 
 
 async def save_uploaded_file(upload_file: UploadFile, destination_path: str) -> int:
@@ -108,7 +130,7 @@ async def save_uploaded_file(upload_file: UploadFile, destination_path: str) -> 
         raise
     finally:
         await upload_file.seek(0)
-    
+
     logger.info("file_saved", path=destination_path, bytes_written=total_bytes)
     return total_bytes
 

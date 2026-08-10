@@ -1,15 +1,15 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { motion } from 'framer-motion'
-import { Plus, Search, FolderOpen, ChevronRight } from 'lucide-react'
+import { motion } from 'motion/react'
+import { Plus, Search, FolderOpen, ChevronRight, RefreshCw, AlertCircle } from 'lucide-react'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Card } from '@/components/ui/Card'
-import { MOCK_INVESTIGATIONS } from '@/mock/investigations'
+import { investigationApi } from '@/services/api'
 import { formatTimeAgo, cn } from '@/utils'
 import { TRACKING_STATUS_COLORS } from '@/constants'
-import type { CaseStatus } from '@/types'
+import type { CaseStatus, Investigation } from '@/types'
 
 const STATUS_TABS: { label: string; value: CaseStatus | 'All' }[] = [
   { label: 'All',       value: 'All'       },
@@ -23,14 +23,36 @@ export default function InvestigationsPage() {
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState<CaseStatus | 'All'>('All')
   const [search, setSearch] = useState('')
+  const [cases, setCases] = useState<Investigation[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-  const filtered = MOCK_INVESTIGATIONS.filter((inv) => {
-    const matchesTab    = activeTab === 'All' || inv.status === activeTab
+  const fetchCases = async () => {
+    setIsLoading(true)
+    setError(null)
+    try {
+      const res = await investigationApi.list()
+      const rawItems = Array.isArray(res) ? res : res?.items ?? []
+      setCases(rawItems)
+    } catch (err: unknown) {
+      setError((err as Error)?.message || 'Failed to fetch cases from backend')
+      setCases([])
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchCases()
+  }, [])
+
+  const filtered = cases.filter((inv) => {
+    const matchesTab = activeTab === 'All' || inv.status === activeTab
     const matchesSearch = !search ||
-      inv.case_name.toLowerCase().includes(search.toLowerCase()) ||
-      inv.case_number.toLowerCase().includes(search.toLowerCase()) ||
-      inv.suspect_name.toLowerCase().includes(search.toLowerCase()) ||
-      inv.mobile_number.includes(search)
+      (inv.case_name && inv.case_name.toLowerCase().includes(search.toLowerCase())) ||
+      (inv.case_number && inv.case_number.toLowerCase().includes(search.toLowerCase())) ||
+      (inv.suspect_name && inv.suspect_name.toLowerCase().includes(search.toLowerCase())) ||
+      (inv.mobile_number && inv.mobile_number.includes(search))
     return matchesTab && matchesSearch
   })
 
@@ -40,12 +62,33 @@ export default function InvestigationsPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-xl font-bold text-surface-900 dark:text-surface-100">Investigations</h1>
-          <p className="text-sm text-surface-500">{MOCK_INVESTIGATIONS.length} total cases</p>
+          <p className="text-sm text-surface-500">{cases.length} total cases</p>
         </div>
-        <Button variant="primary" size="md" icon={<Plus className="h-4 w-4" />} onClick={() => navigate('/investigations/new')}>
-          New Investigation
-        </Button>
+        <div className="flex items-center gap-3">
+          <Button variant="secondary" size="md" icon={<RefreshCw className="h-4 w-4" />} onClick={fetchCases}>
+            Refresh
+          </Button>
+          <Button variant="primary" size="md" icon={<Plus className="h-4 w-4" />} onClick={() => navigate('/investigations/new')}>
+            New Investigation
+          </Button>
+        </div>
       </div>
+
+      {/* Error state */}
+      {error && (
+        <div className="p-4 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 text-red-700 dark:text-red-300 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="h-5 w-5 shrink-0 text-red-500" />
+            <div>
+              <p className="font-semibold text-sm">Failed to load investigations</p>
+              <p className="text-xs">{error}</p>
+            </div>
+          </div>
+          <Button variant="secondary" size="sm" icon={<RefreshCw className="h-4 w-4" />} onClick={fetchCases}>
+            Retry
+          </Button>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -76,11 +119,19 @@ export default function InvestigationsPage() {
       </div>
 
       {/* Cases */}
-      {filtered.length === 0 ? (
+      {isLoading ? (
         <Card className="flex flex-col items-center justify-center py-16 text-center">
-          <FolderOpen className="mb-3 h-10 w-10 text-surface-300" />
-          <p className="text-sm font-medium text-surface-500">No investigations found</p>
-          <p className="mt-1 text-xs text-surface-400">Try adjusting your search or filter</p>
+          <RefreshCw className="mb-3 h-8 w-8 text-primary-500 animate-spin" />
+          <p className="text-sm font-medium text-surface-600 dark:text-surface-300">Loading cases from backend...</p>
+        </Card>
+      ) : filtered.length === 0 ? (
+        <Card className="flex flex-col items-center justify-center py-16 text-center">
+          <FolderOpen className="mb-3 h-10 w-10 text-surface-300 dark:text-surface-600" />
+          <p className="text-sm font-medium text-surface-600 dark:text-surface-300">No investigations found</p>
+          <p className="mt-1 text-xs text-surface-400 mb-4">Try adjusting your search or upload data to register a new case.</p>
+          <Button variant="primary" size="sm" icon={<Plus className="h-4 w-4" />} onClick={() => navigate('/upload')}>
+            Upload Telecom Data
+          </Button>
         </Card>
       ) : (
         <div className="space-y-3">
@@ -91,11 +142,11 @@ export default function InvestigationsPage() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.05 }}
             >
-              <Card hover className="cursor-pointer" onClick={() => navigate(`/investigations/${inv.id}`)}>
+              <Card hover className="cursor-pointer group" onClick={() => navigate(`/investigations/${inv.id}`)}>
                 <div className="flex items-center gap-4">
                   {/* Icon */}
                   <div className={cn(
-                    'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl',
+                    'flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition-colors',
                     inv.status === 'Active'    ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400' :
                     inv.status === 'Pending'   ? 'bg-yellow-100 text-yellow-600 dark:bg-yellow-900/30 dark:text-yellow-400' :
                     inv.status === 'Completed' ? 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400' :
@@ -107,8 +158,8 @@ export default function InvestigationsPage() {
                   {/* Main info */}
                   <div className="flex-1 min-w-0">
                     <div className="flex flex-wrap items-center gap-2 mb-1">
-                      <p className="font-semibold text-sm text-surface-900 dark:text-surface-100 truncate">
-                        {inv.case_name}
+                      <p className="font-semibold text-sm text-surface-900 dark:text-surface-100 truncate group-hover:text-primary-600 transition-colors">
+                        {inv.case_name || inv.id}
                       </p>
                       <Badge variant={
                         inv.status === 'Active' ? 'success' :
@@ -118,26 +169,27 @@ export default function InvestigationsPage() {
                         {inv.status}
                       </Badge>
                     </div>
-                    <div className="flex flex-wrap gap-4 text-xs text-surface-500">
-                      <span>{inv.case_number}</span>
-                      <span>Suspect: {inv.suspect_name}</span>
-                      <span>By: {inv.created_by}</span>
-                      {inv.uploads[0] && <span>Operator: {inv.uploads[0].operator}</span>}
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-surface-500">
+                      <span>Case Ref: {inv.case_number || inv.id}</span>
+                      <span>Target: {inv.suspect_name || 'N/A'}</span>
+                      <span>By: {inv.created_by || 'Officer'}</span>
                     </div>
                   </div>
 
                   {/* Tracking status + timestamp */}
                   <div className="hidden sm:flex flex-col items-end gap-1.5 shrink-0">
-                    <span className={cn('text-xs font-medium', TRACKING_STATUS_COLORS[inv.tracking_status])}>
+                    <span className={cn('text-xs font-medium', TRACKING_STATUS_COLORS[inv.tracking_status] || 'text-surface-500')}>
                       {inv.tracking_status === 'Live' && (
                         <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-green-400 animate-ping-slow" />
                       )}
                       {inv.tracking_status}
                     </span>
-                    <span className="text-2xs text-surface-400">{formatTimeAgo(inv.updated_at)}</span>
+                    <span className="text-2xs text-surface-400">
+                      {inv.updated_at ? formatTimeAgo(inv.updated_at) : 'Recent'}
+                    </span>
                   </div>
 
-                  <ChevronRight className="h-4 w-4 text-surface-400 shrink-0" />
+                  <ChevronRight className="h-4 w-4 text-surface-400 group-hover:text-primary-500 transition-colors shrink-0" />
                 </div>
               </Card>
             </motion.div>
@@ -147,3 +199,4 @@ export default function InvestigationsPage() {
     </div>
   )
 }
+

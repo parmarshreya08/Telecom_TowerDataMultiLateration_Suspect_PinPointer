@@ -8,10 +8,33 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Float, Integer, String
+from sqlalchemy import JSON, DateTime, ForeignKey, Float, Integer, String, Text, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
+
+
+class CaseModel(Base):
+    """
+    Investigation case — the 'Customer' in the case:files relationship.
+    """
+    __tablename__ = "cases"
+
+    case_id: Mapped[str] = mapped_column(String(50), primary_key=True)
+    case_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    case_number: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    suspect_name: Mapped[str] = mapped_column(String(255), default="")
+    mobile_number: Mapped[str] = mapped_column(String(20), default="")
+    description: Mapped[str] = mapped_column(Text, default="")
+    officer_notes: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(50), default="Active")
+    created_by: Mapped[str] = mapped_column(String(100), default="Officer")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    uploads: Mapped[list["UploadMetadataModel"]] = relationship(
+        back_populates="case", cascade="all, delete-orphan", lazy="selectin"
+    )
 
 
 class UploadMetadataModel(Base):
@@ -21,7 +44,9 @@ class UploadMetadataModel(Base):
     __tablename__ = "upload_metadata"
 
     upload_id: Mapped[UUID] = mapped_column(primary_key=True)
-    case_id: Mapped[str] = mapped_column(String(50), index=True, nullable=False)
+    case_id: Mapped[str] = mapped_column(
+        String(50), ForeignKey("cases.case_id", ondelete="CASCADE"), index=True, nullable=False
+    )
     source_type: Mapped[str] = mapped_column(String(50), nullable=False)
     operator: Mapped[str] = mapped_column(String(50), nullable=False)
     original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -31,6 +56,16 @@ class UploadMetadataModel(Base):
     file_size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
     uploaded_by: Mapped[str] = mapped_column(String(100), nullable=False)
     uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+    # New fields for Supabase + background processing
+    supabase_path: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    supabase_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    display_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    upload_status: Mapped[str] = mapped_column(String(50), default="pending", index=True)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    file_source: Mapped[str] = mapped_column(String(50), default="local")
+
+    case: Mapped[CaseModel] = relationship(back_populates="uploads")
 
 
 class SubscriberEventRecordModel(Base):
@@ -154,4 +189,5 @@ class LocalizationFixModel(Base):
     ta_inner_m: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     ta_outer_m: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     rss_i_dbm: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    covariance_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)

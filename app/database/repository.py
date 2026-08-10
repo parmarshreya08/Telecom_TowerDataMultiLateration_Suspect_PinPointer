@@ -4,7 +4,7 @@ Handles CRUD and bulk persist operations for telecom models.
 Converts between Pydantic contracts and SQLAlchemy database models.
 """
 
-from typing import Optional
+from typing import Any, Optional
 from uuid import UUID
 
 from sqlalchemy import select
@@ -18,6 +18,7 @@ from app.contracts.subscriber import SubscriberEventRecord
 from app.contracts.tower import TowerRecord
 from app.contracts.upload import UploadMetadata
 from app.database.models.telecom import (
+    CaseModel,
     LocalizationFixModel,
     MeasurementFrameModel,
     MeasurementTowerModel,
@@ -34,6 +35,46 @@ class TelecomRepository:
 
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
+
+    # ── Case CRUD ────────────────────────────────────────────
+
+    async def create_case(self, case: CaseModel) -> CaseModel:
+        """
+        Persists a new investigation case.
+        """
+        self.session.add(case)
+        await self.session.flush()
+        return case
+
+    async def get_case_by_id(self, case_id: str) -> Optional[CaseModel]:
+        """
+        Retrieves a case by its ID.
+        """
+        stmt = select(CaseModel).where(CaseModel.case_id == case_id)
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    # ponytail: removed duplicate get_all_cases — kept the dict-returning version below
+
+    async def update_case(self, case: CaseModel) -> CaseModel:
+        """
+        Updates an existing case.
+        """
+        await self.session.flush()
+        return case
+
+    async def delete_case(self, case_id: str) -> bool:
+        """
+        Deletes a case and all its uploads (cascade).
+        """
+        case = await self.get_case_by_id(case_id)
+        if not case:
+            return False
+        await self.session.delete(case)
+        await self.session.flush()
+        return True
+
+    # ── Upload Metadata ──────────────────────────────────────
 
     async def get_upload_by_hash(self, file_hash: str) -> Optional[UploadMetadataModel]:
         """
@@ -58,7 +99,12 @@ class TelecomRepository:
             mime_type=meta.mime_type,
             file_size_bytes=meta.file_size_bytes,
             uploaded_by=meta.uploaded_by,
-            uploaded_at=meta.uploaded_at
+            uploaded_at=meta.uploaded_at,
+            supabase_path=meta.supabase_path,
+            supabase_url=meta.supabase_url,
+            display_name=meta.display_name,
+            upload_status=meta.upload_status,
+            file_source=meta.file_source,
         )
         self.session.add(model)
         return model
@@ -282,15 +328,25 @@ class TelecomRepository:
         ]
         self.session.add_all(models)
 
-    async def get_localization_fixes(self, case_id: str) -> list[LocalizationFixModel]:
+    async def get_localization_fixes(
+        self,
+        case_id: str,
+        start_time: Optional["datetime"] = None,
+        end_time: Optional["datetime"] = None,
+    ) -> list[LocalizationFixModel]:
         """
-        Loads stored localization fixes for a case (cached engine output).
+        Loads stored localization fixes for a case, optionally filtered by time range.
         """
-        stmt = (
-            select(LocalizationFixModel)
-            .where(LocalizationFixModel.case_id == case_id)
-            .order_by(LocalizationFixModel.timestamp)
+        from datetime import datetime as _dt
+
+        stmt = select(LocalizationFixModel).where(
+            LocalizationFixModel.case_id == case_id
         )
+        if start_time is not None:
+            stmt = stmt.where(LocalizationFixModel.timestamp >= start_time)
+        if end_time is not None:
+            stmt = stmt.where(LocalizationFixModel.timestamp <= end_time)
+        stmt = stmt.order_by(LocalizationFixModel.timestamp)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
@@ -374,3 +430,203 @@ class TelecomRepository:
             )
             for row in rows
         ]
+
+    async def get_subscriber_events_by_case(
+        self, case_id: str, limit: int = 500
+    ) -> list[SubscriberEventRecordModel]:
+        """
+        Loads normalized subscriber event records associated with a case.
+        """
+        stmt = (
+            select(SubscriberEventRecordModel)
+            .join(UploadMetadataModel, UploadMetadataModel.upload_id == SubscriberEventRecordModel.upload_id)
+            .where(UploadMetadataModel.case_id == case_id)
+            .order_by(SubscriberEventRecordModel.timestamp.desc())
+            .limit(limit)
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def get_all_cases(self) -> list[dict[str, Any]]:
+        """
+        Returns all investigation cases with upload/fix counts via single query with subqueries.
+        """
+        from sqlalchemy import func
+
+        upload_counts = (
+            select(
+                UploadMetadataModel.case_id,
+                func.count(UploadMetadataModel.upload_id).label("upload_count"),
+            )
+            .group_by(UploadMetadataModel.case_id)
+            .subquery()
+        )
+
+        fix_counts = (
+            select(
+                LocalizationFixModel.case_id,
+                func.count(LocalizationFixModel.fix_id).label("fix_count"),
+            )
+            .group_by(LocalizationFixModel.case_id)
+            .subquery()
+        )
+
+        stmt = (
+            select(
+                CaseModel,
+                func.coalesce(upload_counts.c.upload_count, 0).label("upload_count"),
+                func.coalesce(fix_counts.c.fix_count, 0).label("fix_count"),
+            )
+            .outerjoin(upload_counts, CaseModel.case_id == upload_counts.c.case_id)
+            .outerjoin(fix_counts, CaseModel.case_id == fix_counts.c.case_id)
+            .order_by(CaseModel.created_at.desc())
+        )
+
+        result = await self.session.execute(stmt)
+        rows = result.all()
+
+        return [
+            {
+                "id": row[0].case_id,
+                "case_name": row[0].case_name,
+                "case_number": row[0].case_number,
+                "suspect_name": row[0].suspect_name or f"Target {row[0].case_id}",
+                "mobile_number": row[0].mobile_number or "Unknown",
+                "description": row[0].description or "",
+                "officer_notes": row[0].officer_notes or "",
+                "status": row[0].status or "Active",
+                "created_by": row[0].created_by or "Officer",
+                "created_at": row[0].created_at.isoformat() if row[0].created_at else "",
+                "updated_at": row[0].updated_at.isoformat() if row[0].updated_at else "",
+                "tracking_status": "Completed" if row[2] > 0 else "Idle",
+                "upload_count": row[1],
+                "fix_count": row[2],
+            }
+            for row in rows
+        ]
+
+    async def get_dashboard_stats(self) -> dict[str, Any]:
+        """
+        Calculates real summary statistics across all cases, uploads, fixes, towers.
+        """
+        from sqlalchemy import func
+
+        cases_count_stmt = select(func.count(func.distinct(UploadMetadataModel.case_id)))
+        cases_res = await self.session.execute(cases_count_stmt)
+        total_cases = cases_res.scalar() or 0
+
+        uploads_count_stmt = select(func.count(UploadMetadataModel.upload_id))
+        uploads_res = await self.session.execute(uploads_count_stmt)
+        total_uploads = uploads_res.scalar() or 0
+
+        fixes_count_stmt = select(func.count(LocalizationFixModel.fix_id))
+        fixes_res = await self.session.execute(fixes_count_stmt)
+        total_fixes = fixes_res.scalar() or 0
+
+        towers_count_stmt = select(func.count(TowerRecordModel.tower_id))
+        towers_res = await self.session.execute(towers_count_stmt)
+        total_towers = towers_res.scalar() or 0
+
+        return {
+            "total_cases": total_cases,
+            "total_uploads": total_uploads,
+            "total_measurements": total_fixes,
+            "total_towers": total_towers,
+            "active_cases": total_cases,
+            "completed_cases": total_cases,
+        }
+
+    # ── File Management ──────────────────────────────────────
+
+    async def get_upload_by_id(self, upload_id: UUID) -> Optional[UploadMetadataModel]:
+        """
+        Retrieves a single upload by its UUID.
+        """
+        stmt = select(UploadMetadataModel).where(UploadMetadataModel.upload_id == upload_id)
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def update_upload_status(
+        self, upload_id: UUID, status: str, error_message: str = None
+    ) -> None:
+        """
+        Updates the processing status of an upload.
+        """
+        upload = await self.get_upload_by_id(upload_id)
+        if upload:
+            upload.upload_status = status
+            if error_message:
+                upload.error_message = error_message
+            await self.session.flush()
+
+    async def update_upload_display_name(self, upload_id: UUID, display_name: str) -> None:
+        """
+        Updates the display name of an upload.
+        """
+        upload = await self.get_upload_by_id(upload_id)
+        if upload:
+            upload.display_name = display_name
+            await self.session.flush()
+
+    async def update_upload_supabase_info(
+        self, upload_id: UUID, supabase_path: str, supabase_url: str
+    ) -> None:
+        """
+        Updates Supabase storage info after upload.
+        """
+        upload = await self.get_upload_by_id(upload_id)
+        if upload:
+            upload.supabase_path = supabase_path
+            upload.supabase_url = supabase_url
+            upload.upload_status = "uploaded"
+            await self.session.flush()
+
+    async def delete_upload(self, upload_id: UUID) -> bool:
+        """
+        Deletes a single upload record.
+        """
+        upload = await self.get_upload_by_id(upload_id)
+        if not upload:
+            return False
+        await self.session.delete(upload)
+        await self.session.flush()
+        return True
+
+    async def delete_uploads_by_case(self, case_id: str) -> int:
+        """
+        Deletes all uploads for a case (reinitialize).
+        Returns the count of deleted records.
+        """
+        uploads = await self.get_uploads_by_case(case_id)
+        count = len(uploads)
+        for upload in uploads:
+            await self.session.delete(upload)
+        await self.session.flush()
+        return count
+
+    async def get_uploads_by_status(
+        self, case_id: str, status: str
+    ) -> list[UploadMetadataModel]:
+        """
+        Retrieves uploads filtered by status.
+        """
+        stmt = (
+            select(UploadMetadataModel)
+            .where(UploadMetadataModel.case_id == case_id)
+            .where(UploadMetadataModel.upload_status == status)
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def get_total_file_size_by_case(self, case_id: str) -> int:
+        """
+        Returns total file size in bytes for a case.
+        """
+        from sqlalchemy import func
+        stmt = (
+            select(func.coalesce(func.sum(UploadMetadataModel.file_size_bytes), 0))
+            .where(UploadMetadataModel.case_id == case_id)
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar() or 0
+
