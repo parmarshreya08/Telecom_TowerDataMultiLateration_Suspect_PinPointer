@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { motion } from 'motion/react'
 import {
   FileText, Download, Braces, Map, Shield, RefreshCw,
@@ -8,9 +8,8 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { investigationApi, reportApi, trackingApi, exportApi } from '@/services/api'
-import { downloadBlob } from '@/utils'
+import { downloadBlob, formatDateTime } from '@/utils'
 import type { ForensicReport, Investigation } from '@/types'
-import { formatDateTime } from '@/utils'
 
 const EXPORT_FORMATS = [
   { value: 'pdf',     label: 'PDF Forensic Report', icon: FileText, desc: 'Court-admissible report with fixes, methodology, and confidence analysis' },
@@ -33,25 +32,36 @@ export default function ReportsPage() {
   const [timeStart, setTimeStart] = useState('')
   const [timeEnd, setTimeEnd] = useState('')
 
-  const fetchCases = async () => {
+  const fetchCases = useCallback(async () => {
+    const res = await investigationApi.list()
+    return Array.isArray(res) ? res : res?.items ?? []
+  }, [])
+
+  const refresh = useCallback(() => {
     setLoadingCases(true)
-    try {
-      const res = await investigationApi.list()
-      const raw = Array.isArray(res) ? res : res?.items ?? []
-      setCases(raw)
-      if (raw.length > 0 && !selectedInv) {
-        setSelectedInv(raw[0].id)
-      }
-    } catch {
-      setCases([])
-    } finally {
-      setLoadingCases(false)
-    }
-  }
+    fetchCases()
+      .then((items) => {
+        setCases(items)
+        if (items.length > 0) setSelectedInv((cur) => cur || items[0].id)
+      })
+      .catch(() => setCases([]))
+      .finally(() => setLoadingCases(false))
+  }, [fetchCases])
 
   useEffect(() => {
+    let ignore = false
     fetchCases()
-  }, [])
+      .then((items) => {
+        if (ignore) return
+        setCases(items)
+        if (items.length > 0) setSelectedInv((cur) => cur || items[0].id)
+      })
+      .catch(() => { if (!ignore) setCases([]) })
+      .finally(() => { if (!ignore) setLoadingCases(false) })
+    return () => {
+      ignore = true
+    }
+  }, [fetchCases])
 
   const getExportParams = () => {
     const params: Record<string, string> = {}
@@ -112,7 +122,7 @@ export default function ReportsPage() {
     <div className="max-w-5xl space-y-6">
       <div>
         <h1 className="text-xl font-bold text-surface-900 dark:text-surface-100">Forensic Reports & Exports</h1>
-        <p className="text-sm text-surface-500">Generate court-admissible forensic localization reports from real database telemetry</p>
+        <p className="text-sm text-surface-500 dark:text-surface-400">Generate court-admissible forensic localization reports from real database telemetry</p>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -122,7 +132,7 @@ export default function ReportsPage() {
           <Card>
             <CardHeader>
               <CardTitle>Select Investigation Case</CardTitle>
-              <Button size="sm" variant="secondary" icon={<RefreshCw className="h-3.5 w-3.5" />} onClick={fetchCases}>
+              <Button size="sm" variant="secondary" icon={<RefreshCw className="h-3.5 w-3.5" />} onClick={refresh}>
                 Refresh
               </Button>
             </CardHeader>
@@ -171,7 +181,7 @@ export default function ReportsPage() {
             <div className="border-t border-surface-100 dark:border-surface-700 pt-4 mt-2">
               <div className="flex items-center gap-2 mb-3">
                 <Clock className="h-3.5 w-3.5 text-surface-400" />
-                <label className="text-xs font-medium text-surface-500 uppercase tracking-wider">Time Range (Optional)</label>
+                <label className="text-xs font-medium text-surface-500 dark:text-surface-400 uppercase tracking-wider">Time Range (Optional)</label>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -204,7 +214,7 @@ export default function ReportsPage() {
 
             {/* Export Formats */}
             <div className="mt-4">
-              <label className="text-xs font-medium text-surface-500 uppercase tracking-wider mb-3 block">Export Format</label>
+              <label className="text-xs font-medium text-surface-500 dark:text-surface-400 uppercase tracking-wider mb-3 block">Export Format</label>
               <div className="grid gap-3 sm:grid-cols-2">
                 {EXPORT_FORMATS.map(({ value, label, icon: Icon, desc }) => (
                   <motion.button
@@ -292,14 +302,14 @@ export default function ReportsPage() {
 
                   {report.subscribers && report.subscribers.length > 0 && (
                     <div>
-                      <p className="text-xs font-semibold text-surface-500 mb-2">Subscriber Analysis</p>
+                      <p className="text-xs font-semibold text-surface-500 dark:text-surface-400 mb-2">Subscriber Analysis</p>
                       {report.subscribers.map((sub) => (
                         <div key={sub.subscriber_identifier} className="rounded-lg border border-surface-200 p-3 dark:border-surface-700">
                           <div className="flex items-center justify-between mb-1">
                             <p className="text-sm font-semibold text-surface-800 dark:text-surface-200">{sub.subscriber_identifier}</p>
                             <span className="text-xs font-medium text-primary-600 dark:text-primary-400">{sub.fix_count} fixes computed</span>
                           </div>
-                          <div className="grid grid-cols-2 gap-2 text-xs text-surface-500">
+                          <div className="grid grid-cols-2 gap-2 text-xs text-surface-500 dark:text-surface-400">
                             <span>Centroid Lat/Lon: {sub.centroid?.latitude?.toFixed(4)}, {sub.centroid?.longitude?.toFixed(4)}</span>
                             <span>Mean Confidence Radius: ±{sub.confidence?.mean_meters?.toFixed(0)}m</span>
                           </div>
@@ -317,7 +327,7 @@ export default function ReportsPage() {
         <div>
           <Card>
             <CardHeader><CardTitle>Report Standards</CardTitle></CardHeader>
-            <div className="space-y-3 text-xs text-surface-500">
+            <div className="space-y-3 text-xs text-surface-500 dark:text-surface-400">
               <p>
                 E-Rakshak reports adhere to digital evidence preservation standards under the Indian Evidence Act / Bharatiya Sakshya Adhiniyam.
               </p>

@@ -3,9 +3,21 @@ Date and time parsing utilities.
 Supports parsing telecom log timestamps in multiple standard formats.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import re
 from typing import Any
+
+IST = timezone(timedelta(hours=5, minutes=30))
+
+
+def now_ist() -> datetime:
+    """
+    Current Indian Standard Time (UTC+5:30) as a naive datetime.
+
+    The DB schema stores naive `timestamp` columns, so naive IST binds
+    cleanly through asyncpg while reading as Indian wall-clock time.
+    """
+    return datetime.now(IST).replace(tzinfo=None)
 
 
 def parse_telecom_datetime(value: Any) -> datetime:

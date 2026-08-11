@@ -32,37 +32,58 @@ export default function ProcessingPage() {
   const [error, setError] = useState<string | null>(null)
 
   const checkStatus = useCallback(async () => {
-    if (!id) return
+    if (!id) return null
     try {
       const caseData = await investigationApi.getById(id)
-      const uploadCount = caseData.uploads?.length ?? 0
-      const fixCount = caseData.fix_count ?? 0
-
-      if (uploadCount === 0) {
-        setStages((prev) => prev.map((s, i) => i === 0 ? { ...s, status: 'error' } : s))
-        setError('No uploads found for this case. Upload a file first.')
-        return
-      }
-
-      // Mark stages as completed based on actual backend state
-      setStages((prev) => prev.map((s, i) => {
-        if (i < 6) return { ...s, status: 'completed' as const, duration_ms: undefined }
-        if (i === 6) return { ...s, status: fixCount > 0 ? ('completed' as const) : ('processing' as const) }
-        if (i === 7) return { ...s, status: fixCount > 0 ? ('completed' as const) : ('pending' as const) }
-        return s
-      }))
-
-      if (fixCount > 0) {
-        setDone(true)
+      return {
+        uploadCount: caseData.uploads?.length ?? 0,
+        fixCount: caseData.fix_count ?? 0,
       }
     } catch {
-      setError('Failed to check processing status.')
+      return null
     }
   }, [id])
 
+  const applyStatus = useCallback((result: { uploadCount: number; fixCount: number } | null) => {
+    if (!result) {
+      setError('Failed to check processing status.')
+      return
+    }
+
+    const { uploadCount, fixCount } = result
+
+    if (uploadCount === 0) {
+      setStages((prev) => prev.map((s, i) => i === 0 ? { ...s, status: 'error' } : s))
+      setError('No uploads found for this case. Upload a file first.')
+      return
+    }
+
+    // Mark stages as completed based on actual backend state
+    setStages((prev) => prev.map((s, i) => {
+      if (i < 6) return { ...s, status: 'completed' as const, duration_ms: undefined }
+      if (i === 6) return { ...s, status: fixCount > 0 ? ('completed' as const) : ('processing' as const) }
+      if (i === 7) return { ...s, status: fixCount > 0 ? ('completed' as const) : ('pending' as const) }
+      return s
+    }))
+
+    if (fixCount > 0) {
+      setDone(true)
+    }
+  }, [])
+
+  const retry = useCallback(() => {
+    setError(null)
+    checkStatus().then(applyStatus)
+  }, [checkStatus, applyStatus])
+
   useEffect(() => {
+    let ignore = false
     checkStatus()
-  }, [checkStatus])
+      .then((result) => { if (!ignore) applyStatus(result) })
+    return () => {
+      ignore = true
+    }
+  }, [checkStatus, applyStatus])
 
   const completedCount = stages.filter((s) => s.status === 'completed').length
 
@@ -74,7 +95,7 @@ export default function ProcessingPage() {
           <Zap className="h-7 w-7" />
         </div>
         <h1 className="text-xl font-bold text-surface-900 dark:text-surface-100">Processing CDR Data</h1>
-        <p className="mt-2 text-sm text-surface-500">
+        <p className="mt-2 text-sm text-surface-500 dark:text-surface-400">
           {done
             ? 'All pipeline stages completed. Investigation is ready.'
             : 'Checking backend processing status...'}
@@ -89,7 +110,7 @@ export default function ProcessingPage() {
             <p className="font-semibold">Processing Issue</p>
             <p className="mt-0.5">{error}</p>
           </div>
-          <Button size="sm" variant="secondary" icon={<RefreshCw className="h-3.5 w-3.5" />} onClick={checkStatus}>
+          <Button size="sm" variant="secondary" icon={<RefreshCw className="h-3.5 w-3.5" />} onClick={retry}>
             Retry
           </Button>
         </div>
@@ -97,7 +118,7 @@ export default function ProcessingPage() {
 
       {/* Progress bar */}
       <div className="mb-8">
-        <div className="mb-2 flex items-center justify-between text-xs text-surface-500">
+        <div className="mb-2 flex items-center justify-between text-xs text-surface-500 dark:text-surface-400">
           <span>{completedCount} of {STAGES.length} stages</span>
           <span>{Math.round((completedCount / STAGES.length) * 100)}%</span>
         </div>
@@ -144,7 +165,7 @@ export default function ProcessingPage() {
                 stage.status === 'processing' ? 'text-primary-700 dark:text-primary-300' :
                 stage.status === 'completed'  ? 'text-green-700 dark:text-green-300' :
                 stage.status === 'error'      ? 'text-red-700 dark:text-red-300' :
-                'text-surface-500'
+                'text-surface-500 dark:text-surface-400'
               )}>
                 {stage.label}
               </p>

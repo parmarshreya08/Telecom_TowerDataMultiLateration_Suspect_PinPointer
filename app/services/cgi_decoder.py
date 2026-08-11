@@ -48,7 +48,7 @@ class CgiDecoder:
                 result["lac"] = int(parts[2]) if parts[2].isdigit() else None
                 result["cell_id"] = int(parts[3]) if parts[3].isdigit() else None
             except Exception as e:
-                logger.warn("cgi_decode_failed", cgi=cgi, error=str(e))
+                logger.warning("cgi_decode_failed", cgi=cgi, error=str(e))
         else:
             logger.debug("cgi_decode_insufficient_parts", cgi=cgi, parts=parts)
 

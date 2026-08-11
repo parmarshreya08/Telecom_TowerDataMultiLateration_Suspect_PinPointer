@@ -7,6 +7,20 @@
     <meta name="description" content="E-Rakshak — Telecom CDR Investigation Platform for Law Enforcement" />
     <meta name="theme-color" content="#0F1B2D" />
     <title>E-Rakshak | Telecom Investigation Platform</title>
+    <!-- Apply saved theme before first paint to avoid a flash of the wrong theme -->
+    <script>
+      ;(function () {
+        try {
+          var stored = localStorage.getItem('e-rakshak-theme')
+          var theme = stored === 'dark' || stored === 'light'
+            ? stored
+            : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+          var root = document.documentElement
+          root.classList.toggle('dark', theme === 'dark')
+          root.style.colorScheme = theme
+        } catch (e) {}
+      })()
+    </script>
     <!-- Inter font -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />

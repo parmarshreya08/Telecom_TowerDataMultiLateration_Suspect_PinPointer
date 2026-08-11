@@ -135,6 +135,15 @@ export function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
 }
 
+// ── Error Handling ─────────────────────────────────────────
+export function extractErrorMessage(err: unknown): string {
+  if (err == null) return 'An unknown error occurred'
+  if (typeof err === 'string') return err
+  if (err instanceof Error) return err.message
+  if (typeof err === 'object' && 'message' in err) return String((err as { message: unknown }).message)
+  return 'An unknown error occurred'
+}
+
 // ── Clipboard ──────────────────────────────────────────────
 export async function copyToClipboard(text: string): Promise<boolean> {
   try {

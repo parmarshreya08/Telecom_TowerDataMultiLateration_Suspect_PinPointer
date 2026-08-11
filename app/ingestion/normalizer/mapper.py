@@ -3,9 +3,10 @@ Operator mapping configurations for standardizing operator-specific raw fields.
 Maps Airtel, Jio, Vi, and BSNL schemas into E-Rakshak system contracts.
 """
 
-from datetime import datetime
 from typing import Any
 from uuid import uuid4
+
+from app.utils.datetime_utils import now_ist
 
 from app.contracts.enums import CallType, Operator, RadioTechnology, SourceType
 from app.contracts.subscriber import SubscriberEventRecord
@@ -34,7 +35,7 @@ class OperatorMapper:
         mnc = int(mnc_val) if str(mnc_val).isdigit() else 45
 
         cgi = str(raw.get("cgi", f"{mcc}-{mnc}-{lac or 0}-{cell_id or 0}"))
-        dt = parse_telecom_datetime(raw.get("timestamp", raw.get("datetime", datetime.utcnow())))
+        dt = parse_telecom_datetime(raw.get("timestamp", raw.get("datetime", now_ist())))
 
         raw_type = str(raw.get("call_type", raw.get("type", ""))).upper()
         if "MOC" in raw_type or "OUT" in raw_type:
@@ -99,7 +100,7 @@ class OperatorMapper:
         raw: dict[str, Any], upload_id: Any, source_file: str, record_number: int
     ) -> SubscriberEventRecord:
         cgi = str(raw.get("cgi", raw.get("cgi_code", "405-855-0-0")))
-        dt = parse_telecom_datetime(raw.get("timestamp", raw.get("start_time", datetime.utcnow())))
+        dt = parse_telecom_datetime(raw.get("timestamp", raw.get("start_time", now_ist())))
 
         parts = cgi.split("-")
         mcc = int(parts[0]) if len(parts) > 0 and parts[0].isdigit() else 405
@@ -208,7 +209,7 @@ class OperatorMapper:
         raw: dict[str, Any], upload_id: Any, source_file: str, record_number: int
     ) -> SubscriberEventRecord:
         cgi = str(raw.get("cgi", raw.get("cell_global_id", "404-81-0-0")))
-        dt = parse_telecom_datetime(raw.get("timestamp", raw.get("timestamp_str", datetime.utcnow())))
+        dt = parse_telecom_datetime(raw.get("timestamp", raw.get("timestamp_str", now_ist())))
         
         parts = cgi.split("-")
         mcc = int(parts[0]) if len(parts) > 0 and parts[0].isdigit() else 404
@@ -319,7 +320,7 @@ class OperatorMapper:
     ) -> SubscriberEventRecord:
         # Standardize Spot dump
         cgi = str(raw.get("cell_site_cgi", ""))
-        dt = parse_telecom_datetime(raw.get("event_timestamp", datetime.utcnow()))
+        dt = parse_telecom_datetime(raw.get("event_timestamp", now_ist()))
         
         parts = cgi.split("-")
         mcc = int(parts[0]) if len(parts) > 0 and parts[0].isdigit() else 404

@@ -1,5 +1,7 @@
 import { useState, useCallback, useRef } from 'react'
 import { fileApi, uploadApi } from '@/services/api'
+import { extractErrorMessage } from '@/utils'
+import { POLL_INTERVAL } from '@/constants'
 import type { CaseFile, UploadResult } from '@/types'
 
 interface UseFileUploadOptions {
@@ -34,8 +36,8 @@ export function useFileUpload({ caseId, onComplete, onError }: UseFileUploadOpti
     try {
       const data = await fileApi.listCaseFiles(caseId)
       setFiles(data.files)
-    } catch (err: any) {
-      setError(err.message || 'Failed to fetch files')
+    } catch (err: unknown) {
+      setError(extractErrorMessage(err))
     }
   }, [caseId])
 
@@ -57,7 +59,7 @@ export function useFileUpload({ caseId, onComplete, onError }: UseFileUploadOpti
       } catch {
         if (pollingRef.current) clearInterval(pollingRef.current)
       }
-    }, 2000)
+    }, POLL_INTERVAL)
   }, [fetchFiles, onComplete, onError])
 
   const uploadFiles = useCallback(async (newFiles: File[]) => {
@@ -78,9 +80,9 @@ export function useFileUpload({ caseId, onComplete, onError }: UseFileUploadOpti
 
       // Refresh file list
       await fetchFiles()
-    } catch (err: any) {
-      setError(err.message || 'Upload failed')
-      onError?.(err.message)
+    } catch (err: unknown) {
+      setError(extractErrorMessage(err))
+      onError?.(extractErrorMessage(err))
     } finally {
       setIsLoading(false)
     }
@@ -99,9 +101,9 @@ export function useFileUpload({ caseId, onComplete, onError }: UseFileUploadOpti
       }
 
       await fetchFiles()
-    } catch (err: any) {
-      setError(err.message || 'URL upload failed')
-      onError?.(err.message)
+    } catch (err: unknown) {
+      setError(extractErrorMessage(err))
+      onError?.(extractErrorMessage(err))
     } finally {
       setIsLoading(false)
     }
@@ -111,8 +113,8 @@ export function useFileUpload({ caseId, onComplete, onError }: UseFileUploadOpti
     try {
       await fileApi.renameFile(uploadId, newName)
       await fetchFiles()
-    } catch (err: any) {
-      setError(err.message || 'Rename failed')
+    } catch (err: unknown) {
+      setError(extractErrorMessage(err))
     }
   }, [fetchFiles])
 
@@ -120,8 +122,8 @@ export function useFileUpload({ caseId, onComplete, onError }: UseFileUploadOpti
     try {
       await fileApi.deleteFile(uploadId)
       await fetchFiles()
-    } catch (err: any) {
-      setError(err.message || 'Delete failed')
+    } catch (err: unknown) {
+      setError(extractErrorMessage(err))
     }
   }, [fetchFiles])
 
@@ -129,8 +131,8 @@ export function useFileUpload({ caseId, onComplete, onError }: UseFileUploadOpti
     try {
       await fileApi.batchDelete(caseId, uploadIds)
       await fetchFiles()
-    } catch (err: any) {
-      setError(err.message || 'Batch delete failed')
+    } catch (err: unknown) {
+      setError(extractErrorMessage(err))
     }
   }, [caseId, fetchFiles])
 
@@ -138,8 +140,8 @@ export function useFileUpload({ caseId, onComplete, onError }: UseFileUploadOpti
     try {
       await fileApi.reinitializeCase(caseId)
       await fetchFiles()
-    } catch (err: any) {
-      setError(err.message || 'Reinitialize failed')
+    } catch (err: unknown) {
+      setError(extractErrorMessage(err))
     }
   }, [caseId, fetchFiles])
 

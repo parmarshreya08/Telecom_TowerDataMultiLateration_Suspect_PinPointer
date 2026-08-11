@@ -20,7 +20,6 @@ Sector Wedge Model (Phase B):
     wedge per tower. The intersection of all wedges bounds the solution.
 """
 
-from datetime import datetime, timezone
 from typing import Any, Optional
 from uuid import uuid4
 
@@ -34,6 +33,7 @@ from app.localization.gis_utils import GISUtils
 from app.localization.kalman_filter import KalmanTracker
 from app.localization.sector_wedge import point_in_sector
 from app.localization.trilateration import JPLTrilateration
+from app.utils.datetime_utils import now_ist
 
 # One LTE timing advance index step approximates 78.12 meters (matches builder).
 from scipy.stats import chi2
@@ -106,7 +106,7 @@ class LocalizationEngine:
         ]
 
         if len(usable) < 3:
-            logger.warn(
+            logger.warning(
                 "localization_frame_incomplete",
                 frame_id=str(frame.frame_id),
                 subscriber=frame.subscriber_identifier,
@@ -338,7 +338,7 @@ class LocalizationEngine:
             "metadata": {
                 "case_id": fixes[0].case_id if fixes else None,
                 "fix_count": len(fixes),
-                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "generated_at": now_ist().isoformat(),
             },
         }
 
@@ -386,6 +386,6 @@ class LocalizationEngine:
             "features": features,
             "metadata": {
                 "feature_count": len(features),
-                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "generated_at": now_ist().isoformat(),
             },
         }

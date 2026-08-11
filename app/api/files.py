@@ -53,6 +53,15 @@ async def upload_from_url(
 
     service = UploadService(db)
     try:
+        # Validate case exists
+        repo = TelecomRepository(db)
+        case = await repo.get_case_by_id(case_id)
+        if not case:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Case '{case_id}' not found. Create the case before uploading files.",
+            )
+
         result = await service.handle_url_upload(
             url=body.url,
             filename=body.filename,
@@ -193,7 +202,7 @@ async def delete_file(
         try:
             storage_service.delete_file(upload.supabase_path)
         except Exception as e:
-            logger.warn("supabase_delete_failed", path=upload.supabase_path, error=str(e))
+            logger.warning("supabase_delete_failed", path=upload.supabase_path, error=str(e))
 
     # Delete from DB
     await repo.delete_upload(uid)
@@ -229,8 +238,8 @@ async def batch_delete_files(
                 if upload.supabase_path:
                     try:
                         storage_service.delete_file(upload.supabase_path)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.warning("supabase_delete_failed", path=upload.supabase_path, error=str(e))
                 await repo.delete_upload(UUID(upload_id_str))
                 deleted += 1
             else:
@@ -269,8 +278,8 @@ async def reinitialize_case(
         if upload.supabase_path:
             try:
                 storage_service.delete_file(upload.supabase_path)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("supabase_delete_failed_during_reinit", path=upload.supabase_path, error=str(e))
 
     # Delete all metadata
     count = await repo.delete_uploads_by_case(case_id)

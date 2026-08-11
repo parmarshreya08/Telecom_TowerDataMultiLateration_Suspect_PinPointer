@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* Class-based dark mode: activate `dark:` utilities when .dark is on <html> */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   /* Primary brand blues — police/government blue palette */
   --color-primary-50: #eff6ff;
@@ -82,23 +85,26 @@
 }
 
 @layer base {
-  :root {
-    --scrollbar-width: 6px;
-    --scrollbar-track: #f1f5f9;
-    --scrollbar-thumb: #94a3b8;
-  }
-
-  .dark {
-    --scrollbar-track: #1e293b;
-    --scrollbar-thumb: #475569;
-  }
-
   * {
     box-sizing: border-box;
   }
 
   html {
     scroll-behavior: smooth;
+  }
+
+  /* Smooth cross-fade when switching light/dark (only while .theme-transition is set) */
+  html.theme-transition,
+  html.theme-transition *,
+  html.theme-transition *::before,
+  html.theme-transition *::after {
+    transition:
+      background-color 0.35s ease,
+      border-color 0.35s ease,
+      color 0.35s ease,
+      fill 0.35s ease,
+      stroke 0.35s ease,
+      box-shadow 0.35s ease !important;
   }
 
   body {
@@ -114,23 +120,13 @@
     color: var(--color-surface-100);
   }
 
-  /* Custom scrollbar */
-  ::-webkit-scrollbar {
-    width: var(--scrollbar-width);
-    height: var(--scrollbar-width);
+  /* Hide scrollbar globally, keep smooth scroll */
+  * {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
   }
-
-  ::-webkit-scrollbar-track {
-    background: var(--scrollbar-track);
-  }
-
-  ::-webkit-scrollbar-thumb {
-    background: var(--scrollbar-thumb);
-    border-radius: 3px;
-  }
-
-  ::-webkit-scrollbar-thumb:hover {
-    background: #64748b;
+  *::-webkit-scrollbar {
+    display: none;
   }
 
   /* Focus styles for accessibility */
@@ -184,6 +180,7 @@
     gap: 0.5rem;
     border-radius: 0.5rem;
     font-weight: 500;
+    cursor: pointer;
     transition: all 0.2s;
   }
 
@@ -204,10 +201,13 @@
   .btn-primary {
     background-color: var(--color-primary-600);
     color: white;
+    box-shadow: var(--shadow-card);
   }
 
   .btn-primary:hover {
     background-color: var(--color-primary-700);
+    box-shadow: var(--shadow-card-md);
+    transform: translateY(-1px);
   }
 
   .btn-primary:active {
@@ -412,16 +412,45 @@
     width: 100%;
     border-radius: 0.5rem;
   }
+
+  .dark .leaflet-container {
+    background: var(--color-surface-900);
+  }
+
+  /* Dark-mode Leaflet popups, controls, and attribution */
+  .dark .leaflet-popup-content-wrapper,
+  .dark .leaflet-popup-tip {
+    background: var(--color-surface-800);
+    color: var(--color-surface-100);
+    box-shadow: var(--shadow-card-md);
+  }
+
+  .dark .leaflet-popup-content-wrapper a {
+    color: var(--color-primary-400);
+  }
+
+  .dark .leaflet-bar a {
+    background: var(--color-surface-800);
+    color: var(--color-surface-200);
+    border-color: var(--color-surface-700);
+  }
+
+  .dark .leaflet-bar a:hover {
+    background: var(--color-surface-700);
+  }
+
+  .dark .leaflet-control-attribution {
+    background: rgb(15 23 42 / 0.85);
+    color: var(--color-surface-400);
+  }
+
+  .dark .leaflet-control-attribution a {
+    color: var(--color-primary-400);
+  }
 }
 
 @layer utilities {
   .text-balance { text-wrap: balance; }
-  .scrollbar-thin { scrollbar-width: thin; }
-  .no-scrollbar {
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-  }
-  .no-scrollbar::-webkit-scrollbar { display: none; }
 
   /* Grid pattern for hero */
   .bg-grid-pattern {

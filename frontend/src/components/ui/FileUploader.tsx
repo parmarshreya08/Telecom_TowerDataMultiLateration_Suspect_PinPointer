@@ -1,5 +1,9 @@
 import React, { useState, useRef, useCallback } from 'react'
 import { useFileUpload } from '@/hooks/useFileUpload'
+import { formatFileSize, cn } from '@/utils'
+import { FILE_UPLOAD_STATUS_COLORS, FILE_UPLOAD_STATUS_LABELS } from '@/constants'
+import { Button } from '@/components/ui/Button'
+import { Modal } from '@/components/ui/Modal'
 
 interface FileUploaderProps {
   caseId: string
@@ -8,28 +12,15 @@ interface FileUploaderProps {
 
 const ACCEPTED_TYPES = '.csv,.xlsx,.xls,.tsv'
 
-const STATUS_COLORS: Record<string, string> = {
-  pending: 'bg-gray-100 text-gray-700',
-  uploaded: 'bg-blue-100 text-blue-700',
-  processing: 'bg-yellow-100 text-yellow-700',
-  completed: 'bg-green-100 text-green-700',
-  failed: 'bg-red-100 text-red-700',
-}
-
-const STATUS_LABELS: Record<string, string> = {
-  pending: 'Pending',
-  uploaded: 'Uploaded',
-  processing: 'Processing',
-  completed: 'Completed',
-  failed: 'Failed',
-}
-
 export const FileUploader: React.FC<FileUploaderProps> = ({ caseId, onUploadComplete }) => {
   const [isDragging, setIsDragging] = useState(false)
   const [urlInput, setUrlInput] = useState('')
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set())
   const [showUrlInput, setShowUrlInput] = useState(false)
   const [showReinitConfirm, setShowReinitConfirm] = useState(false)
+  const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null)
+  const [renameValue, setRenameValue] = useState('')
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const {
@@ -108,11 +99,19 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ caseId, onUploadComp
     setSelectedFiles(new Set())
   }, [reinitialize])
 
-  const formatFileSize = (bytes: number): string => {
-    if (bytes < 1024) return `${bytes} B`
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-  }
+  const handleRenameSubmit = useCallback(() => {
+    if (renameTarget && renameValue.trim() && renameValue !== renameTarget.name) {
+      renameFile(renameTarget.id, renameValue.trim())
+    }
+    setRenameTarget(null)
+  }, [renameTarget, renameValue, renameFile])
+
+  const handleDeleteConfirm = useCallback(() => {
+    if (deleteTarget) {
+      deleteFile(deleteTarget.id)
+    }
+    setDeleteTarget(null)
+  }, [deleteTarget, deleteFile])
 
   return (
     <div className="space-y-4">
@@ -121,11 +120,12 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ caseId, onUploadComp
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         onClick={() => fileInputRef.current?.click()}
-        className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
+        className={cn(
+          'rounded-lg border-2 border-dashed p-8 text-center transition-colors cursor-pointer',
           isDragging
-            ? 'border-blue-500 bg-blue-50'
-            : 'border-gray-300 hover:border-gray-400 hover:bg-gray-50'
-        }`}
+            ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
+            : 'border-surface-300 hover:border-primary-400 hover:bg-surface-50 dark:border-surface-600 dark:hover:border-primary-500 dark:hover:bg-surface-800/50'
+        )}
       >
         <input
           ref={fileInputRef}
@@ -137,10 +137,10 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ caseId, onUploadComp
         />
         <div className="space-y-2">
           <div className="text-4xl">📁</div>
-          <p className="text-sm font-medium text-gray-700">
+          <p className="text-sm font-medium text-surface-700 dark:text-surface-200">
             Drag & drop files here, or click to browse
           </p>
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-surface-500 dark:text-surface-400">
             CSV, XLSX, XLS, TSV · Max 50MB per file · Up to 10 files
           </p>
         </div>
@@ -149,7 +149,7 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ caseId, onUploadComp
       <div className="flex gap-2">
         <button
           onClick={() => setShowUrlInput(!showUrlInput)}
-          className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+          className="text-sm font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
         >
           {showUrlInput ? 'Cancel' : '+ Upload from URL'}
         </button>
@@ -162,21 +162,17 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ caseId, onUploadComp
             value={urlInput}
             onChange={(e) => setUrlInput(e.target.value)}
             placeholder="https://example.com/file.csv"
-            className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="input"
           />
-          <button
-            onClick={handleUrlSubmit}
-            disabled={!urlInput.trim() || isLoading}
-            className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 disabled:opacity-50"
-          >
+          <Button type="button" variant="primary" size="md" onClick={handleUrlSubmit} disabled={!urlInput.trim() || isLoading}>
             Upload
-          </button>
+          </Button>
         </div>
       )}
 
       {error && (
-        <div className="p-3 bg-red-50 border border-red-200 rounded-md">
-          <p className="text-sm text-red-700">{error}</p>
+        <div className="rounded-md border border-danger-light bg-danger-light/50 p-3 dark:border-danger-800 dark:bg-danger-900/20">
+          <p className="text-sm text-danger-dark dark:text-red-300">{error}</p>
         </div>
       )}
 
@@ -184,13 +180,13 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ caseId, onUploadComp
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-gray-700">
+              <span className="text-sm font-medium text-surface-700 dark:text-surface-200">
                 {files.length} file{files.length !== 1 ? 's' : ''}
               </span>
               {selectedFiles.size > 0 && (
                 <button
                   onClick={handleBatchDelete}
-                  className="text-xs text-red-600 hover:text-red-700 font-medium"
+                  className="text-xs font-medium text-danger hover:text-danger-dark dark:text-red-400 dark:hover:text-red-300"
                 >
                   Delete selected ({selectedFiles.size})
                 </button>
@@ -198,7 +194,7 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ caseId, onUploadComp
             </div>
             <button
               onClick={() => setShowReinitConfirm(true)}
-              className="text-xs text-red-600 hover:text-red-700 font-medium"
+              className="text-xs font-medium text-danger hover:text-danger-dark dark:text-red-400 dark:hover:text-red-300"
             >
               Reinitialize All
             </button>
@@ -208,65 +204,55 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ caseId, onUploadComp
             {files.map((file) => (
               <div
                 key={file.upload_id}
-                className={`flex items-center gap-3 p-3 rounded-md border ${
+                className={cn(
+                  'flex items-center gap-3 rounded-md border p-3',
                   selectedFiles.has(file.upload_id)
-                    ? 'border-blue-300 bg-blue-50'
-                    : 'border-gray-200 bg-white'
-                }`}
+                    ? 'border-primary-400 bg-primary-50 dark:border-primary-600 dark:bg-primary-900/30'
+                    : 'border-surface-200 bg-white dark:border-surface-700 dark:bg-surface-800'
+                )}
               >
                 <input
                   type="checkbox"
                   checked={selectedFiles.has(file.upload_id)}
                   onChange={() => toggleFileSelection(file.upload_id)}
-                  className="h-4 w-4 text-blue-600 rounded border-gray-300"
+                  className="h-4 w-4 rounded border-surface-300 text-primary-600 dark:border-surface-500 dark:bg-surface-700"
                 />
 
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900 truncate">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-surface-900 dark:text-surface-100">
                     {file.display_name}
                   </p>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-surface-500 dark:text-surface-400">
                     {formatFileSize(file.file_size_bytes)} · {file.file_source}
                   </p>
                 </div>
 
                 <span
-                  className={`px-2 py-1 text-xs font-medium rounded-full ${
-                    STATUS_COLORS[file.upload_status] || STATUS_COLORS.pending
-                  }`}
+                  className={FILE_UPLOAD_STATUS_COLORS[file.upload_status] || FILE_UPLOAD_STATUS_COLORS.pending}
                 >
-                  {STATUS_LABELS[file.upload_status] || file.upload_status}
+                  {FILE_UPLOAD_STATUS_LABELS[file.upload_status] || file.upload_status}
                 </span>
 
                 <div className="flex items-center gap-1">
                   {file.upload_status === 'failed' && (
                     <button
                       onClick={() => retryFile(file.upload_id)}
-                      className="p-1 text-gray-400 hover:text-blue-600"
+                      className="p-1 text-surface-400 hover:text-primary-600 dark:hover:text-primary-400"
                       title="Retry"
                     >
                       🔄
                     </button>
                   )}
                   <button
-                    onClick={() => {
-                      const newName = prompt('Enter new name:', file.display_name)
-                      if (newName && newName !== file.display_name) {
-                        renameFile(file.upload_id, newName)
-                      }
-                    }}
-                    className="p-1 text-gray-400 hover:text-gray-600"
+                    onClick={() => { setRenameTarget({ id: file.upload_id, name: file.display_name }); setRenameValue(file.display_name) }}
+                    className="p-1 text-surface-400 hover:text-surface-600 dark:hover:text-surface-200"
                     title="Rename"
                   >
                     ✏️
                   </button>
                   <button
-                    onClick={() => {
-                      if (confirm(`Delete "${file.display_name}"?`)) {
-                        deleteFile(file.upload_id)
-                      }
-                    }}
-                    className="p-1 text-gray-400 hover:text-red-600"
+                    onClick={() => setDeleteTarget({ id: file.upload_id, name: file.display_name })}
+                    className="p-1 text-surface-400 hover:text-danger dark:hover:text-red-400"
                     title="Delete"
                   >
                     🗑️
@@ -278,30 +264,58 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ caseId, onUploadComp
         </div>
       )}
 
-      {showReinitConfirm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-sm w-full mx-4 space-y-4">
-            <h3 className="text-lg font-semibold text-gray-900">Reinitialize Case</h3>
-            <p className="text-sm text-gray-600">
-              This will permanently delete ALL files for this case. This action cannot be undone.
-            </p>
-            <div className="flex gap-3 justify-end">
-              <button
-                onClick={() => setShowReinitConfirm(false)}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleReinitialize}
-                className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700"
-              >
-                Delete All
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <Modal
+        open={!!renameTarget}
+        onClose={() => setRenameTarget(null)}
+        title="Rename File"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setRenameTarget(null)}>Cancel</Button>
+            <Button variant="primary" onClick={handleRenameSubmit}>Rename</Button>
+          </>
+        }
+      >
+        <input
+          type="text"
+          value={renameValue}
+          onChange={(e) => setRenameValue(e.target.value)}
+          className="input"
+          autoFocus
+          onKeyDown={(e) => { if (e.key === 'Enter') handleRenameSubmit() }}
+        />
+      </Modal>
+
+      <Modal
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        title="Delete File"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setDeleteTarget(null)}>Cancel</Button>
+            <Button variant="danger" onClick={handleDeleteConfirm}>Delete</Button>
+          </>
+        }
+      >
+        <p className="text-sm text-surface-600 dark:text-surface-300">
+          Delete &quot;{deleteTarget?.name}&quot;? This cannot be undone.
+        </p>
+      </Modal>
+
+      <Modal
+        open={showReinitConfirm}
+        onClose={() => setShowReinitConfirm(false)}
+        title="Reinitialize Case"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setShowReinitConfirm(false)}>Cancel</Button>
+            <Button variant="danger" onClick={handleReinitialize}>Delete All</Button>
+          </>
+        }
+      >
+        <p className="text-sm text-surface-600 dark:text-surface-300">
+          This will permanently delete ALL files for this case. This action cannot be undone.
+        </p>
+      </Modal>
     </div>
   )
 }

@@ -64,7 +64,7 @@ class ErakshakSocketService {
     if (this.socket?.connected) {
       this.socket.emit(event, data)
     } else {
-      console.warn('[Socket] Not connected. Event not sent:', event)
+      // ponytail: silent fail for offline emit, add queue if needed
     }
   }
 
@@ -80,17 +80,15 @@ class ErakshakSocketService {
     if (!this.socket) return
 
     this.socket.on('connect', () => {
-      console.info('[Socket] Connected:', this.socket?.id)
       this.reconnectAttempts = 0
       this.reattachListeners()
     })
 
-    this.socket.on('disconnect', (reason) => {
-      console.warn('[Socket] Disconnected:', reason)
+    this.socket.on('disconnect', () => {
+      // ponytail: reconnect logic handles this
     })
 
-    this.socket.on('connect_error', (err) => {
-      console.error('[Socket] Connection error:', err.message)
+    this.socket.on('connect_error', () => {
       this.reconnectAttempts++
     })
   }

@@ -11,9 +11,9 @@ import { InvestigationMap } from '@/components/map/InvestigationMap'
 import { ShareLocationModal } from '@/components/investigation/ShareLocationModal'
 import {
   formatCoordinate, formatDateTime, formatAccuracy,
-  downloadBlob, cn,
+  downloadBlob, extractErrorMessage, cn,
 } from '@/utils'
-import { TRACKING_STATUS_COLORS } from '@/constants'
+import { TRACKING_STATUS_COLORS, DEFAULT_MAP_CENTER } from '@/constants'
 import { investigationApi, trackingApi, exportApi } from '@/services/api'
 import type { GeoJSONFeatureCollection, Investigation, TowerRecord } from '@/types'
 
@@ -77,62 +77,79 @@ export default function LiveInvestigationPage() {
   const [timeEnd, setTimeEnd] = useState('')
 
   const loadCaseData = useCallback(async (start?: string, end?: string) => {
-    if (!id) return
-    setInitialLoading(true)
-    try {
-      const caseData = await investigationApi.getById(id).catch(() => ({
-        id,
-        case_name: `Investigation ${id}`,
-        case_number: id,
-        suspect_name: `Target ${id}`,
-        status: 'Active' as const,
-        created_by: 'Officer',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }))
-      setInvestigation(caseData)
+    if (!id) return null
+    const caseData = await investigationApi.getById(id).catch(() => ({
+      id,
+      case_name: `Investigation ${id}`,
+      case_number: id,
+      suspect_name: `Target ${id}`,
+      status: 'Active' as const,
+      created_by: 'Officer',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }))
 
-      const geo = await trackingApi.getGeoJSON(id, start || undefined, end || undefined).catch(() => null)
-      if (geo) {
-        setGeojson(geo)
-        setFixes(parseFixes(geo, id))
-      }
+    const geo = await trackingApi.getGeoJSON(id, start || undefined, end || undefined).catch(() => null)
 
-      const towerData = await trackingApi.listAllTowers().catch(() => ({ towers: [], total: 0 }))
-      if (towerData.towers.length > 0) {
-        setTowers(towerData.towers.map((t) => ({
-          tower_id: t.tower_id,
-          operator: t.operator as TowerRecord['operator'],
-          radio: t.radio as TowerRecord['radio'],
-          mcc: 0, mnc: 0, lac: 0, cell_id: 0,
-          cgi: t.cgi,
-          latitude: t.latitude,
-          longitude: t.longitude,
-          azimuth: t.azimuth,
-          beamwidth: t.beamwidth,
-          range_meters: t.range_meters,
-          site_address: t.site_address,
-        })))
-      }
-    } catch (err: unknown) {
-      setError((err as Error)?.message || 'Failed to load case data')
-    } finally {
-      setInitialLoading(false)
+    const towerData = await trackingApi.listAllTowers().catch(() => ({ towers: [], total: 0 }))
+    return { caseData, geo, towerData }
+  }, [id])
+
+  const applyLoaded = useCallback((data: NonNullable<Awaited<ReturnType<typeof loadCaseData>>>) => {
+    setInvestigation(data.caseData)
+
+    if (data.geo) {
+      setGeojson(data.geo)
+      setFixes(parseFixes(data.geo, id))
+    }
+
+    if (data.towerData.towers.length > 0) {
+      setTowers(data.towerData.towers.map((t) => ({
+        tower_id: t.tower_id,
+        operator: t.operator as TowerRecord['operator'],
+        radio: t.radio as TowerRecord['radio'],
+        mcc: 0, mnc: 0, lac: 0, cell_id: 0,
+        cgi: t.cgi,
+        latitude: t.latitude,
+        longitude: t.longitude,
+        azimuth: t.azimuth,
+        beamwidth: t.beamwidth,
+        range_meters: t.range_meters,
+        site_address: t.site_address,
+      })))
     }
   }, [id])
 
+  const runLoad = useCallback((start?: string, end?: string) => {
+    setError(null)
+    setInitialLoading(true)
+    loadCaseData(start, end)
+      .then((data) => { if (data) applyLoaded(data) })
+      .catch((err: unknown) => setError((err as Error)?.message || 'Failed to load case data'))
+      .finally(() => setInitialLoading(false))
+  }, [loadCaseData, applyLoaded])
+
   useEffect(() => {
+    let ignore = false
     loadCaseData()
-  }, [loadCaseData])
+      .then((data) => { if (data && !ignore) applyLoaded(data) })
+      .catch((err: unknown) => {
+        if (!ignore) setError((err as Error)?.message || 'Failed to load case data')
+      })
+      .finally(() => { if (!ignore) setInitialLoading(false) })
+    return () => {
+      ignore = true
+    }
+  }, [loadCaseData, applyLoaded])
 
   const applyTimeFilter = () => {
-    loadCaseData(timeStart || undefined, timeEnd || undefined)
+    runLoad(timeStart || undefined, timeEnd || undefined)
   }
 
   const clearTimeFilter = () => {
     setTimeStart('')
     setTimeEnd('')
-    loadCaseData()
+    runLoad()
   }
 
   const handleRunLocalization = async () => {
@@ -167,9 +184,8 @@ export default function LiveInvestigationPage() {
     try {
       const blob = await exportApi.downloadCSV(id, getExportParams())
       downloadBlob(blob, `e-rakshak_${id}_fixes.csv`)
-    } catch (error) {
-      console.error('Export failed:', error)
-      alert('Export failed. Please try again.')
+    } catch (err: unknown) {
+      setError(extractErrorMessage(err))
     } finally { setExporting(null) }
   }
 
@@ -179,9 +195,8 @@ export default function LiveInvestigationPage() {
     try {
       const blob = await exportApi.downloadKML(id, getExportParams())
       downloadBlob(blob, `e-rakshak_${id}_fixes.kml`)
-    } catch (error) {
-      console.error('Export failed:', error)
-      alert('Export failed. Please try again.')
+    } catch (err: unknown) {
+      setError(extractErrorMessage(err))
     } finally { setExporting(null) }
   }
 
@@ -191,9 +206,8 @@ export default function LiveInvestigationPage() {
     try {
       const blob = await exportApi.downloadPDF(id, getExportParams())
       downloadBlob(blob, `e-rakshak_${id}_forensic_report.pdf`)
-    } catch (error) {
-      console.error('Export failed:', error)
-      alert('Export failed. Please try again.')
+    } catch (err: unknown) {
+      setError(extractErrorMessage(err))
     } finally { setExporting(null) }
   }
 
@@ -345,7 +359,7 @@ export default function LiveInvestigationPage() {
 
         {/* RIGHT: Detail panel */}
         <div className="flex w-80 shrink-0 flex-col overflow-y-auto border-l border-surface-200
-                        bg-surface-50 dark:border-surface-700 dark:bg-surface-900 scrollbar-thin">
+                        bg-surface-50 dark:border-surface-700 dark:bg-surface-900">
 
           {error && (
             <div className="border-b border-danger/20 bg-danger-light px-4 py-3 text-xs text-danger dark:bg-danger/10 flex items-start gap-2">
@@ -498,8 +512,8 @@ export default function LiveInvestigationPage() {
       <ShareLocationModal
         open={shareOpen}
         onClose={() => setShareOpen(false)}
-        latitude={latestFix?.latitude ?? 21.1702}
-        longitude={latestFix?.longitude ?? 72.8311}
+        latitude={latestFix?.latitude ?? DEFAULT_MAP_CENTER[0]}
+        longitude={latestFix?.longitude ?? DEFAULT_MAP_CENTER[1]}
       />
     </div>
   )

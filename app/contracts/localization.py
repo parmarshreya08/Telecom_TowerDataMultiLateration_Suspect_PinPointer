@@ -10,6 +10,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.utils.datetime_utils import now_ist
+
 
 class LocalizationFix(BaseModel):
     """
@@ -86,7 +88,7 @@ class LocalizationFix(BaseModel):
         description="2x2 covariance matrix as JSON [[a,b],[c,d]].",
     )
     created_at: datetime = Field(
-        default_factory=datetime.utcnow,
+        default_factory=now_ist,
         description="Timestamp when the fix was computed.",
     )
 

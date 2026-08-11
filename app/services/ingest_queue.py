@@ -9,11 +9,12 @@ import tempfile
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.logging import logger
 from app.database.repository import TelecomRepository
+from app.database.session import async_session_maker
 from app.services.supabase_storage import storage_service
 
 
@@ -60,10 +61,7 @@ class IngestQueue:
         from app.services.file_converter import FileConverter
         from app.services.tower_lookup import TowerLookupService
 
-        engine = create_async_engine(settings.DATABASE_URL)
-        session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-
-        async with session_factory() as db_session:
+        async with async_session_maker() as db_session:
             repo = TelecomRepository(db_session)
 
             try:
@@ -140,7 +138,6 @@ class IngestQueue:
                 await db_session.commit()
 
             finally:
-                await engine.dispose()
                 self._tasks.pop(upload_id, None)
 
 

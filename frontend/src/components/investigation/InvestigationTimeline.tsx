@@ -58,7 +58,7 @@ export function InvestigationTimeline({ events, compact }: TimelineProps) {
             <p className={cn('font-medium leading-tight', compact ? 'text-xs' : 'text-sm', 'text-surface-800 dark:text-surface-200')}>
               {event.title}
             </p>
-            <p className={cn('text-surface-500 mt-0.5 line-clamp-2', compact ? 'text-2xs' : 'text-xs')}>
+            <p className={cn('text-surface-500 dark:text-surface-400 mt-0.5 line-clamp-2', compact ? 'text-2xs' : 'text-xs')}>
               {event.description}
             </p>
             <p className="text-2xs text-surface-400 mt-0.5">

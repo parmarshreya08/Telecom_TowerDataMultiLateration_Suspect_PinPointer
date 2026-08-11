@@ -40,6 +40,8 @@ class FileConverter:
         ext = Path(input_path).suffix.lower()
 
         if ext == ".csv":
+            if os.path.exists(output_path):
+                os.remove(output_path)
             shutil.copy(input_path, output_path)
             return output_path
 

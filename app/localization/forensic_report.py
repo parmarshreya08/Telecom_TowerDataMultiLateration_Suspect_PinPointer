@@ -4,11 +4,11 @@ Produces structured JSON reports documenting localization analysis
 for court-admissible evidence. PDF rendering can be added later.
 """
 
-from datetime import datetime
 from typing import Any, Optional
 from uuid import UUID
 
 from app.contracts.localization import LocalizationFix
+from app.utils.datetime_utils import now_ist
 
 
 def generate_forensic_report(
@@ -22,10 +22,10 @@ def generate_forensic_report(
     """
     if not fixes:
         return {
-            "report_id": f"FR-{case_id}-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}",
+            "report_id": f"FR-{case_id}-{now_ist().strftime('%Y%m%d%H%M%S')}",
             "case_id": case_id,
             "status": "NO_DATA",
-            "generated_at": datetime.utcnow().isoformat(),
+            "generated_at": now_ist().isoformat(),
             "summary": {"fix_count": 0, "message": "No localization fixes available."},
         }
 
@@ -74,10 +74,10 @@ def generate_forensic_report(
         })
 
     return {
-        "report_id": f"FR-{case_id}-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}",
+        "report_id": f"FR-{case_id}-{now_ist().strftime('%Y%m%d%H%M%S')}",
         "case_id": case_id,
         "status": "COMPLETED",
-        "generated_at": datetime.utcnow().isoformat(),
+        "generated_at": now_ist().isoformat(),
         "methodology": {
             "algorithm": "JPL Pseudorange Multi-Lateration + Kalman Tracking",
             "ta_band_model": "LTE Timing Advance quantization (78.12m per step)",

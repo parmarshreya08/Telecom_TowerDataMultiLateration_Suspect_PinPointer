@@ -5,7 +5,7 @@ import {
   Cpu, Database, BarChart3, ArrowRight,
   CheckCircle, Zap, LayoutDashboard,
 } from 'lucide-react'
-import { useThemeContext } from '@/contexts/ThemeContext'
+import { useThemeContext } from '@/hooks/useThemeContext'
 import { Sun, Moon } from 'lucide-react'
 import { Logo } from '@/components/ui/Logo'
 
@@ -229,7 +229,7 @@ export default function LandingPage() {
                   { label: 'API Endpoints', value: '2 (expandable)' },
                 ].map(({ label, value }) => (
                   <div key={label} className="flex items-center justify-between border-b border-surface-100 pb-3 last:border-0 last:pb-0 dark:border-surface-700">
-                    <span className="text-xs text-surface-500">{label}</span>
+                    <span className="text-xs text-surface-500 dark:text-surface-400">{label}</span>
                     <span className="text-sm font-semibold text-primary-600 dark:text-primary-400">{value}</span>
                   </div>
                 ))}
@@ -249,7 +249,7 @@ export default function LandingPage() {
           <div className="flex flex-wrap items-center justify-center gap-4">
             <button
               onClick={() => navigate('/dashboard')}
-              className="btn btn-lg bg-white text-primary-700 hover:bg-primary-50"
+              className="btn btn-lg bg-white text-primary-700 hover:bg-primary-50 dark:bg-surface-100 dark:text-primary-800 dark:hover:bg-surface-200"
             >
               <LayoutDashboard className="h-4 w-4" />
               Open Dashboard
@@ -267,7 +267,7 @@ export default function LandingPage() {
       {/* ── Footer ── */}
       <footer className="border-t border-surface-200 bg-white py-8 px-6 dark:border-surface-800 dark:bg-surface-900">
         <div className="mx-auto max-w-7xl flex flex-col items-center gap-2 sm:flex-row sm:justify-between">
-          <div className="flex items-center gap-2 text-sm text-surface-500">
+          <div className="flex items-center gap-2 text-sm text-surface-500 dark:text-surface-400">
             <Logo size={16} />
             <span>E-Rakshak · Surat City Police · Cyber Crime Cell</span>
           </div>

@@ -103,7 +103,7 @@ class IngestionValidator:
                 valid_records.append(record)
             else:
                 errors_count += 1
-                logger.warn(
+                logger.warning(
                     "record_validation_failed",
                     index=idx,
                     error_details=error_details,

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Sun, Moon, Monitor, Bell, Map, FileText, Globe, Save } from 'lucide-react'
-import { useThemeContext } from '@/contexts/ThemeContext'
+import { useThemeContext } from '@/hooks/useThemeContext'
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Select'
@@ -21,8 +21,7 @@ export default function SettingsPage() {
   const [saved, setSaved]                 = useState(false)
 
   const handleSave = async () => {
-    // TODO: Persist settings to backend / local storage
-    await new Promise((r) => setTimeout(r, 500))
+    // ponytail: settings persistence not implemented, show feedback only
     setSaved(true)
     setTimeout(() => setSaved(false), 2500)
   }
@@ -31,12 +30,12 @@ export default function SettingsPage() {
     <div className="max-w-2xl space-y-6">
       <div>
         <h1 className="text-xl font-bold text-surface-900 dark:text-surface-100">Settings</h1>
-        <p className="text-sm text-surface-500">Customize your platform experience</p>
+        <p className="text-sm text-surface-500 dark:text-surface-400">Customize your platform experience</p>
       </div>
 
       {saved && (
         <div className="rounded-lg bg-green-50 px-4 py-3 text-sm text-green-700 dark:bg-green-900/20 dark:text-green-300">
-          ✓ Settings saved successfully
+          Settings saved (local only — backend persistence coming soon)
         </div>
       )}
 

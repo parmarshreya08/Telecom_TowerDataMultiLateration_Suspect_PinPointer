@@ -8,6 +8,8 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
+from app.utils.datetime_utils import now_ist
+
 from sqlalchemy import JSON, DateTime, ForeignKey, Float, Integer, String, Text, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -29,8 +31,8 @@ class CaseModel(Base):
     officer_notes: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[str] = mapped_column(String(50), default="Active")
     created_by: Mapped[str] = mapped_column(String(100), default="Officer")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_ist, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now_ist, onupdate=now_ist, nullable=False)
 
     uploads: Mapped[list["UploadMetadataModel"]] = relationship(
         back_populates="case", cascade="all, delete-orphan", lazy="selectin"
@@ -55,7 +57,7 @@ class UploadMetadataModel(Base):
     mime_type: Mapped[str] = mapped_column(String(100), nullable=False)
     file_size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
     uploaded_by: Mapped[str] = mapped_column(String(100), nullable=False)
-    uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=now_ist, nullable=False)
 
     # New fields for Supabase + background processing
     supabase_path: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
@@ -190,4 +192,4 @@ class LocalizationFixModel(Base):
     ta_outer_m: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     rss_i_dbm: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     covariance_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_ist, nullable=False)

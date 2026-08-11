@@ -109,7 +109,7 @@ class MeasurementFrameBuilder:
             tower_info: Optional[TowerRecord] = await self.tower_lookup.find_by_cgi(rec.cgi)
             
             if not tower_info:
-                logger.warn("tower_cgi_not_found_for_frame", cgi=rec.cgi)
+                logger.warning("tower_cgi_not_found_for_frame", cgi=rec.cgi)
                 continue
 
             # Estimate range in meters if Timing Advance (TA) is present

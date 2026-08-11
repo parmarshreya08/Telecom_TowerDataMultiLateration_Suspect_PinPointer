@@ -4,12 +4,12 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { motion } from 'motion/react'
-import { ArrowLeft, FolderPlus, ArrowRight, RefreshCw, Shield } from 'lucide-react'
+import { ArrowLeft, FolderPlus, ArrowRight, RefreshCw } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { investigationApi } from '@/services/api'
-import { generateCaseNumber } from '@/utils'
+import { extractErrorMessage, generateCaseNumber } from '@/utils'
 
 const schema = z.object({
   case_name:     z.string().min(3, 'Case name is required'),
@@ -25,6 +25,7 @@ type FormData = z.infer<typeof schema>
 export default function NewInvestigationPage() {
   const navigate = useNavigate()
   const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const { register, handleSubmit, setValue, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -36,9 +37,8 @@ export default function NewInvestigationPage() {
     try {
       await investigationApi.create(data)
       navigate(`/investigations/${data.case_number}/upload`)
-    } catch (error: any) {
-      const message = error?.response?.data?.detail || error?.message || 'Failed to create case'
-      alert(message)
+    } catch (err: unknown) {
+      setError(extractErrorMessage(err))
     } finally {
       setIsLoading(false)
     }
@@ -62,11 +62,16 @@ export default function NewInvestigationPage() {
           </div>
           <div>
             <h1 className="text-xl font-bold text-surface-900 dark:text-surface-100">New Investigation</h1>
-            <p className="text-sm text-surface-500">Fill in the case details to get started</p>
+            <p className="text-sm text-surface-500 dark:text-surface-400">Fill in the case details to get started</p>
           </div>
         </div>
 
         <Card>
+          {error && (
+            <div className="mb-4 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-3 text-sm text-red-700 dark:text-red-300">
+              {error}
+            </div>
+          )}
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
             <div className="grid gap-5 sm:grid-cols-2">
               <Input

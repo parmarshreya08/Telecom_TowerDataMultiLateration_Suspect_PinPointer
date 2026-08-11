@@ -24,7 +24,7 @@ export function AppLayout() {
           onOpenNotifications={() => setNotifOpen(true)}
         />
 
-        <main className="flex-1 overflow-y-auto p-6 scrollbar-thin">
+        <main className="flex-1 overflow-y-auto p-6">
           <Outlet />
         </main>
       </div>

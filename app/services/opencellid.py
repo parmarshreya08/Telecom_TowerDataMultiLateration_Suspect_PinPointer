@@ -63,12 +63,12 @@ class OpenCellIDService:
                             "range_meters": float(data.get("range", 0)),
                             "samples": int(data.get("samples", 0)),
                         }
-                logger.warn(
+                logger.warning(
                     "opencellid_lookup_miss",
                     mcc=mcc, mnc=mnc, lac=lac, cid=cell_id,
                     status=resp.status_code,
                 )
         except Exception as e:
-            logger.warn("opencellid_lookup_error", error=str(e))
+            logger.warning("opencellid_lookup_error", error=str(e))
 
         return None

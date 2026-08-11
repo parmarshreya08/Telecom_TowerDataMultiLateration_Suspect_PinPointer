@@ -18,15 +18,19 @@ import type {
   FileListResponse,
 } from '@/types'
 
-// Axios instance
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
   timeout: 60_000,
   headers: { 'Content-Type': 'application/json' },
 })
 
-// Request interceptor — no auth required
-apiClient.interceptors.request.use((config) => config)
+// Request interceptor — strip Content-Type for FormData (let browser set boundary)
+apiClient.interceptors.request.use((config) => {
+  if (config.data instanceof FormData) {
+    delete config.headers['Content-Type']
+  }
+  return config
+})
 
 // Response interceptor
 apiClient.interceptors.response.use(
@@ -53,7 +57,6 @@ export const uploadApi = {
 
     return apiClient
       .post<BatchUploadResponse>(`/api/case/${caseId}/upload`, form, {
-        headers: { 'Content-Type': 'multipart/form-data' },
         onUploadProgress: (e) => {
           if (onProgress && e.total) {
             onProgress(Math.round((e.loaded * 100) / e.total))
@@ -87,7 +90,6 @@ export const uploadApi = {
 
     return apiClient
       .post<UploadResponse>('/api/upload', form, {
-        headers: { 'Content-Type': 'multipart/form-data' },
         onUploadProgress: (e) => {
           if (onProgress && e.total) {
             onProgress(Math.round((e.loaded * 100) / e.total))

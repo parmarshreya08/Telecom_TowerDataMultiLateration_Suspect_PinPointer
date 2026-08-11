@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { motion } from 'motion/react'
 import {
@@ -22,42 +22,65 @@ export default function InvestigationDetailPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const fetchDetails = async () => {
-    if (!id) return
-    setIsLoading(true)
+  const fetchDetails = useCallback(async () => {
+    if (!id) return null
+    const [caseData, uploadsData, eventsData] = await Promise.allSettled([
+      investigationApi.getById(id),
+      trackingApi.getCaseUploads(id),
+      investigationApi.getCaseEvents(id, 100),
+    ])
+    return { caseData, uploadsData, eventsData }
+  }, [id])
+
+  const refresh = useCallback(() => {
     setError(null)
-    try {
-      const [caseData, uploadsData, eventsData] = await Promise.allSettled([
-        investigationApi.getById(id),
-        trackingApi.getCaseUploads(id),
-        investigationApi.getCaseEvents(id, 100),
-      ])
-
-      if (caseData.status === 'fulfilled') {
-        setInv(caseData.value)
-      } else {
-        setError('Investigation not found')
-      }
-
-      if (uploadsData.status === 'fulfilled') {
-        const raw = uploadsData.value?.uploads ?? []
-        setUploads(raw as UploadMetadata[])
-      }
-
-      if (eventsData.status === 'fulfilled') {
-        const evs = eventsData.value?.events ?? []
-        setEvents(evs)
-      }
-    } catch (err: unknown) {
-      setError((err as Error)?.message || 'Failed to load investigation details')
-    } finally {
-      setIsLoading(false)
-    }
-  }
+    setIsLoading(true)
+    fetchDetails()
+      .then((result) => {
+        if (!result) return
+        if (result.caseData.status === 'fulfilled') {
+          setInv(result.caseData.value)
+        } else {
+          setError('Investigation not found')
+        }
+        if (result.uploadsData.status === 'fulfilled') {
+          setUploads((result.uploadsData.value?.uploads ?? []) as UploadMetadata[])
+        }
+        if (result.eventsData.status === 'fulfilled') {
+          setEvents(result.eventsData.value?.events ?? [])
+        }
+      })
+      .catch((err: unknown) => {
+        setError((err as Error)?.message || 'Failed to load investigation details')
+      })
+      .finally(() => setIsLoading(false))
+  }, [fetchDetails])
 
   useEffect(() => {
+    let ignore = false
     fetchDetails()
-  }, [id])
+      .then((result) => {
+        if (!result || ignore) return
+        if (result.caseData.status === 'fulfilled') {
+          setInv(result.caseData.value)
+        } else {
+          setError('Investigation not found')
+        }
+        if (result.uploadsData.status === 'fulfilled') {
+          setUploads((result.uploadsData.value?.uploads ?? []) as UploadMetadata[])
+        }
+        if (result.eventsData.status === 'fulfilled') {
+          setEvents(result.eventsData.value?.events ?? [])
+        }
+      })
+      .catch((err: unknown) => {
+        if (!ignore) setError((err as Error)?.message || 'Failed to load investigation details')
+      })
+      .finally(() => { if (!ignore) setIsLoading(false) })
+    return () => {
+      ignore = true
+    }
+  }, [fetchDetails])
 
   if (isLoading) {
     return (
@@ -73,7 +96,7 @@ export default function InvestigationDetailPage() {
       <div className="max-w-xl mx-auto py-12 text-center">
         <AlertCircle className="h-10 w-10 text-red-500 mx-auto mb-3" />
         <h2 className="text-lg font-bold text-surface-900 dark:text-surface-100">Error Loading Case</h2>
-        <p className="text-sm text-surface-500 mt-1 mb-4">{error}</p>
+        <p className="text-sm text-surface-500 dark:text-surface-400 mt-1 mb-4">{error}</p>
         <Button variant="secondary" icon={<ArrowLeft className="h-4 w-4" />} onClick={() => navigate('/investigations')}>
           Back to Investigations
         </Button>
@@ -114,11 +137,11 @@ export default function InvestigationDetailPage() {
                 currentInv.status === 'Completed' ? 'primary' : 'neutral'
               }>{currentInv.status}</Badge>
             </div>
-            <p className="text-sm text-surface-500">Case ID: {currentInv.case_number || currentInv.id} · Created by {currentInv.created_by || 'Officer'}</p>
+            <p className="text-sm text-surface-500 dark:text-surface-400">Case ID: {currentInv.case_number || currentInv.id} · Created by {currentInv.created_by || 'Officer'}</p>
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <Button size="sm" variant="secondary" icon={<RefreshCw className="h-4 w-4" />} onClick={fetchDetails}>
+          <Button size="sm" variant="secondary" icon={<RefreshCw className="h-4 w-4" />} onClick={refresh}>
             Refresh
           </Button>
           <Button size="sm" variant="primary" icon={<MapPin className="h-4 w-4" />} onClick={() => navigate(`/investigations/${currentInv.id}/live`)}>
@@ -196,7 +219,7 @@ export default function InvestigationDetailPage() {
                         {formatFileSize(up.file_size_bytes)} · {up.uploaded_at ? formatDateTime(up.uploaded_at) : 'Uploaded'}
                       </p>
                     </div>
-                    <span className={cn('rounded-full px-2.5 py-0.5 text-xs font-medium', OPERATOR_COLORS[up.operator] || 'bg-surface-100 text-surface-600')}>
+                    <span className={cn('rounded-full px-2.5 py-0.5 text-xs font-medium', OPERATOR_COLORS[up.operator] || 'bg-surface-100 text-surface-600 dark:bg-surface-800 dark:text-surface-300')}>
                       {up.operator || 'Telecom'}
                     </span>
                   </div>

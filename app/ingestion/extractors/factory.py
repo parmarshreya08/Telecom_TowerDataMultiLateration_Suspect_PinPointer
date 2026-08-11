@@ -45,7 +45,7 @@ class ExtractorFactory:
         extractor_class = cls._REGISTRY.get(operator)
 
         if not extractor_class:
-            logger.warn("extractor_missing", operator=operator.value)
+            logger.warning("extractor_missing", operator=operator.value)
             raise ExtractorNotFoundError(
                 f"No database extractor configuration registered for operator: '{operator.value}'."
             )

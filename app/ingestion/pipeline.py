@@ -76,7 +76,7 @@ class TelecomIngestionPipeline:
         file_hash = calculate_file_hash(file_path)
         existing_upload = await self.repo.get_upload_by_hash(file_hash)
         if existing_upload:
-            logger.warn("duplicate_upload_blocked", file_hash=file_hash, file_name=original_file_name)
+            logger.warning("duplicate_upload_blocked", file_hash=file_hash, file_name=original_file_name)
             raise DuplicateUploadError(
                 f"File '{original_file_name}' (hash: {file_hash}) has already been ingested."
             )

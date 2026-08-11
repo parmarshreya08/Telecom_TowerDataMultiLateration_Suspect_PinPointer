@@ -5,7 +5,7 @@ Falls back to OpenCellID API when tower not found locally.
 Includes in-memory caching to optimize pipeline processing performance.
 """
 
-from typing import Any, Optional
+from typing import Optional
 from uuid import uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession

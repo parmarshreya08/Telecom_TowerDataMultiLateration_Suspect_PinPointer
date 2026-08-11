@@ -4,6 +4,7 @@ Handles CRUD and bulk persist operations for telecom models.
 Converts between Pydantic contracts and SQLAlchemy database models.
 """
 
+from datetime import datetime
 from typing import Any, Optional
 from uuid import UUID
 
@@ -331,14 +332,12 @@ class TelecomRepository:
     async def get_localization_fixes(
         self,
         case_id: str,
-        start_time: Optional["datetime"] = None,
-        end_time: Optional["datetime"] = None,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None,
     ) -> list[LocalizationFixModel]:
         """
         Loads stored localization fixes for a case, optionally filtered by time range.
         """
-        from datetime import datetime as _dt
-
         stmt = select(LocalizationFixModel).where(
             LocalizationFixModel.case_id == case_id
         )
@@ -527,13 +526,21 @@ class TelecomRepository:
         towers_res = await self.session.execute(towers_count_stmt)
         total_towers = towers_res.scalar() or 0
 
+        active_cases_stmt = select(func.count(CaseModel.case_id)).where(CaseModel.status == "Active")
+        active_res = await self.session.execute(active_cases_stmt)
+        active_cases = active_res.scalar() or 0
+
+        completed_cases_stmt = select(func.count(CaseModel.case_id)).where(CaseModel.status == "Completed")
+        completed_res = await self.session.execute(completed_cases_stmt)
+        completed_cases = completed_res.scalar() or 0
+
         return {
             "total_cases": total_cases,
             "total_uploads": total_uploads,
             "total_measurements": total_fixes,
             "total_towers": total_towers,
-            "active_cases": total_cases,
-            "completed_cases": total_cases,
+            "active_cases": active_cases,
+            "completed_cases": completed_cases,
         }
 
     # ── File Management ──────────────────────────────────────
@@ -547,7 +554,7 @@ class TelecomRepository:
         return result.scalar_one_or_none()
 
     async def update_upload_status(
-        self, upload_id: UUID, status: str, error_message: str = None
+        self, upload_id: UUID, status: str, error_message: Optional[str] = None
     ) -> None:
         """
         Updates the processing status of an upload.

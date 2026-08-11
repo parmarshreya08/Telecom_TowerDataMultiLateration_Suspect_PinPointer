@@ -14,7 +14,7 @@ interface UseSocketOptions {
 
 export function useSocket(options: UseSocketOptions = {}) {
   const { investigationId, autoConnect = false } = options
-  const [isConnected, setIsConnected] = useState(false)
+  const [isConnected, setIsConnected] = useState(() => socketService.isConnected)
 
   useEffect(() => {
     if (!autoConnect) return
@@ -24,8 +24,6 @@ export function useSocket(options: UseSocketOptions = {}) {
 
     const unsubConnect    = socketService.on('connect',    () => setIsConnected(true))
     const unsubDisconnect = socketService.on('disconnect', () => setIsConnected(false))
-
-    setIsConnected(socketService.isConnected)
 
     return () => {
       unsubConnect()
@@ -53,7 +51,10 @@ export function useSocketEvent<T = unknown>(
   deps: React.DependencyList = []
 ) {
   const callbackRef = useRef(callback)
-  callbackRef.current = callback
+
+  useEffect(() => {
+    callbackRef.current = callback
+  }, [callback])
 
   useEffect(() => {
     const unsub = socketService.on<T>(event, (data) => callbackRef.current(data))

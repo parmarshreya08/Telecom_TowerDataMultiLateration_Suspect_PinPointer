@@ -66,7 +66,7 @@ class TelecomNormalizer:
                     else:
                         normalized.append(OperatorMapper.map_airtel_cdr(record, upload_id, source_file, idx))
                 else:
-                    logger.warn("unsupported_file_type_in_normalizer", file_type=file_type)
+                    logger.warning("unsupported_file_type_in_normalizer", file_type=file_type)
             except Exception as e:
                 # Log mapping errors and continue processing the rest of the batch
                 logger.error("normalization_row_mapping_error", error=str(e), row=idx, record=record)

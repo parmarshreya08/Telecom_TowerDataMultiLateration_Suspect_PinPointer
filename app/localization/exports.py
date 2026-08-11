@@ -5,8 +5,9 @@ Produces CSV, KML, and PDF outputs for filtered fix data.
 
 import csv
 import io
-from datetime import datetime
 from typing import Any
+
+from app.utils.datetime_utils import now_ist
 
 
 # ── CSV Export ──────────────────────────────────────────────
@@ -87,7 +88,7 @@ def generate_kml(fixes: list[Any], case_id: str) -> str:
 <kml xmlns="http://www.opengis.net/kml/2.2">
   <Document>
     <name>E-Rakshak — Case {case_id}</name>
-    <description>Localization fixes for investigation case {case_id}. Generated {datetime.utcnow().isoformat()}Z.</description>
+    <description>Localization fixes for investigation case {case_id}. Generated {now_ist().isoformat()}Z.</description>
 
     <Style id="fixStyle">
       <IconStyle>
@@ -203,7 +204,7 @@ def generate_pdf(fixes: list[Any], case_id: str, report_data: dict[str, Any]) ->
 
     # ── Report metadata ──
     report_id = report_data.get("report_id", f"FR-{case_id}")
-    generated = report_data.get("generated_at", datetime.utcnow().isoformat())
+    generated = report_data.get("generated_at", now_ist().isoformat())
     meta_data = [
         ["Report ID", report_id],
         ["Case ID", case_id],

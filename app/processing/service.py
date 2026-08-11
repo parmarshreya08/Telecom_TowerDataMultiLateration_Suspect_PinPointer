@@ -108,7 +108,7 @@ class ProcessingService:
                 valid_before_dedup.append(validated_rec)
             else:
                 rejected_records.append(record)
-                logger.warn(
+                logger.warning(
                     "record_rejected",
                     event_id=str(record.event_id),
                     upload_id=str(record.upload_id),

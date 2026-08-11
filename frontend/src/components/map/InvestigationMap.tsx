@@ -5,6 +5,7 @@ import { Maximize2, Target, Eye, EyeOff } from 'lucide-react'
 import type { LocalizationResult, PathPoint, TowerRecord, GeoJSONFeatureCollection } from '@/types'
 import { formatCoordinate, cn } from '@/utils'
 import { DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM } from '@/constants'
+import { useThemeContext } from '@/hooks/useThemeContext'
 
 // ── Fix Leaflet default icon paths broken by Vite ────────────
 delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl
@@ -114,6 +115,15 @@ export function InvestigationMap({
   const [showSectors,    setShowSectors]    = useState(true)
   const [isFullscreen,   setIsFullscreen]   = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
+  const { isDark } = useThemeContext()
+
+  const tileUrl = isDark
+    ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+    : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+
+  const tileAttribution = isDark
+    ? '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
+    : '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
 
   const sectorWedges = parseSectorWedges(geojson)
   const ellipses = parseEllipses(geojson)
@@ -136,8 +146,8 @@ export function InvestigationMap({
       >
         {/* Tile layer */}
         <TileLayer
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+          url={tileUrl}
+          attribution={tileAttribution}
         />
 
         {/* Auto-follow live location */}
@@ -203,7 +213,7 @@ export function InvestigationMap({
           >
             <Popup>
               <div className="text-xs leading-relaxed">
-                <p className="font-bold text-amber-700">Sector Wedge</p>
+                <p className="font-bold text-amber-700 dark:text-amber-400">Sector Wedge</p>
                 <p>Azimuth: {String(s.properties.azimuth_degrees ?? '')}°</p>
                 <p>Beamwidth: {String(s.properties.beamwidth_degrees ?? '')}°</p>
                 <p>Radius: {typeof s.properties.radius_meters === 'number' ? s.properties.radius_meters.toFixed(0) : ''}m</p>
@@ -249,13 +259,13 @@ export function InvestigationMap({
           >
             <Popup>
               <div className="text-xs leading-relaxed">
-                <p className="font-bold text-blue-700">{tower.cgi}</p>
-                <p className="text-gray-600">{tower.operator} · {tower.radio}</p>
+                <p className="font-bold text-blue-700 dark:text-blue-400">{tower.cgi}</p>
+                <p className="text-surface-600 dark:text-surface-300">{tower.operator} · {tower.radio}</p>
                 <p>{formatCoordinate(tower.latitude)}°N, {formatCoordinate(tower.longitude)}°E</p>
                 {tower.azimuth != null && <p>Azimuth: {tower.azimuth}°</p>}
                 {tower.beamwidth != null && <p>Beamwidth: {tower.beamwidth}°</p>}
                 {tower.range_meters && <p>Range: {tower.range_meters}m</p>}
-                {tower.site_address && <p className="text-gray-400 mt-1">{tower.site_address}</p>}
+                {tower.site_address && <p className="text-surface-400 dark:text-surface-500 mt-1">{tower.site_address}</p>}
               </div>
             </Popup>
           </Marker>
@@ -269,10 +279,10 @@ export function InvestigationMap({
           >
             <Popup>
               <div className="text-xs leading-relaxed">
-                <p className="font-bold text-red-600">⚠ Suspect Location</p>
+                <p className="font-bold text-red-600 dark:text-red-400">⚠ Suspect Location</p>
                 <p>{formatCoordinate(currentLocation.latitude)}°N, {formatCoordinate(currentLocation.longitude)}°E</p>
                 <p>Accuracy: ±{currentLocation.accuracy_meters.toFixed(0)}m</p>
-                <p>Confidence: {(currentLocation.confidence * 100).toFixed(1)}%</p>
+                <p>Confidence: {currentLocation.confidence != null ? (currentLocation.confidence * 100).toFixed(1) : 'N/A'}%</p>
                 <p>Algorithm: {currentLocation.algorithm_used}</p>
               </div>
             </Popup>
@@ -342,7 +352,7 @@ export function InvestigationMap({
             {formatCoordinate(currentLocation.longitude)}°E
           </p>
           <p className="text-2xs text-white/60 mt-0.5">
-            ±{currentLocation.accuracy_meters.toFixed(0)}m · {currentLocation.algorithm_used} · {(currentLocation.confidence * 100).toFixed(0)}% conf.
+            ±{currentLocation.accuracy_meters.toFixed(0)}m · {currentLocation.algorithm_used} · {currentLocation.confidence != null ? (currentLocation.confidence * 100).toFixed(0) : 'N/A'}% conf.
           </p>
         </div>
       )}

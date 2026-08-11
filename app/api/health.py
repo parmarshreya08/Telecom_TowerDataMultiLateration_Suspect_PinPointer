@@ -32,9 +32,9 @@ async def health_check(response: Response) -> dict[str, Any]:
     else:
         logger.info("system_health_check_passed", database="connected")
 
-    from datetime import datetime, timezone
+    from app.utils.datetime_utils import now_ist
     return {
         "status": status_str,
         "database": "connected" if db_healthy else "unreachable",
-        "timestamp": datetime.now(timezone.utc).isoformat()
+        "timestamp": now_ist().isoformat()
     }

@@ -4,7 +4,6 @@ File validation, saving, and hashing utilities for E-Rakshak.
 
 import hashlib
 import os
-import re
 from pathlib import Path
 from uuid import uuid4
 
@@ -62,7 +61,7 @@ async def validate_uploaded_file(upload_file: UploadFile, max_size_mb: int = 100
     # 1. Extension Check
     ext = Path(filename).suffix.lower()
     if ext not in SUPPORTED_EXTENSIONS:
-        logger.warn("file_validation_failed", filename=filename, reason="unsupported_extension")
+        logger.warning("file_validation_failed", filename=filename, reason="unsupported_extension")
         raise ValueError(
             f"Unsupported file format '{ext}'. "
             f"Supported: {', '.join(sorted(SUPPORTED_EXTENSIONS))}"
@@ -74,7 +73,7 @@ async def validate_uploaded_file(upload_file: UploadFile, max_size_mb: int = 100
     is_valid_mime = any(mime in content_type for mime in allowed_mimes)
 
     if not is_valid_mime:
-        logger.warn("file_validation_failed", filename=filename, content_type=content_type, reason="invalid_mime_type")
+        logger.warning("file_validation_failed", filename=filename, content_type=content_type, reason="invalid_mime_type")
         raise ValueError(f"Invalid MIME type: {content_type}. Only CSV, XLSX, XLS, TSV files are allowed.")
 
     # 3. Size check (streaming / seek check)
@@ -88,13 +87,13 @@ async def validate_uploaded_file(upload_file: UploadFile, max_size_mb: int = 100
 
     # Empty file check
     if size <= 0:
-        logger.warn("file_validation_failed", filename=filename, reason="empty_file")
+        logger.warning("file_validation_failed", filename=filename, reason="empty_file")
         raise ValueError("Empty file uploaded. Processing rejected.")
 
     # Size limit check
     max_bytes = max_size_mb * 1024 * 1024
     if size > max_bytes:
-        logger.warn(
+        logger.warning(
             "file_validation_failed",
             filename=filename,
             size_bytes=size,
@@ -111,9 +110,7 @@ async def save_uploaded_file(upload_file: UploadFile, destination_path: str) -> 
     Saves an uploaded file to disk in blocks of 64KB, returning total bytes written.
     Never overwrites existing files.
     """
-    if os.path.exists(destination_path):
-        raise FileExistsError(f"Target stored path '{destination_path}' already exists.")
-
+    # ponytail: don't check exists — NamedTemporaryFile already creates the file on Windows
     total_bytes = 0
     try:
         with open(destination_path, "wb") as buffer:

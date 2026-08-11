@@ -6,13 +6,13 @@ checksum hashing, duplicate verification, and metadata persistence.
 
 import os
 import tempfile
-from datetime import datetime
 from typing import Any
 from uuid import uuid4
 
+from app.utils.datetime_utils import now_ist
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.contracts.detection import DetectionResult
 from app.contracts.enums import Operator, SourceType
 from app.contracts.upload import UploadMetadata
 from app.core.config import settings
@@ -135,7 +135,7 @@ class UploadService:
             supabase_url = storage_service.upload_file(csv_path, supabase_path)
 
             # Persist metadata
-            uploaded_at = datetime.utcnow()
+            uploaded_at = now_ist()
             metadata = UploadMetadata(
                 upload_id=upload_id,
                 case_id=case_id,
@@ -226,7 +226,7 @@ class UploadService:
             supabase_url = storage_service.upload_file(csv_path, supabase_path)
 
             # 7. Persist metadata
-            uploaded_at = datetime.utcnow()
+            uploaded_at = now_ist()
             metadata = UploadMetadata(
                 upload_id=upload_id,
                 case_id=case_id,

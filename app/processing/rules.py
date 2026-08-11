@@ -10,6 +10,7 @@ from typing import Any, Optional, Tuple
 from uuid import UUID
 
 from app.contracts.enums import CallType
+from app.utils.datetime_utils import now_ist
 from app.contracts.subscriber import SubscriberEventRecord
 
 
@@ -59,7 +60,7 @@ class TimestampRule(ProcessingRule):
         if not record.timestamp:
             return False, "error", "Timestamp is missing", None
 
-        now = datetime.now(timezone.utc) if record.timestamp.tzinfo else datetime.now()
+        now = datetime.now(timezone.utc) if record.timestamp.tzinfo else now_ist()
         skew_limit = now + timedelta(seconds=self.clock_skew_seconds)
 
         if record.timestamp > skew_limit:

@@ -78,13 +78,13 @@ export function NotificationDrawer({
                   </button>
                 )}
                 <button onClick={onClose} className="rounded-lg p-1.5 hover:bg-surface-100 dark:hover:bg-surface-700 transition-colors">
-                  <X className="h-4 w-4 text-surface-500" />
+                  <X className="h-4 w-4 text-surface-500 dark:text-surface-400" />
                 </button>
               </div>
             </div>
 
             {/* List */}
-            <div className="flex-1 overflow-y-auto scrollbar-thin">
+            <div className="flex-1 overflow-y-auto">
               {notifications.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full gap-3 text-surface-400">
                   <Bell className="h-8 w-8 opacity-30" />

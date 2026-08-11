@@ -31,6 +31,16 @@ async def upload_telecom_file(
     """
     logger.info("api_upload_request_received", filename=file.filename, case_id=case_id)
 
+    # Validate case exists
+    from app.database.repository import TelecomRepository
+    repo = TelecomRepository(db)
+    case = await repo.get_case_by_id(case_id)
+    if not case:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Case '{case_id}' not found. Create the case before uploading files.",
+        )
+
     service = UploadService(db)
 
     try:
@@ -42,7 +52,7 @@ async def upload_telecom_file(
         return response_data
 
     except ValueError as ex:
-        logger.warn("api_upload_validation_failed", error=str(ex))
+        logger.warning("api_upload_validation_failed", error=str(ex))
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(ex))
     except PermissionError as ex:
         logger.error("api_upload_permission_denied", error=str(ex))
@@ -78,12 +88,26 @@ async def upload_multiple_files(
     """
     logger.info("api_multipart_upload_request", case_id=case_id, file_count=len(files))
 
+    # Debug: log received form fields
+    for i, f in enumerate(files):
+        logger.info(f"upload_file_{i}", filename=f.filename, content_type=f.content_type, size=f.size)
+
     # Enforce max files per upload
     MAX_FILES = 10
     if len(files) > MAX_FILES:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Maximum {MAX_FILES} files per upload. You uploaded {len(files)}.",
+        )
+
+    # Validate case exists
+    from app.database.repository import TelecomRepository
+    repo = TelecomRepository(db)
+    case = await repo.get_case_by_id(case_id)
+    if not case:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Case '{case_id}' not found. Create the case before uploading files.",
         )
 
     service = UploadService(db)
@@ -105,7 +129,7 @@ async def upload_multiple_files(
         }
 
     except ValueError as ex:
-        logger.warn("api_upload_validation_failed", error=str(ex))
+        logger.warning("api_upload_validation_failed", error=str(ex))
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(ex))
     except Exception as ex:
         logger.error("api_upload_unexpected_failure", error=str(ex))

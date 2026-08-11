@@ -77,7 +77,7 @@ export interface GeoJSONPoint {
     signal_strength?: number
     color?: string
     label?: string
-    [key: string]: any
+    [key: string]: unknown
   }
 }
 
@@ -158,11 +158,6 @@ export interface HealthStatus {
 
 // ── Theme ──────────────────────────────────────────────────
 export type Theme = 'light' | 'dark'
-
-export interface ThemeContextType {
-  theme: Theme
-  toggleTheme: () => void
-}
 
 // ── Settings ───────────────────────────────────────────────
 export interface Settings {
@@ -318,7 +313,7 @@ export interface TimelineEvent {
   type: string
   description: string
   title?: string
-  [key: string]: any
+  [key: string]: unknown
 }
 
 export type TimelineEventType = string
@@ -334,7 +329,14 @@ export interface LocalizationResult {
   residual_rms?: number
   velocity_east?: number
   velocity_north?: number
-  [key: string]: any
+  raw_latitude?: number
+  raw_longitude?: number
+  velocity_m_s?: number
+  clock_bias_meters?: number
+  adaptive_R_scale?: number
+  algorithm_used?: string
+  geojson_heatmap?: unknown
+  [key: string]: unknown
 }
 
 export interface PathPoint {
@@ -345,7 +347,7 @@ export interface PathPoint {
   accuracy_meters?: number
   algorithm?: string
   confidence?: number
-  [key: string]: any
+  [key: string]: unknown
 }
 
 export interface LiveTrackingData {
@@ -419,20 +421,43 @@ export interface ForensicReport {
   id?: string
   case_id?: string
   title?: string
-  summary?: any
+  summary?: {
+    fix_count?: number
+    subscriber_count?: number
+    message?: string
+    time_span?: { earliest?: string; latest?: string }
+  }
   status?: string
   format?: string
   created_at?: string | Date
   file_size?: number
   report_id?: string
   generated_at?: string | Date
-  methodology?: any
+  methodology?: {
+    algorithm?: string
+    ta_band_model?: string
+    sector_wedge_model?: string
+    confidence_level?: number
+  }
   fix_count?: number
   subscriber_count?: number
-  subscribers?: Array<{ id: string; name: string; [key: string]: any }>
-  confidence_level?: any
-  algorithm?: any
-  [key: string]: any
+  subscribers?: Array<{
+    subscriber_identifier: string
+    fix_count: number
+    first_seen?: string
+    last_seen?: string
+    centroid?: { latitude: number; longitude: number }
+    bounds?: {
+      min_latitude: number
+      max_latitude: number
+      min_longitude: number
+      max_longitude: number
+    }
+    confidence?: { mean_meters: number; min_meters?: number; max_meters?: number }
+  }>
+  confidence_level?: number
+  algorithm?: string
+  [key: string]: unknown
 }
 
 // Fix Notification to include timestamp and investigation_id
@@ -446,7 +471,7 @@ export interface Notification {
   read?: boolean
   createdAt?: Date | string
   timestamp?: string
-  [key: string]: any
+  [key: string]: unknown
 }
 
 // SocketEventType - any string (socket.io events are dynamic)

@@ -5,7 +5,6 @@ Provides JSON formatting for production environments and colored prints for loca
 
 import logging
 import sys
-from typing import Any
 
 import structlog
 from structlog.types import EventDict, Processor

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'motion/react'
 import { Plus, Search, FolderOpen, ChevronRight, RefreshCw, AlertCircle } from 'lucide-react'
@@ -27,24 +27,38 @@ export default function InvestigationsPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const fetchCases = async () => {
-    setIsLoading(true)
+  const fetchCases = useCallback(async () => {
+    const res = await investigationApi.list()
+    return Array.isArray(res) ? res : res?.items ?? []
+  }, [])
+
+  const refresh = useCallback(() => {
     setError(null)
-    try {
-      const res = await investigationApi.list()
-      const rawItems = Array.isArray(res) ? res : res?.items ?? []
-      setCases(rawItems)
-    } catch (err: unknown) {
-      setError((err as Error)?.message || 'Failed to fetch cases from backend')
-      setCases([])
-    } finally {
-      setIsLoading(false)
-    }
-  }
+    setIsLoading(true)
+    fetchCases()
+      .then((items) => setCases(items))
+      .catch((err: unknown) => {
+        setError((err as Error)?.message || 'Failed to fetch cases from backend')
+        setCases([])
+      })
+      .finally(() => setIsLoading(false))
+  }, [fetchCases])
 
   useEffect(() => {
+    let ignore = false
     fetchCases()
-  }, [])
+      .then((items) => { if (!ignore) setCases(items) })
+      .catch((err: unknown) => {
+        if (!ignore) {
+          setError((err as Error)?.message || 'Failed to fetch cases from backend')
+          setCases([])
+        }
+      })
+      .finally(() => { if (!ignore) setIsLoading(false) })
+    return () => {
+      ignore = true
+    }
+  }, [fetchCases])
 
   const filtered = cases.filter((inv) => {
     const matchesTab = activeTab === 'All' || inv.status === activeTab
@@ -62,10 +76,10 @@ export default function InvestigationsPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-xl font-bold text-surface-900 dark:text-surface-100">Investigations</h1>
-          <p className="text-sm text-surface-500">{cases.length} total cases</p>
+          <p className="text-sm text-surface-500 dark:text-surface-400">{cases.length} total cases</p>
         </div>
         <div className="flex items-center gap-3">
-          <Button variant="secondary" size="md" icon={<RefreshCw className="h-4 w-4" />} onClick={fetchCases}>
+          <Button variant="secondary" size="md" icon={<RefreshCw className="h-4 w-4" />} onClick={refresh}>
             Refresh
           </Button>
           <Button variant="primary" size="md" icon={<Plus className="h-4 w-4" />} onClick={() => navigate('/investigations/new')}>
@@ -84,7 +98,7 @@ export default function InvestigationsPage() {
               <p className="text-xs">{error}</p>
             </div>
           </div>
-          <Button variant="secondary" size="sm" icon={<RefreshCw className="h-4 w-4" />} onClick={fetchCases}>
+          <Button variant="secondary" size="sm" icon={<RefreshCw className="h-4 w-4" />} onClick={refresh}>
             Retry
           </Button>
         </div>
@@ -169,7 +183,7 @@ export default function InvestigationsPage() {
                         {inv.status}
                       </Badge>
                     </div>
-                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-surface-500">
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-surface-500 dark:text-surface-400">
                       <span>Case Ref: {inv.case_number || inv.id}</span>
                       <span>Target: {inv.suspect_name || 'N/A'}</span>
                       <span>By: {inv.created_by || 'Officer'}</span>
@@ -178,7 +192,7 @@ export default function InvestigationsPage() {
 
                   {/* Tracking status + timestamp */}
                   <div className="hidden sm:flex flex-col items-end gap-1.5 shrink-0">
-                    <span className={cn('text-xs font-medium', TRACKING_STATUS_COLORS[inv.tracking_status] || 'text-surface-500')}>
+                    <span className={cn('text-xs font-medium', TRACKING_STATUS_COLORS[inv.tracking_status] || 'text-surface-500 dark:text-surface-400')}>
                       {inv.tracking_status === 'Live' && (
                         <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-green-400 animate-ping-slow" />
                       )}

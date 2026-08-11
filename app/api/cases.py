@@ -32,7 +32,7 @@ def _fixes_to_geojson(fixes: list[Any]) -> dict[str, Any]:
     """
     Serializes stored LocalizationFixModel rows into a GeoJSON FeatureCollection.
     """
-    from datetime import datetime, timezone
+    from app.utils.datetime_utils import now_ist
 
     features = []
     for fix in fixes:
@@ -61,7 +61,7 @@ def _fixes_to_geojson(fixes: list[Any]) -> dict[str, Any]:
         "metadata": {
             "case_id": fixes[0].case_id if fixes else None,
             "fix_count": len(fixes),
-            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "generated_at": now_ist().isoformat(),
         },
     }
 
@@ -79,10 +79,10 @@ async def create_case(
     Registers a new investigation case. Cases are lightweight identifiers;
     actual data is associated when files are uploaded with this case_id.
     """
-    from datetime import datetime, timezone
+    from app.utils.datetime_utils import now_ist
     from app.database.models.telecom import CaseModel
 
-    now = datetime.now(timezone.utc)
+    now = now_ist()
 
     case = CaseModel(
         case_id=body.case_number,

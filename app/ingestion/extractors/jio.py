@@ -102,7 +102,7 @@ class JioExtractor(BaseExtractor):
         # 2. Find header
         headers, header_idx = self._find_header(preview_rows)
         if not headers:
-            logger.warn("extraction_completed", count=0, reason="headers_not_found")
+            logger.warning("extraction_completed", count=0, reason="headers_not_found")
             return []
 
         source_file = os.path.basename(file_path)
@@ -119,7 +119,7 @@ class JioExtractor(BaseExtractor):
         # 3. Process data rows in a streaming fashion
         for idx, row in enumerate(data_rows_generator(), start=1):
             if len(row) < len(headers):
-                logger.warn("row_skipped", row_number=idx, reason="column_count_mismatch")
+                logger.warning("row_skipped", row_number=idx, reason="column_count_mismatch")
                 skipped_count += 1
                 continue
 
@@ -129,7 +129,7 @@ class JioExtractor(BaseExtractor):
                 records.append(record)
                 logger.debug("row_parsed", row_number=idx, event_id=str(record.event_id))
             except Exception as e:
-                logger.warn("row_skipped", row_number=idx, reason=str(e))
+                logger.warning("row_skipped", row_number=idx, reason=str(e))
                 skipped_count += 1
                 continue
 

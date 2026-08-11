@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'motion/react'
 import {
-  FolderOpen, Clock, CheckCircle, Upload, Radio, FileText,
+  FolderOpen, CheckCircle, Upload, Radio, FileText,
   Plus, ArrowRight, Activity, AlertCircle, RefreshCw,
 } from 'lucide-react'
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
@@ -34,6 +34,15 @@ const StatCard = ({
   </motion.div>
 )
 
+const DEFAULT_STATS: DashboardStats = {
+  total_cases: 0,
+  total_uploads: 0,
+  total_measurements: 0,
+  total_towers: 0,
+  active_cases: 0,
+  completed_cases: 0,
+}
+
 export default function DashboardPage() {
   const navigate = useNavigate()
 
@@ -42,46 +51,52 @@ export default function DashboardPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const fetchData = async () => {
-    setIsLoading(true)
-    setError(null)
-    try {
-      const [statsRes, casesRes] = await Promise.allSettled([
-        investigationApi.getDashboardStats(),
-        investigationApi.list(),
-      ])
+  const load = useCallback(async () => {
+    const [statsRes, casesRes] = await Promise.allSettled([
+      investigationApi.getDashboardStats(),
+      investigationApi.list(),
+    ])
 
-      if (statsRes.status === 'fulfilled') {
-        setStats(statsRes.value)
-      } else {
-        setStats({
-          active_cases: 0,
-          pending_cases: 0,
-          completed_cases: 0,
-          todays_uploads: 0,
-          active_tracking_sessions: 0,
-          reports_generated: 0,
-        } as any)
-      }
-
-      if (casesRes.status === 'fulfilled') {
-        const rawItems = Array.isArray(casesRes.value)
-          ? casesRes.value
-          : casesRes.value?.items ?? []
-        setCases(rawItems)
-      } else {
-        setCases([])
-      }
-    } catch (err: unknown) {
-      setError((err as Error)?.message || 'Failed to connect to backend server.')
-    } finally {
-      setIsLoading(false)
+    return {
+      stats: statsRes.status === 'fulfilled' ? statsRes.value : DEFAULT_STATS,
+      cases: casesRes.status === 'fulfilled'
+        ? (Array.isArray(casesRes.value) ? casesRes.value : casesRes.value?.items ?? [])
+        : [],
     }
-  }
+  }, [])
+
+  const refresh = useCallback(() => {
+    setError(null)
+    setIsLoading(true)
+    load()
+      .then(({ stats, cases }) => {
+        setStats(stats)
+        setCases(cases)
+      })
+      .catch((err: unknown) => {
+        setError((err as Error)?.message || 'Failed to connect to backend server.')
+      })
+      .finally(() => setIsLoading(false))
+  }, [load])
 
   useEffect(() => {
-    fetchData()
-  }, [])
+    let ignore = false
+    load()
+      .then(({ stats, cases }) => {
+        if (ignore) return
+        setStats(stats)
+        setCases(cases)
+      })
+      .catch((err: unknown) => {
+        if (!ignore) setError((err as Error)?.message || 'Failed to connect to backend server.')
+      })
+      .finally(() => {
+        if (!ignore) setIsLoading(false)
+      })
+    return () => {
+      ignore = true
+    }
+  }, [load])
 
   const hour = new Date().getHours()
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
@@ -94,7 +109,7 @@ export default function DashboardPage() {
           <h1 className="text-xl font-bold text-surface-900 dark:text-surface-100">
             {greeting}, Officer
           </h1>
-          <p className="text-sm text-surface-500">
+          <p className="text-sm text-surface-500 dark:text-surface-400">
             {new Date().toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
           </p>
         </div>
@@ -128,7 +143,7 @@ export default function DashboardPage() {
               <p className="text-xs text-red-600 dark:text-red-400">{error}</p>
             </div>
           </div>
-          <Button variant="secondary" size="sm" icon={<RefreshCw className="h-4 w-4" />} onClick={fetchData}>
+          <Button variant="secondary" size="sm" icon={<RefreshCw className="h-4 w-4" />} onClick={refresh}>
             Retry
           </Button>
         </div>
@@ -206,7 +221,7 @@ export default function DashboardPage() {
                           </Badge>
                         </td>
                         <td className="py-3 pr-4">
-                          <span className={cn('text-xs font-medium', TRACKING_STATUS_COLORS[inv.tracking_status] || 'text-surface-500')}>
+                          <span className={cn('text-xs font-medium', TRACKING_STATUS_COLORS[inv.tracking_status] || 'text-surface-500 dark:text-surface-400')}>
                             {inv.tracking_status === 'Live' && <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-green-400 animate-ping-slow" />}
                             {inv.tracking_status}
                           </span>

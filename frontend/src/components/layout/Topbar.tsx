@@ -1,6 +1,6 @@
 import { useNavigate, useLocation } from 'react-router-dom'
 import { Bell, Sun, Moon, Menu, ChevronRight, Home } from 'lucide-react'
-import { useThemeContext } from '@/contexts/ThemeContext'
+import { useThemeContext } from '@/hooks/useThemeContext'
 import { cn } from '@/utils'
 
 interface TopbarProps {

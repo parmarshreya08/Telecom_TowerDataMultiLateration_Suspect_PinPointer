@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 import re
 from typing import Any
 
+from app.utils.datetime_utils import now_ist
+
 
 class ValidationRule(ABC):
     """
@@ -89,7 +91,7 @@ class PastOrPresentTimestampRule(ValidationRule):
         if not isinstance(field_value, datetime):
             return False
         # Treat naive datetime as system timezone or convert to UTC
-        now = datetime.now(timezone.utc) if field_value.tzinfo else datetime.now()
+        now = datetime.now(timezone.utc) if field_value.tzinfo else now_ist()
         return field_value <= now
 
     @property

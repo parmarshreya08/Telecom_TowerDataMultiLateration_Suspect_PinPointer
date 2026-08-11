@@ -12,7 +12,7 @@ export default function NotFoundPage() {
       <div>
         <h1 className="text-6xl font-bold text-primary-600">404</h1>
         <p className="mt-3 text-lg font-semibold text-surface-900 dark:text-surface-100">Page Not Found</p>
-        <p className="mt-2 text-sm text-surface-500">This route doesn't exist or you don't have access.</p>
+        <p className="mt-2 text-sm text-surface-500 dark:text-surface-400">This route doesn't exist or you don't have access.</p>
       </div>
       <Button variant="primary" size="lg" icon={<ArrowLeft className="h-4 w-4" />} onClick={() => navigate('/dashboard')}>
         Return to Dashboard
