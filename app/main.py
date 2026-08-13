@@ -6,11 +6,12 @@ Initializes FastAPI, configures routers, configures documentation, and manages l
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import cases_router, exports_router, files_router, health_router, upload_router
+from app.api import auth_router, cases_router, exports_router, files_router, health_router, upload_router
 from app.core.config import settings
+from app.core.deps import get_current_officer
 from app.core.logging import logger, setup_logging
 from app.database.session import check_database_connection
 
@@ -75,9 +76,20 @@ app.add_middleware(
 )
 
 # Include API endpoints
+# Auth router is public
+app.include_router(auth_router)
+
+# Protected routers - require authentication
+app.include_router(upload_router, dependencies=[Depends(get_current_officer)])
+app.include_router(cases_router, dependencies=[Depends(get_current_officer)])
+app.include_router(exports_router, dependencies=[Depends(get_current_officer)])
+app.include_router(files_router, dependencies=[Depends(get_current_officer)])
+
+# Health check stays public
 app.include_router(health_router)
-app.include_router(upload_router)
-app.include_router(cases_router)
-app.include_router(exports_router)
-app.include_router(files_router)
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("app.main:app", host=settings.HOST, port=settings.PORT, reload=settings.DEBUG)
 

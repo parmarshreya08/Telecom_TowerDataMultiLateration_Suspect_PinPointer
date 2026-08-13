@@ -64,8 +64,6 @@ active/
 .env
 .env.*
 !.env.example
-uploads/*
-!uploads/.gitkeep
 logs/*
 !logs/.gitkeep
 

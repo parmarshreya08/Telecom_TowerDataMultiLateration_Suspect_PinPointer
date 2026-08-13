@@ -20,6 +20,20 @@ def now_ist() -> datetime:
     return datetime.now(IST).replace(tzinfo=None)
 
 
+def parse_iso_datetime_naive(value: str) -> datetime:
+    """
+    Parses an ISO-8601 string and normalizes to a naive IST datetime.
+
+    Query filters (start/end) may arrive with a timezone suffix ("Z",
+    "+05:30"); the DB stores naive IST timestamps, so an aware bound would
+    crash asyncpg. Aware input is converted to IST then stripped.
+    """
+    dt = datetime.fromisoformat(value)
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(IST).replace(tzinfo=None)
+    return dt
+
+
 def parse_telecom_datetime(value: Any) -> datetime:
     """
     Parses various date-time format strings extracted from operator logs.

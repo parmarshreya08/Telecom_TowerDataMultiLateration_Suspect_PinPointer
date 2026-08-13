@@ -99,6 +99,26 @@ export interface Tower {
   site_address?: string
 }
 
+export interface RttTowerObservation {
+  cgi: string
+  latitude: number
+  longitude: number
+  azimuth?: number | null
+  beamwidth?: number | null
+  radius_meters: number
+  timing_advance?: number | null
+  rtt?: number | null
+  signal_strength?: number | null
+}
+
+export interface RttObservation {
+  frame_id: string
+  upload_id: string
+  subscriber_identifier: string
+  timestamp: string
+  towers: RttTowerObservation[]
+}
+
 export interface TowerRecord {
   tower_id: string
   operator: string
@@ -148,6 +168,21 @@ export interface ApiError {
   success: boolean
   message: string
   error?: string
+}
+
+// ── Auth ───────────────────────────────────────────────────
+export interface Officer {
+  officer_id: string
+  officer_name: string
+  email: string
+  created_at: string
+}
+
+export interface AuthResponse {
+  access_token: string
+  token_type: string
+  expires_in: number
+  officer: Officer
 }
 
 export interface HealthStatus {

@@ -117,7 +117,16 @@ class IngestQueue:
                         towers = [r for r in normalized if isinstance(r, TowerRecord)]
                         await repo.save_tower_records(towers)
                     else:
-                        events = [r for r in raw_rows if isinstance(r, SubscriberEventRecord)]
+                        if source_type == SourceType.SPOT_DUMP:
+                            validator = IngestionValidator()
+                            valid_rows = validator.validate_raw_records(raw_rows, source_type.value)
+                            normalizer = TelecomNormalizer()
+                            normalized = normalizer.normalize_records(
+                                valid_rows, operator_str, source_type.value, upload_id, upload.original_filename
+                            )
+                            events = [r for r in normalized if isinstance(r, SubscriberEventRecord)]
+                        else:
+                            events = [r for r in raw_rows if isinstance(r, SubscriberEventRecord)]
                         await repo.save_subscriber_events(events)
                         tower_lookup = TowerLookupService(db_session)
                         builder = MeasurementFrameBuilder(tower_lookup)

@@ -34,6 +34,7 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ caseId, onUploadComp
     batchDelete,
     reinitialize,
     retryFile,
+    uploadQueue,
   } = useFileUpload({
     caseId,
     onComplete: onUploadComplete,
@@ -173,6 +174,26 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ caseId, onUploadComp
       {error && (
         <div className="rounded-md border border-danger-light bg-danger-light/50 p-3 dark:border-danger-800 dark:bg-danger-900/20">
           <p className="text-sm text-danger-dark dark:text-red-300">{error}</p>
+        </div>
+      )}
+
+      {uploadQueue.length > 0 && (
+        <div className="space-y-1">
+          {uploadQueue.map((r, i) => (
+            <div
+              key={`queue-${i}`}
+              className="flex items-center gap-3 rounded-md border border-surface-200 p-3 dark:border-surface-700"
+            >
+              <span className="text-sm font-medium text-surface-700 dark:text-surface-200">{r.filename}</span>
+              {r.status === 'uploaded' ? (
+                <span className="badge badge-success">Uploaded</span>
+              ) : (
+                <span className="badge badge-danger">{r.status}</span>
+              )}
+              {r.message && <span className="text-xs text-surface-500 dark:text-surface-400">{r.message}</span>}
+              {r.reason && <span className="text-xs text-danger dark:text-red-300">{r.reason}</span>}
+            </div>
+          ))}
         </div>
       )}
 

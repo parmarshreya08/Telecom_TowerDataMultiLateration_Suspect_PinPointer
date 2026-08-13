@@ -16,7 +16,10 @@ from app.utils.datetime_utils import now_ist
 def generate_csv(fixes: list[Any], case_id: str) -> str:
     """
     Generates a CSV string from localization fixes.
+    Includes a reverse-geocoded area label per fix.
     """
+    from app.services.geocoder import reverse_geocode
+
     buf = io.StringIO()
     writer = csv.writer(buf)
     writer.writerow([
@@ -24,7 +27,7 @@ def generate_csv(fixes: list[Any], case_id: str) -> str:
         "confidence_radius_meters", "gdop", "residual_rms",
         "velocity_east", "velocity_north",
         "ta_inner_m", "ta_outer_m", "rss_i_dbm",
-        "subscriber_identifier",
+        "subscriber_identifier", "geocoded_area",
     ])
     for f in fixes:
         writer.writerow([
@@ -41,6 +44,7 @@ def generate_csv(fixes: list[Any], case_id: str) -> str:
             f.ta_outer_m or "",
             f.rss_i_dbm or "",
             f.subscriber_identifier,
+            reverse_geocode(f.latitude, f.longitude),
         ])
     return buf.getvalue()
 
@@ -160,6 +164,8 @@ def generate_pdf(fixes: list[Any], case_id: str, report_data: dict[str, Any]) ->
         PageBreak,
         HRFlowable,
     )
+
+    from app.services.geocoder import reverse_geocode
 
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -304,7 +310,7 @@ def generate_pdf(fixes: list[Any], case_id: str, report_data: dict[str, Any]) ->
     # ── Fixes table ──
     elements.append(Paragraph("5. Localization Fixes (Detailed)", heading_style))
 
-    header = ["#", "Timestamp", "Latitude", "Longitude", "Accuracy (m)", "GDOP", "RMS"]
+    header = ["#", "Timestamp", "Latitude", "Longitude", "Accuracy (m)", "GDOP", "RMS", "Area"]
     table_data = [header]
     for i, f in enumerate(fixes[:100], 1):  # cap at 100 rows for PDF readability
         table_data.append([
@@ -315,12 +321,13 @@ def generate_pdf(fixes: list[Any], case_id: str, report_data: dict[str, Any]) ->
             f"{f.confidence_radius_meters:.1f}",
             f"{f.gdop:.2f}" if f.gdop else "—",
             f"{f.residual_rms:.4f}" if f.residual_rms else "—",
+            reverse_geocode(f.latitude, f.longitude),
         ])
 
     if len(fixes) > 100:
-        table_data.append(["...", f"{len(fixes) - 100} more fixes", "", "", "", "", ""])
+        table_data.append(["...", f"{len(fixes) - 100} more fixes", "", "", "", "", "", ""])
 
-    fixes_table = Table(table_data, colWidths=[1 * cm, 3.5 * cm, 2.2 * cm, 2.2 * cm, 2 * cm, 1.5 * cm, 1.8 * cm])
+    fixes_table = Table(table_data, colWidths=[1 * cm, 3.5 * cm, 2.2 * cm, 2.2 * cm, 2 * cm, 1.5 * cm, 1.8 * cm, 3.5 * cm])
     fixes_table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1a1a2e")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),

@@ -27,19 +27,6 @@ MIME_TYPE_MAP = {
 }
 
 
-def create_upload_directory(directory_path: str) -> None:
-    """
-    Creates the directory path recursively if it does not already exist.
-    """
-    if not os.path.exists(directory_path):
-        try:
-            os.makedirs(directory_path, exist_ok=True)
-            logger.info("upload_directory_created", path=directory_path)
-        except Exception as e:
-            logger.error("failed_to_create_upload_directory", path=directory_path, error=str(e))
-            raise
-
-
 def safe_filename(original_name: str) -> str:
     """
     Generates a unique secure stored filename based on UUID, preserving original extension.

@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Any, Optional
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -248,9 +248,12 @@ class TelecomRepository:
             ]
             self.session.add_all(tower_models)
 
-    async def get_frames_by_case(self, case_id: str) -> list[MeasurementFrame]:
+    async def get_frames_by_case(
+        self, case_id: str, upload_ids: Optional[list] = None
+    ) -> list[MeasurementFrame]:
         """
-        Loads all MeasurementFrames (with their towers) belonging to an investigation case.
+        Loads all MeasurementFrames (with their towers) belonging to an investigation case,
+        optionally filtered to a subset of upload_ids (file selection).
         """
         stmt = (
             select(MeasurementFrameModel)
@@ -258,6 +261,8 @@ class TelecomRepository:
             .where(UploadMetadataModel.case_id == case_id)
             .order_by(MeasurementFrameModel.timestamp)
         )
+        if upload_ids:
+            stmt = stmt.where(MeasurementFrameModel.upload_id.in_(upload_ids))
         result = await self.session.execute(stmt)
         models = result.scalars().all()
 
@@ -328,6 +333,20 @@ class TelecomRepository:
             for f in fixes
         ]
         self.session.add_all(models)
+
+    async def delete_localization_fixes(self, case_id: str, frame_ids: list[str]) -> None:
+        """
+        Removes existing fixes for a case whose frames are being re-localized,
+        making re-runs idempotent instead of accumulating duplicates.
+        """
+        if not frame_ids:
+            return
+        await self.session.execute(
+            delete(LocalizationFixModel).where(
+                LocalizationFixModel.case_id == case_id,
+                LocalizationFixModel.frame_id.in_(frame_ids),
+            )
+        )
 
     async def get_localization_fixes(
         self,
@@ -590,11 +609,13 @@ class TelecomRepository:
 
     async def delete_upload(self, upload_id: UUID) -> bool:
         """
-        Deletes a single upload record.
+        Deletes a single upload record and all dependent pipeline data
+        (events, frames, towers, and their localization fixes).
         """
         upload = await self.get_upload_by_id(upload_id)
         if not upload:
             return False
+        await self._delete_pipeline_data(upload_id)
         await self.session.delete(upload)
         await self.session.flush()
         return True
@@ -607,9 +628,43 @@ class TelecomRepository:
         uploads = await self.get_uploads_by_case(case_id)
         count = len(uploads)
         for upload in uploads:
+            await self._delete_pipeline_data(upload.upload_id)
             await self.session.delete(upload)
         await self.session.flush()
         return count
+
+    async def _delete_pipeline_data(self, upload_id: UUID) -> None:
+        """
+        Removes subscriber events, measurement frames + towers, and the
+        localization fixes derived from those frames for a given upload.
+        Prevents orphaned rows when files are deleted or a case is reinitialized.
+        """
+        frame_stmt = select(MeasurementFrameModel.frame_id).where(
+            MeasurementFrameModel.upload_id == upload_id
+        )
+        frame_ids = list((await self.session.execute(frame_stmt)).scalars().all())
+
+        await self.session.execute(
+            delete(SubscriberEventRecordModel).where(
+                SubscriberEventRecordModel.upload_id == upload_id
+            )
+        )
+        await self.session.execute(
+            delete(MeasurementTowerModel).where(
+                MeasurementTowerModel.upload_id == upload_id
+            )
+        )
+        if frame_ids:
+            await self.session.execute(
+                delete(LocalizationFixModel).where(
+                    LocalizationFixModel.frame_id.in_(frame_ids)
+                )
+            )
+        await self.session.execute(
+            delete(MeasurementFrameModel).where(
+                MeasurementFrameModel.upload_id == upload_id
+            )
+        )
 
     async def get_uploads_by_status(
         self, case_id: str, status: str

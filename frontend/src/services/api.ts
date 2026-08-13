@@ -16,6 +16,7 @@ import type {
   UploadResult,
   BatchUploadResponse,
   FileListResponse,
+  RttObservation,
 } from '@/types'
 
 export const apiClient = axios.create({
@@ -24,18 +25,34 @@ export const apiClient = axios.create({
   headers: { 'Content-Type': 'application/json' },
 })
 
-// Request interceptor — strip Content-Type for FormData (let browser set boundary)
+// Request interceptor — attach Bearer token + strip Content-Type for FormData
 apiClient.interceptors.request.use((config) => {
+  const token = localStorage.getItem('erakshak_access_token')
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`
+  }
   if (config.data instanceof FormData) {
     delete config.headers['Content-Type']
   }
   return config
 })
 
-// Response interceptor
+// Response interceptor — on 401 (except auth endpoints), clear session + go to login
 apiClient.interceptors.response.use(
   (response) => response,
-  (error) => Promise.reject(error)
+  (error) => {
+    const status = error?.response?.status
+    const url = error?.config?.url ?? ''
+    const isAuthCall = url.startsWith('/api/auth/')
+    if (status === 401 && !isAuthCall && !url.endsWith('/login')) {
+      localStorage.removeItem('erakshak_access_token')
+      localStorage.removeItem('erakshak_officer')
+      if (!window.location.pathname.startsWith('/login')) {
+        window.location.href = '/login'
+      }
+    }
+    return Promise.reject(error)
+  }
 )
 
 // Health
@@ -155,21 +172,42 @@ export const investigationApi = {
 
 // Tracking / Localization
 export const trackingApi = {
-  runLocalization: (caseId: string) =>
+  runLocalization: (caseId: string, uploadIds: string[] = []) =>
     apiClient
       .post<{ case_id: string; fix_count: number; geojson: GeoJSONFeatureCollection }>(
-        `/api/case/${caseId}/localize`
+        `/api/case/${caseId}/localize`,
+        undefined,
+        {
+          params: { geocode: 'true', upload_ids: uploadIds },
+          paramsSerializer: { indexes: null },
+        }
       )
       .then((r) => r.data),
 
   getGeoJSON: (caseId: string, start?: string, end?: string) => {
-    const params: Record<string, string> = {}
+    const params: Record<string, string> = { geocode: 'true' }
     if (start) params.start = start
     if (end) params.end = end
     return apiClient
       .get<GeoJSONFeatureCollection>(`/api/case/${caseId}/localize/geojson`, { params })
       .then((r) => r.data)
   },
+
+  getHeatmap: (caseId: string, start?: string, end?: string) => {
+    const params: Record<string, string> = {}
+    if (start) params.start = start
+    if (end) params.end = end
+    return apiClient
+      .get<GeoJSONFeatureCollection>(`/api/case/${caseId}/heatmap`, { params })
+      .then((r) => r.data)
+  },
+
+  getRttObservations: (caseId: string) =>
+    apiClient
+      .get<{ case_id: string; observations: RttObservation[]; total: number }>(
+        `/api/case/${caseId}/rtt-observations`
+      )
+      .then((r) => r.data),
 
   getCaseUploads: (caseId: string) =>
     apiClient

@@ -2,9 +2,12 @@ import { lazy, Suspense } from 'react'
 import { Routes, Route } from 'react-router-dom'
 import { AppLayout } from '@/layouts/AppLayout'
 import { PageLoader } from '@/components/ui/PageLoader'
+import { RequireAuth } from '@/components/auth/RequireAuth'
 
 // Lazy-loaded pages
 const LandingPage      = lazy(() => import('@/pages/LandingPage'))
+const LoginPage        = lazy(() => import('@/pages/LoginPage'))
+const RegisterPage     = lazy(() => import('@/pages/RegisterPage'))
 const DashboardPage    = lazy(() => import('@/pages/DashboardPage'))
 const InvestigationsPage = lazy(() => import('@/pages/InvestigationsPage'))
 const NewInvestigationPage = lazy(() => import('@/pages/NewInvestigationPage'))
@@ -23,7 +26,10 @@ export function AppRoutes() {
       <Routes>
         <Route path="/" element={<LandingPage />} />
 
-        <Route element={<AppLayout />}>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
+
+        <Route element={<RequireAuth><AppLayout /></RequireAuth>}>
           <Route path="/dashboard"       element={<DashboardPage />} />
           <Route path="/investigations"  element={<InvestigationsPage />} />
           <Route path="/investigations/new" element={<NewInvestigationPage />} />

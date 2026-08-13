@@ -4,9 +4,10 @@ import {
   Share2, Download, FileText, Map, Globe,
   Navigation, Radio, Wifi, WifiOff, Clock,
   ArrowLeft, Crosshair, PlayCircle, RefreshCw, AlertCircle,
-  Copy, Check,
+  Copy, Check, Play, Pause,
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
+import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
 import { InvestigationMap } from '@/components/map/InvestigationMap'
 import { ShareLocationModal } from '@/components/investigation/ShareLocationModal'
 import {
@@ -15,7 +16,7 @@ import {
 } from '@/utils'
 import { TRACKING_STATUS_COLORS, DEFAULT_MAP_CENTER } from '@/constants'
 import { investigationApi, trackingApi, exportApi } from '@/services/api'
-import type { GeoJSONFeatureCollection, Investigation, TowerRecord } from '@/types'
+import type { GeoJSONFeatureCollection, Investigation, TowerRecord, RttObservation } from '@/types'
 
 interface LocalFix {
   fix_id: string
@@ -32,6 +33,7 @@ interface LocalFix {
   ta_inner_m?: number
   ta_outer_m?: number
   rss_i_dbm?: number
+  geocode?: string
 }
 
 function parseFixes(geo: GeoJSONFeatureCollection, caseId: string): LocalFix[] {
@@ -52,6 +54,7 @@ function parseFixes(geo: GeoJSONFeatureCollection, caseId: string): LocalFix[] {
       ta_inner_m: f.properties?.ta_inner_m != null ? Number(f.properties.ta_inner_m) : undefined,
       ta_outer_m: f.properties?.ta_outer_m != null ? Number(f.properties.ta_outer_m) : undefined,
       rss_i_dbm: f.properties?.rss_i_dbm != null ? Number(f.properties.rss_i_dbm) : undefined,
+      geocode: f.properties?.geocode ? String(f.properties.geocode) : undefined,
     }))
 }
 
@@ -63,6 +66,9 @@ export default function LiveInvestigationPage() {
   const [fixes, setFixes] = useState<LocalFix[]>([])
   const [geojson, setGeojson] = useState<GeoJSONFeatureCollection | null>(null)
   const [towers, setTowers] = useState<TowerRecord[]>([])
+  const [kdeHeatPoints, setKdeHeatPoints] = useState<Array<[number, number, number]>>([])
+  const [rttObservations, setRttObservations] = useState<RttObservation[]>([])
+  const [mode, setMode] = useState<'multilateration' | 'rtt'>('multilateration')
   const [loading, setLoading] = useState(false)
   const [initialLoading, setInitialLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -75,6 +81,29 @@ export default function LiveInvestigationPage() {
   // Time range filter
   const [timeStart, setTimeStart] = useState('')
   const [timeEnd, setTimeEnd] = useState('')
+
+  const loadHeatmap = useCallback(async (start?: string, end?: string) => {
+    if (!id) return []
+    try {
+      const fc = await trackingApi.getHeatmap(id, start || undefined, end || undefined)
+      return (fc.features ?? []).map((f) => {
+        const [lon, lat] = (f.geometry as { coordinates: [number, number] }).coordinates
+        return [lat, lon, Number(f.properties?.weight ?? 0)] as [number, number, number]
+      })
+    } catch {
+      return []
+    }
+  }, [id])
+
+  const loadRttObservations = useCallback(async () => {
+    if (!id) return
+    try {
+      const res = await trackingApi.getRttObservations(id)
+      setRttObservations(res.observations ?? [])
+    } catch {
+      // RTT mode is optional; silence failures so the UI falls back to multilateration.
+    }
+  }, [id])
 
   const loadCaseData = useCallback(async (start?: string, end?: string) => {
     if (!id) return null
@@ -92,8 +121,9 @@ export default function LiveInvestigationPage() {
     const geo = await trackingApi.getGeoJSON(id, start || undefined, end || undefined).catch(() => null)
 
     const towerData = await trackingApi.listAllTowers().catch(() => ({ towers: [], total: 0 }))
-    return { caseData, geo, towerData }
-  }, [id])
+    const heatmapPoints = await loadHeatmap(start, end)
+    return { caseData, geo, towerData, heatmapPoints }
+  }, [id, loadHeatmap])
 
   const applyLoaded = useCallback((data: NonNullable<Awaited<ReturnType<typeof loadCaseData>>>) => {
     setInvestigation(data.caseData)
@@ -118,6 +148,7 @@ export default function LiveInvestigationPage() {
         site_address: t.site_address,
       })))
     }
+    setKdeHeatPoints(data.heatmapPoints ?? [])
   }, [id])
 
   const runLoad = useCallback((start?: string, end?: string) => {
@@ -211,15 +242,24 @@ export default function LiveInvestigationPage() {
     } finally { setExporting(null) }
   }
 
-  const handleGoogleMapsLink = () => {
-    if (fixes.length === 0) return
-    const center = fixes.length === 1
+  const mapsCenter = () => {
+    if (fixes.length === 0) return null
+    return fixes.length === 1
       ? { lat: fixes[0].latitude, lng: fixes[0].longitude }
       : {
           lat: fixes.reduce((s, f) => s + f.latitude, 0) / fixes.length,
           lng: fixes.reduce((s, f) => s + f.longitude, 0) / fixes.length,
         }
-    const url = `https://www.google.com/maps?q=${center.lat},${center.lng}&z=15`
+  }
+
+  const googleMapsLink = () => {
+    const c = mapsCenter()
+    return c ? `https://www.google.com/maps/search/?api=1&query=${c.lat},${c.lng}` : null
+  }
+
+  const handleGoogleMapsLink = () => {
+    const url = googleMapsLink()
+    if (!url) return
     navigator.clipboard.writeText(url).then(() => {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
@@ -227,17 +267,34 @@ export default function LiveInvestigationPage() {
   }
 
   const openGoogleMaps = () => {
-    if (fixes.length === 0) return
-    const center = fixes.length === 1
-      ? { lat: fixes[0].latitude, lng: fixes[0].longitude }
-      : {
-          lat: fixes.reduce((s, f) => s + f.latitude, 0) / fixes.length,
-          lng: fixes.reduce((s, f) => s + f.longitude, 0) / fixes.length,
-        }
-    window.open(`https://www.google.com/maps?q=${center.lat},${center.lng}&z=15`, '_blank')
+    const url = googleMapsLink()
+    if (url) window.open(url, '_blank')
   }
 
   const latestFix = fixes.length > 0 ? fixes[fixes.length - 1] : null
+
+  // ── Timeline playback scrubber ──
+  const [scrubIdx, setScrubIdx] = useState<number | null>(null)
+  const [playing, setPlaying] = useState(false)
+  const activeFix = scrubIdx != null && fixes[scrubIdx] ? fixes[scrubIdx] : latestFix
+
+  useEffect(() => {
+    if (!playing) return
+    const timer = setInterval(() => {
+      setScrubIdx((i) => {
+        if (i == null) return 0
+        return i + 1 < fixes.length ? i + 1 : i
+      })
+    }, 600)
+    return () => clearInterval(timer)
+  }, [playing, fixes.length])
+
+  useEffect(() => {
+    if (scrubIdx != null && scrubIdx >= fixes.length - 1) setPlaying(false)
+  }, [scrubIdx, fixes.length])
+
+  const scrubValue = scrubIdx ?? fixes.length - 1
+  const maxScrub = Math.max(fixes.length - 1, 0)
 
   const pathPoints = fixes.map((f) => ({
     latitude: f.latitude,
@@ -300,6 +357,31 @@ export default function LiveInvestigationPage() {
             {autoFollow ? 'Following' : 'Follow'}
           </button>
 
+          <div className="flex items-center gap-1 rounded-lg bg-surface-100 p-1 dark:bg-surface-700">
+            <button
+              onClick={() => setMode('multilateration')}
+              className={cn(
+                'rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
+                mode === 'multilateration'
+                  ? 'bg-white text-primary-700 shadow-sm dark:bg-surface-600 dark:text-primary-300'
+                  : 'text-surface-600 hover:text-surface-900 dark:text-surface-300 dark:hover:text-surface-100'
+              )}
+            >
+              Multilateration
+            </button>
+            <button
+              onClick={() => { setMode('rtt'); loadRttObservations() }}
+              className={cn(
+                'rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
+                mode === 'rtt'
+                  ? 'bg-white text-primary-700 shadow-sm dark:bg-surface-600 dark:text-primary-300'
+                  : 'text-surface-600 hover:text-surface-900 dark:text-surface-300 dark:hover:text-surface-100'
+              )}
+            >
+              RTT / TA Rings
+            </button>
+          </div>
+
           <Button
             size="sm"
             variant="primary"
@@ -327,25 +409,27 @@ export default function LiveInvestigationPage() {
               <p className="text-sm text-surface-600 dark:text-surface-300">Loading geospatial layers...</p>
             </div>
           ) : (
-            <InvestigationMap
-              currentLocation={latestFix ? {
-                latitude: latestFix.latitude,
-                longitude: latestFix.longitude,
-                raw_latitude: latestFix.latitude,
-                raw_longitude: latestFix.longitude,
+            <ErrorBoundary>
+              <InvestigationMap
+                currentLocation={activeFix ? {
+                latitude: activeFix.latitude,
+                longitude: activeFix.longitude,
+                raw_latitude: activeFix.latitude,
+                raw_longitude: activeFix.longitude,
                 velocity_m_s: Math.sqrt(
-                  (latestFix.velocity_east ?? 0) ** 2 + (latestFix.velocity_north ?? 0) ** 2
+                  (activeFix.velocity_east ?? 0) ** 2 + (activeFix.velocity_north ?? 0) ** 2
                 ),
                 clock_bias_meters: 0,
-                residual_rms: latestFix.residual_rms ?? 0,
-                gdop: latestFix.gdop ?? 0,
+                residual_rms: activeFix.residual_rms ?? 0,
+                gdop: activeFix.gdop ?? 0,
                 adaptive_R_scale: 1,
                 adaptive_Q_scale: 1,
                 geojson_heatmap: null,
-                timestamp: latestFix.timestamp,
-                accuracy_meters: latestFix.confidence_radius_meters,
+                timestamp: activeFix.timestamp,
+                accuracy_meters: activeFix.confidence_radius_meters,
                 algorithm_used: 'Multilateration',
                 confidence: 0.95,
+                geocode: activeFix.geocode,
               } : undefined}
               pathPoints={pathPoints}
               towers={towers}
@@ -353,7 +437,47 @@ export default function LiveInvestigationPage() {
               centerTrigger={centerTrigger}
               autoFollow={autoFollow && fixes.length > 0}
               geojson={geojson ?? undefined}
-            />
+              kdeHeatPoints={mode === 'multilateration' ? kdeHeatPoints : undefined}
+              rttObservations={mode === 'rtt' ? rttObservations : undefined}
+              />
+            </ErrorBoundary>
+          )}
+          {fixes.length > 0 && (
+            <div className="absolute bottom-4 left-1/2 z-[1000] w-[min(520px,90%)] -translate-x-1/2 rounded-xl border border-surface-200 bg-white/95 px-4 py-3 shadow-lg backdrop-blur-sm dark:border-surface-700 dark:bg-surface-900/95">
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => { setPlaying((v) => !v); setScrubIdx((i) => i ?? 0) }}
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-600 text-white hover:bg-primary-700 transition-colors"
+                  aria-label={playing ? 'Pause playback' : 'Play playback'}
+                >
+                  {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                </button>
+                <input
+                  type="range"
+                  min={0}
+                  max={maxScrub}
+                  value={scrubValue}
+                  disabled={fixes.length < 2}
+                  onChange={(e) => { setScrubIdx(Number(e.target.value)); setPlaying(false) }}
+                  className="flex-1 accent-primary-600"
+                  aria-label="Timeline playback position"
+                />
+                <span className="shrink-0 text-2xs text-surface-500 dark:text-surface-400">
+                  {scrubIdx != null ? scrubIdx + 1 : fixes.length}/{fixes.length}
+                </span>
+              </div>
+              {activeFix && (
+                <div className="mt-2 flex items-center justify-between gap-3 text-2xs text-surface-500 dark:text-surface-400">
+                  <span className="truncate">
+                    {formatDateTime(activeFix.timestamp)}
+                    {activeFix.geocode && activeFix.geocode !== 'Unknown area' && (
+                      <span className="text-blue-600 dark:text-blue-300 font-medium"> · around {activeFix.geocode}</span>
+                    )}
+                  </span>
+                  <span className="shrink-0 font-mono">±{activeFix.confidence_radius_meters.toFixed(0)}m</span>
+                </div>
+              )}
+            </div>
           )}
         </div>
 

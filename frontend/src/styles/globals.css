@@ -413,40 +413,7 @@
     border-radius: 0.5rem;
   }
 
-  .dark .leaflet-container {
-    background: var(--color-surface-900);
-  }
 
-  /* Dark-mode Leaflet popups, controls, and attribution */
-  .dark .leaflet-popup-content-wrapper,
-  .dark .leaflet-popup-tip {
-    background: var(--color-surface-800);
-    color: var(--color-surface-100);
-    box-shadow: var(--shadow-card-md);
-  }
-
-  .dark .leaflet-popup-content-wrapper a {
-    color: var(--color-primary-400);
-  }
-
-  .dark .leaflet-bar a {
-    background: var(--color-surface-800);
-    color: var(--color-surface-200);
-    border-color: var(--color-surface-700);
-  }
-
-  .dark .leaflet-bar a:hover {
-    background: var(--color-surface-700);
-  }
-
-  .dark .leaflet-control-attribution {
-    background: rgb(15 23 42 / 0.85);
-    color: var(--color-surface-400);
-  }
-
-  .dark .leaflet-control-attribution a {
-    color: var(--color-primary-400);
-  }
 }
 
 @layer utilities {

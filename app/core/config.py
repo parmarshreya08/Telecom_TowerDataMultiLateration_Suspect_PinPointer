@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = Field(default="INFO")
     HOST: str = Field(default="0.0.0.0")
     PORT: int = Field(default=8000)
+    API_KEY_SECRET: str = Field(
+        ...,
+        description="Secret key for JWT signing and API authentication (must be set in .env)",
+    )
 
     # Database Settings
     DATABASE_URL: str = Field(
@@ -36,7 +40,6 @@ class Settings(BaseSettings):
     )
 
     # Storage Settings
-    UPLOAD_DIR: str = Field(default="./uploads")
     MAX_CONTENT_LENGTH_MB: int = Field(default=100)
     ALLOWED_EXTENSIONS: str = Field(default="csv,xlsx,xls,txt,docx,pdf")
 

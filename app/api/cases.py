@@ -6,22 +6,30 @@ localization fixes (GeoJSON) for an investigation case.
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.deps import get_current_officer
 from app.core.logging import logger
 from app.database.repository import TelecomRepository
 from app.database.session import get_db_session
 from app.localization.engine import LocalizationEngine
+from app.utils.datetime_utils import parse_iso_datetime_naive
 
 router = APIRouter()
 
 
 class CreateCaseRequest(BaseModel):
     case_name: str = Field(..., min_length=1, max_length=255)
-    case_number: str = Field(..., min_length=1, max_length=100)
+    case_number: str = Field(
+        ...,
+        min_length=1,
+        max_length=50,
+        pattern=r"^[A-Za-z0-9._-]+$",
+        description="Used as the case identifier/URL path segment; no slashes or spaces.",
+    )
     suspect_name: str = Field(default="", max_length=255)
     mobile_number: str = Field(default="", max_length=20)
     description: str = Field(default="", max_length=2000)
@@ -73,12 +81,15 @@ def _fixes_to_geojson(fixes: list[Any]) -> dict[str, Any]:
 )
 async def create_case(
     body: CreateCaseRequest,
+    officer: "OfficerModel" = Depends(get_current_officer),
     db: AsyncSession = Depends(get_db_session),
 ) -> dict[str, Any]:
     """
     Registers a new investigation case. Cases are lightweight identifiers;
     actual data is associated when files are uploaded with this case_id.
     """
+    from sqlalchemy.exc import IntegrityError
+
     from app.utils.datetime_utils import now_ist
     from app.database.models.telecom import CaseModel
 
@@ -93,14 +104,21 @@ async def create_case(
         description=body.description,
         officer_notes=body.officer_notes,
         status="Active",
-        created_by="Officer",
+        created_by=officer.officer_name,
         created_at=now,
         updated_at=now,
     )
 
     repo = TelecomRepository(db)
-    await repo.create_case(case)
-    await db.commit()
+    try:
+        await repo.create_case(case)
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Case number '{body.case_number}' already exists.",
+        )
 
     return {
         "id": body.case_number,
@@ -111,7 +129,7 @@ async def create_case(
         "description": body.description,
         "officer_notes": body.officer_notes,
         "status": "Active",
-        "created_by": "Officer",
+        "created_by": officer.officer_name,
         "created_at": now.isoformat(),
         "updated_at": now.isoformat(),
         "tracking_status": "Idle",
@@ -200,14 +218,17 @@ async def get_case_uploads(
 )
 async def run_case_localization(
     case_id: str,
+    geocode: bool = False,
+    upload_ids: list[str] = Query(default=[]),
     db: AsyncSession = Depends(get_db_session),
 ) -> dict[str, Any]:
     """
     Loads the case's MeasurementFrames, runs trilateration + Kalman tracking,
     persists the resulting fixes, and returns a GeoJSON FeatureCollection.
+    Pass ?upload_ids=<uuid> (repeatable) to run over selected files only.
     """
     repo = TelecomRepository(db)
-    frames = await repo.get_frames_by_case(case_id)
+    frames = await repo.get_frames_by_case(case_id, upload_ids=upload_ids or None)
 
     if not frames:
         raise HTTPException(
@@ -224,10 +245,14 @@ async def run_case_localization(
             detail="Localization produced no fixes: measurement frames lack usable pseudorange (timing advance / RTT) data.",
         )
 
+    await repo.delete_localization_fixes(case_id, [f.frame_id for f in frames])
     await repo.save_localization_fixes(fixes)
     await db.commit()
 
     geojson = engine.to_geojson(fixes)
+    if geocode:
+        from app.services.geocoder import attach_geocodes
+        attach_geocodes(geojson)
     logger.info("case_localization_success", case_id=case_id, fix_count=len(fixes))
 
     return {
@@ -284,13 +309,51 @@ async def get_case_localization_geojson(
     case_id: str,
     start: str | None = None,
     end: str | None = None,
+    geocode: bool = False,
     db: AsyncSession = Depends(get_db_session),
 ) -> dict[str, Any]:
     """
     Returns the previously computed GeoJSON fixes for a case, without recomputation.
-    Optional query params: start (ISO datetime), end (ISO datetime).
+    Optional query params: start (ISO datetime), end (ISO datetime),
+    geocode=true resolves each fix to an area label via Nominatim.
+    """
+    repo = TelecomRepository(db)
+    start_dt = parse_iso_datetime_naive(start) if start else None
+    end_dt = parse_iso_datetime_naive(end) if end else None
+    fixes = await repo.get_localization_fixes(case_id, start_time=start_dt, end_time=end_dt)
+
+    if not fixes:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No cached localization fixes for case '{case_id}'. Run POST /api/case/{case_id}/localize first.",
+        )
+
+    geojson = _fixes_to_geojson(fixes)
+    if geocode:
+        from app.services.geocoder import attach_geocodes
+        attach_geocodes(geojson)
+    return geojson
+
+
+@router.get(
+    "/api/case/{case_id}/heatmap",
+    status_code=status.HTTP_200_OK,
+    summary="Compute KDE probability heatmap over cached fixes",
+)
+async def get_case_heatmap(
+    case_id: str,
+    start: str | None = None,
+    end: str | None = None,
+    resolution_m: int = 50,
+    db: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    """
+    Runs a 2D gaussian KDE over cached localization fixes (reusing the same
+    start/end time filter as /localize/geojson) and returns a weighted lattice
+    point FeatureCollection for leaflet.heat.
     """
     from datetime import datetime as _dt
+    from app.localization.heatmap import compute_heatmap
 
     repo = TelecomRepository(db)
     start_dt = _dt.fromisoformat(start) if start else None
@@ -303,7 +366,58 @@ async def get_case_localization_geojson(
             detail=f"No cached localization fixes for case '{case_id}'. Run POST /api/case/{case_id}/localize first.",
         )
 
-    return _fixes_to_geojson(fixes)
+    heatmap = compute_heatmap(fixes, resolution_m=resolution_m)
+    logger.info("case_heatmap_computed", case_id=case_id, points=len(heatmap["features"]))
+    return heatmap
+
+
+@router.get(
+    "/api/case/{case_id}/rtt-observations",
+    status_code=status.HTTP_200_OK,
+    summary="Per-frame RTT/TA tower observations for single-tower RTT mode",
+)
+async def get_case_rtt_observations(
+    case_id: str,
+    db: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    """
+    Returns each measurement frame with its observed towers and the single-tower
+    RTT/TA distance band + sector geometry (original data, no localization math).
+    Upload_id is included so the frontend can color per file.
+    """
+    repo = TelecomRepository(db)
+    frames = await repo.get_frames_by_case(case_id)
+
+    observations = []
+    for f in frames:
+        towers = []
+        for t in f.towers:
+            if not (t.latitude and t.longitude):
+                continue
+            # Distance band from TA (LTE step 78.12m) or RTT (round-trip time→distance).
+            radius_m = t.pseudorange_meters
+            if not radius_m:
+                radius_m = (t.timing_advance or 0) * 78.12 or 0.0
+            towers.append({
+                "cgi": t.cgi,
+                "latitude": t.latitude,
+                "longitude": t.longitude,
+                "azimuth": t.azimuth,
+                "beamwidth": t.beamwidth,
+                "radius_meters": round(radius_m, 1),
+                "timing_advance": t.timing_advance,
+                "rtt": t.rtt,
+                "signal_strength": t.signal_strength,
+            })
+        observations.append({
+            "frame_id": str(f.frame_id),
+            "upload_id": str(f.upload_id),
+            "subscriber_identifier": f.subscriber_identifier,
+            "timestamp": f.timestamp.isoformat(),
+            "towers": towers,
+        })
+
+    return {"case_id": case_id, "observations": observations, "total": len(observations)}
 
 
 @router.get(

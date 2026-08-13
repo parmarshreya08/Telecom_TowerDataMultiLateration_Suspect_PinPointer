@@ -4,7 +4,6 @@ Provides CSV, KML, and PDF download endpoints for localization fixes.
 All endpoints accept optional start/end query params for time-range filtering.
 """
 
-from datetime import datetime as _dt
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -17,6 +16,7 @@ from app.database.session import get_db_session
 from app.localization.exports import generate_csv, generate_kml, generate_pdf
 from app.localization.forensic_report import generate_forensic_report
 from app.contracts.localization import LocalizationFix as FixContract
+from app.utils.datetime_utils import parse_iso_datetime_naive
 
 router = APIRouter()
 
@@ -28,8 +28,8 @@ async def _get_filtered_fixes(
     db: AsyncSession,
 ) -> list[Any]:
     """Common helper: fetch time-filtered fixes or raise 404."""
-    start_dt = _dt.fromisoformat(start) if start else None
-    end_dt = _dt.fromisoformat(end) if end else None
+    start_dt = parse_iso_datetime_naive(start) if start else None
+    end_dt = parse_iso_datetime_naive(end) if end else None
 
     repo = TelecomRepository(db)
     fixes = await repo.get_localization_fixes(case_id, start_time=start_dt, end_time=end_dt)

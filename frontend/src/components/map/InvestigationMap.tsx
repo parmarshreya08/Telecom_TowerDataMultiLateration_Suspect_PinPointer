@@ -1,11 +1,12 @@
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, Polyline, Circle, Polygon, useMap } from 'react-leaflet'
 import L from 'leaflet'
+import 'leaflet.heat'
 import { Maximize2, Target, Eye, EyeOff } from 'lucide-react'
-import type { LocalizationResult, PathPoint, TowerRecord, GeoJSONFeatureCollection } from '@/types'
-import { formatCoordinate, cn } from '@/utils'
+import type { LocalizationResult, PathPoint, TowerRecord, GeoJSONFeatureCollection, RttObservation } from '@/types'
+import { formatCoordinate, formatDateTime, cn } from '@/utils'
 import { DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM } from '@/constants'
-import { useThemeContext } from '@/hooks/useThemeContext'
+
 
 // ── Fix Leaflet default icon paths broken by Vite ────────────
 delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl
@@ -89,6 +90,112 @@ function parseEllipses(geojson?: GeoJSONFeatureCollection) {
     })
 }
 
+// ── Heatmap layer (leaflet.heat) ──────────────────────────────
+interface HeatLayerProps {
+  points: Array<[number, number, number]>
+  visible: boolean
+}
+function HeatLayer({ points, visible }: HeatLayerProps) {
+  const map = useMap()
+  const layerRef = useRef<L.HeatLayer | null>(null)
+
+  useEffect(() => {
+    if (!visible || points.length === 0) {
+      layerRef.current?.remove()
+      layerRef.current = null
+      return
+    }
+    if (!layerRef.current) {
+      layerRef.current = L.heatLayer(points, {
+        radius: 25,
+        blur: 15,
+        maxZoom: 17,
+        gradient: { 0.4: '#3b82f6', 0.65: '#facc15', 1: '#ef4444' },
+      }).addTo(map)
+    } else {
+      layerRef.current.setLatLngs(points)
+    }
+  }, [points, visible, map])
+
+  useEffect(() => () => { layerRef.current?.remove() }, [])
+  return null
+}
+
+// ── RTT observation layer (single-tower mode) ─────────────────
+const FILE_COLORS = [
+  '#2563eb', '#db2777', '#16a34a', '#ea580c', '#7c3aed',
+  '#0891b2', '#ca8a04', '#be123c', '#4d7c0f', '#9333ea',
+]
+
+function colorForUpload(uploadId: string): string {
+  let hash = 0
+  for (let i = 0; i < uploadId.length; i++) hash = (hash * 31 + uploadId.charCodeAt(i)) >>> 0
+  return FILE_COLORS[hash % FILE_COLORS.length]
+}
+
+/** Polygon arc for a tower sector: azimuth ± beamwidth/2 at RTT radius. */
+function sectorArcPositions(
+  lat: number, lon: number, azimuth: number, beamwidth: number, radiusM: number, steps = 24
+): Array<[number, number]> {
+  const half = beamwidth / 2
+  const pts: Array<[number, number]> = [ [lat, lon] ]
+  for (let i = 0; i <= steps; i++) {
+    const bearing = azimuth - half + (beamwidth * i) / steps
+    const br = (bearing * Math.PI) / 180
+    const dLat = (radiusM / 111320) * Math.cos(br)
+    const dLon = (radiusM / (111320 * Math.cos((lat * Math.PI) / 180))) * Math.sin(br)
+    pts.push([lat + dLat, lon + dLon])
+  }
+  pts.push([lat, lon])
+  return pts
+}
+
+function RttLayer({ observations, uploadId, color }: {
+  observations: RttObservation[]; uploadId: string; color: string
+}) {
+  const obs = useMemo(() => observations.filter((o) => o.upload_id === uploadId), [observations, uploadId])
+  return (
+    <>
+      {obs.map((o) => o.towers.map((t, i) => {
+        if (!(t.radius_meters > 0)) return null
+        return (
+          <Fragment key={`${o.frame_id}-${t.cgi}`}>
+            <Circle
+              center={[t.latitude, t.longitude]}
+              radius={t.radius_meters}
+              pathOptions={{ color, fillColor: color, fillOpacity: 0.06, weight: 1.5 }}
+            >
+              <Popup>
+                <div className="text-xs leading-relaxed">
+                  <p className="font-bold" style={{ color }}>TA/RTT Ring</p>
+                  <p>{o.subscriber_identifier} · {new Date(o.timestamp).toLocaleString()}</p>
+                  <p>CGI: {t.cgi}</p>
+                  <p>Radius: {t.radius_meters.toFixed(0)}m</p>
+                  {t.timing_advance != null && <p>TA: {t.timing_advance}</p>}
+                  {t.signal_strength != null && <p>RSRP: {t.signal_strength} dBm</p>}
+                </div>
+              </Popup>
+            </Circle>
+            {t.azimuth != null && t.beamwidth != null && t.beamwidth > 0 && (
+              <Polygon
+                positions={sectorArcPositions(t.latitude, t.longitude, t.azimuth, t.beamwidth, t.radius_meters)}
+                pathOptions={{ color, fillColor: color, fillOpacity: 0.12, weight: 1 }}
+              >
+                <Popup>
+                  <div className="text-xs leading-relaxed">
+                    <p className="font-bold" style={{ color }}>Sector Arc</p>
+                    <p>Azimuth: {t.azimuth}° · Beamwidth: {t.beamwidth}°</p>
+                  </div>
+                </Popup>
+              </Polygon>
+            )}
+          </Fragment>
+        )
+      }))}
+    </>
+  )
+}
+
 // ── Main component ────────────────────────────────────────────
 interface InvestigationMapProps {
   currentLocation?: LocalizationResult
@@ -98,6 +205,10 @@ interface InvestigationMapProps {
   centerTrigger:    boolean
   autoFollow?:      boolean
   geojson?:         GeoJSONFeatureCollection
+  /** KDE heatmap lattice from backend /heatmap (overrides geojson-derived points) */
+  kdeHeatPoints?:   Array<[number, number, number]>
+  /** Per-frame RTT/TA observations for single-tower mode */
+  rttObservations?: RttObservation[]
 }
 
 export function InvestigationMap({
@@ -108,25 +219,35 @@ export function InvestigationMap({
   centerTrigger,
   autoFollow = true,
   geojson,
+  kdeHeatPoints,
+  rttObservations,
 }: InvestigationMapProps) {
   const [showPath,       setShowPath]       = useState(true)
   const [showTowers,     setShowTowers]     = useState(true)
   const [showEllipse,    setShowEllipse]    = useState(true)
   const [showSectors,    setShowSectors]    = useState(true)
+  const [showHeatmap,    setShowHeatmap]    = useState(true)
   const [isFullscreen,   setIsFullscreen]   = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
-  const { isDark } = useThemeContext()
-
-  const tileUrl = isDark
-    ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-    : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
-
-  const tileAttribution = isDark
-    ? '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
-    : '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+  const tileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+  const tileAttribution = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
 
   const sectorWedges = parseSectorWedges(geojson)
   const ellipses = parseEllipses(geojson)
+
+  // Heatmap points from Point features, weighted by 1/confidence (tighter = hotter)
+  const heatPoints = useMemo<Array<[number, number, number]>>(() => {
+    if (kdeHeatPoints && kdeHeatPoints.length > 0) return kdeHeatPoints
+    if (!geojson?.features) return []
+    return geojson.features
+      .filter((f) => f.geometry.type === 'Point')
+      .map((f) => {
+        const [lon, lat] = (f.geometry as { coordinates: [number, number] }).coordinates
+        const conf = Number(f.properties?.confidence_radius_meters)
+        const weight = Number.isFinite(conf) && conf > 0 ? 1 / conf : 1
+        return [lat, lon, weight]
+      })
+  }, [geojson, kdeHeatPoints])
 
   const center: [number, number] = currentLocation
     ? [currentLocation.latitude, currentLocation.longitude]
@@ -250,6 +371,11 @@ export function InvestigationMap({
           />
         ))}
 
+        {/* RTT / TA observations (single-tower mode) — per-file color */}
+        {rttObservations && [...new Set(rttObservations.map((o) => o.upload_id))].map((uid) => (
+          <RttLayer key={`rtt-${uid}`} observations={rttObservations} uploadId={uid} color={colorForUpload(uid)} />
+        ))}
+
         {/* Cell towers */}
         {showTowers && towers.map((tower) => (
           <Marker
@@ -284,10 +410,16 @@ export function InvestigationMap({
                 <p>Accuracy: ±{currentLocation.accuracy_meters.toFixed(0)}m</p>
                 <p>Confidence: {currentLocation.confidence != null ? (currentLocation.confidence * 100).toFixed(1) : 'N/A'}%</p>
                 <p>Algorithm: {currentLocation.algorithm_used}</p>
+                {currentLocation.geocode && String(currentLocation.geocode) !== 'Unknown area' && (
+                  <p className="text-blue-700 dark:text-blue-300 font-medium mt-1">≈ {String(currentLocation.geocode)}</p>
+                )}
               </div>
             </Popup>
           </Marker>
         )}
+
+        {/* Probability heatmap */}
+        {showHeatmap && <HeatLayer points={heatPoints} visible={showHeatmap} />}
       </MapContainer>
 
       {/* ── Overlay controls ── */}
@@ -321,6 +453,7 @@ export function InvestigationMap({
             { label: 'Towers',  state: showTowers,  set: setShowTowers  },
             { label: 'Ellipse', state: showEllipse, set: setShowEllipse },
             { label: 'Sectors', state: showSectors, set: setShowSectors },
+            { label: 'Heatmap', state: showHeatmap, set: setShowHeatmap },
           ].map(({ label, state, set }, i, arr) => (
             <button
               key={label}
@@ -353,6 +486,20 @@ export function InvestigationMap({
           </p>
           <p className="text-2xs text-white/60 mt-0.5">
             ±{currentLocation.accuracy_meters.toFixed(0)}m · {currentLocation.algorithm_used} · {currentLocation.confidence != null ? (currentLocation.confidence * 100).toFixed(0) : 'N/A'}% conf.
+          </p>
+        </div>
+      )}
+
+      {/* ── Geocode narrative banner ── */}
+      {currentLocation?.geocode && String(currentLocation.geocode) !== 'Unknown area' && (
+        <div className="absolute left-4 top-4 z-[1000] max-w-xs rounded-lg border border-blue-200 bg-white/95 px-3 py-2 shadow-lg backdrop-blur-sm dark:border-blue-800/60 dark:bg-surface-900/95">
+          <p className="text-2xs text-surface-500 dark:text-surface-400">
+            At <span className="font-semibold text-surface-800 dark:text-surface-100">
+              {currentLocation.timestamp ? formatDateTime(currentLocation.timestamp) : 'this time'}
+            </span>, the suspect was around
+          </p>
+          <p className="mt-0.5 text-sm font-semibold text-blue-700 dark:text-blue-300">
+            {String(currentLocation.geocode)}
           </p>
         </div>
       )}

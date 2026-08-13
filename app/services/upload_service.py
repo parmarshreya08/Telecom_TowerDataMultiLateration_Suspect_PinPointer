@@ -4,8 +4,12 @@ Manages the orchestration of validation, saving uploads to Supabase,
 checksum hashing, duplicate verification, and metadata persistence.
 """
 
+import ipaddress
 import os
+import socket
 import tempfile
+import urllib.parse
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
@@ -22,12 +26,38 @@ from app.services.file_converter import FileConverter
 from app.services.ingest_queue import ingest_queue
 from app.services.supabase_storage import storage_service
 from app.utils.file_utils import (
-    create_upload_directory,
     generate_sha256,
     safe_filename,
     save_uploaded_file,
     validate_uploaded_file,
 )
+
+
+def _assert_public_url(url: str) -> None:
+    """
+    Blocks SSRF: only http(s) to public IPs. Rejects loopback, private,
+    link-local, reserved, and multicast destinations (incl. DNS-resolved).
+    """
+    parsed = urllib.parse.urlsplit(url)
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError(f"Blocked URL scheme: '{parsed.scheme}'. Only http(s) allowed.")
+    host = parsed.hostname
+    if not host:
+        raise ValueError("URL must include a hostname.")
+
+    try:
+        ips = [ipaddress.ip_address(host)]
+    except ValueError:
+        try:
+            ips = [ipaddress.ip_address(addr[4][0]) for addr in socket.getaddrinfo(host, None)]
+        except OSError as e:
+            raise ValueError(f"Could not resolve URL host '{host}'.") from e
+
+    if not ips:
+        raise ValueError(f"Could not resolve URL host '{host}'.")
+    for ip in ips:
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+            raise ValueError(f"Blocked URL host '{host}' (non-public address {ip}).")
 
 
 class UploadService:
@@ -71,6 +101,9 @@ class UploadService:
 
         logger.info("url_upload_start", url=url, filename=filename, case_id=case_id)
 
+        # SSRF guard: only http(s) to public IPs
+        _assert_public_url(url)
+
         # Download from URL
         try:
             async with httpx.AsyncClient(timeout=30) as client:
@@ -79,9 +112,11 @@ class UploadService:
         except Exception as e:
             raise ValueError(f"Failed to download file from URL: {e}")
 
-        # Use provided filename or extract from URL
+        # Use provided filename or extract from URL (basename only — no path traversal)
         if not filename:
-            filename = url.split("/")[-1] or "downloaded_file.csv"
+            url_name = Path(urllib.parse.urlsplit(url).path).name
+            filename = url_name or "downloaded_file.csv"
+        filename = Path(filename).name
 
         # Validate extension
         if not FileConverter.is_supported(filename):
