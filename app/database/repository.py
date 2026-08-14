@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Any, Optional
 from uuid import UUID
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,6 +18,7 @@ from app.contracts.measurement import MeasurementFrame, MeasurementTower
 from app.contracts.subscriber import SubscriberEventRecord
 from app.contracts.tower import TowerRecord
 from app.contracts.upload import UploadMetadata
+from app.core.logging import logger
 from app.database.models.telecom import (
     CaseModel,
     LocalizationFixModel,
@@ -256,6 +257,24 @@ class TelecomRepository:
             ]
             self.session.add_all(tower_models)
 
+    async def count_measurement_frames_by_case(
+        self, case_id: str, upload_ids: Optional[list] = None
+    ) -> int:
+        """
+        Returns the number of measurement frames stored for a case,
+        before trilateration eligibility filtering.
+        """
+        stmt = (
+            select(func.count())
+            .select_from(MeasurementFrameModel)
+            .join(UploadMetadataModel, UploadMetadataModel.upload_id == MeasurementFrameModel.upload_id)
+            .where(UploadMetadataModel.case_id == case_id)
+        )
+        if upload_ids:
+            stmt = stmt.where(MeasurementFrameModel.upload_id.in_(upload_ids))
+        result = await self.session.execute(stmt)
+        return result.scalar() or 0
+
     async def get_frames_by_case(
         self, case_id: str, upload_ids: Optional[list] = None
     ) -> list[MeasurementFrame]:
@@ -276,6 +295,17 @@ class TelecomRepository:
 
         frames: list[MeasurementFrame] = []
         for m in models:
+            tower_count = len(m.towers)
+            # Frames with fewer than 3 observed towers are skipped before strict
+            # MeasurementFrame validation because they cannot be used for trilateration.
+            if tower_count < 3:
+                logger.info(
+                    "measurement_frame_skipped_insufficient_towers",
+                    case_id=case_id,
+                    frame_id=str(m.frame_id),
+                    tower_count=tower_count,
+                )
+                continue
             frames.append(MeasurementFrame(
                 frame_id=m.frame_id,
                 upload_id=m.upload_id,

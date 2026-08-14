@@ -229,12 +229,33 @@ async def run_case_localization(
     Pass ?upload_ids=<uuid> (repeatable) to run over selected files only.
     """
     repo = TelecomRepository(db)
+    raw_frame_count = await repo.count_measurement_frames_by_case(
+        case_id, upload_ids=upload_ids or None
+    )
     frames = await repo.get_frames_by_case(case_id, upload_ids=upload_ids or None)
 
     if not frames:
+        if raw_frame_count > 0:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    "Localization cannot be performed because no measurement frame "
+                    "contains at least 3 observed towers."
+                ),
+            )
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"No measurement frames found for case '{case_id}'. Upload and ingest CDR/tower data first.",
+        )
+
+    skipped_frame_count = raw_frame_count - len(frames)
+    if skipped_frame_count > 0:
+        logger.info(
+            "case_localization_frames_skipped",
+            case_id=case_id,
+            skipped=skipped_frame_count,
+            processed=len(frames),
+            total=raw_frame_count,
         )
 
     engine = LocalizationEngine(utm_zone=settings.UTM_ZONE, target_type="pedestrian")
@@ -256,11 +277,15 @@ async def run_case_localization(
         attach_geocodes(geojson)
     logger.info("case_localization_success", case_id=case_id, fix_count=len(fixes))
 
-    return {
+    response: dict[str, Any] = {
         "case_id": case_id,
         "fix_count": len(fixes),
         "geojson": geojson,
     }
+    if skipped_frame_count > 0:
+        response["skipped_frame_count"] = skipped_frame_count
+        response["processed_frame_count"] = len(frames)
+    return response
 
 
 @router.get(
