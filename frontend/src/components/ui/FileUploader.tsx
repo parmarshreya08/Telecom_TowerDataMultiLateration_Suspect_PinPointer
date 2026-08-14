@@ -1,4 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react'
+import { UploadCloud, RotateCcw, Pencil, Trash2 } from 'lucide-react'
 import { useFileUpload } from '@/hooks/useFileUpload'
 import { formatFileSize, cn } from '@/utils'
 import { FILE_UPLOAD_STATUS_COLORS, FILE_UPLOAD_STATUS_LABELS } from '@/constants'
@@ -148,7 +149,9 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ caseId, onUploadComp
           className="hidden"
         />
         <div className="space-y-2">
-          <div className="text-4xl">📁</div>
+          <div className="text-4xl flex justify-center">
+            <UploadCloud className="h-10 w-10 text-surface-400 dark:text-surface-500" />
+          </div>
           <p className="text-sm font-medium text-surface-700 dark:text-surface-200">
             Drag & drop files here, or click to browse
           </p>
@@ -275,26 +278,32 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ caseId, onUploadComp
                   {file.upload_status === 'failed' && (
                     <button
                       onClick={() => retryFile(file.upload_id)}
-                      className="p-1 text-surface-400 hover:text-primary-600 dark:hover:text-primary-400"
-                      title="Retry"
+                      className="p-1.5 rounded text-surface-400 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+                      title="Retry upload"
+                      aria-label="Retry upload"
                     >
-                      🔄
+                      <RotateCcw className="h-3.5 w-3.5" />
                     </button>
                   )}
                   <button
                     onClick={() => { setRenameTarget({ id: file.upload_id, name: file.display_name }); setRenameValue(file.display_name) }}
-                    className="p-1 text-surface-400 hover:text-surface-600 dark:hover:text-surface-200"
-                    title="Rename"
+                    className="p-1.5 rounded text-surface-400 hover:text-surface-600 dark:hover:text-surface-200 transition-colors"
+                    title="Rename file"
+                    aria-label="Rename file"
                   >
-                    ✏️
+                    <Pencil className="h-3.5 w-3.5" />
                   </button>
                   <button
                     onClick={() => setDeleteTarget({ id: file.upload_id, name: file.display_name })}
                     disabled={deletingId === file.upload_id}
-                    className="p-1 text-surface-400 hover:text-danger disabled:opacity-50 dark:hover:text-red-400"
-                    title="Delete"
+                    className="p-1.5 rounded text-surface-400 hover:text-danger dark:hover:text-red-400 disabled:opacity-50 transition-colors"
+                    title="Delete file"
+                    aria-label="Delete file"
                   >
-                    {deletingId === file.upload_id ? '…' : '🗑️'}
+                    {deletingId === file.upload_id
+                      ? <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent inline-block" />
+                      : <Trash2 className="h-3.5 w-3.5" />
+                    }
                   </button>
                 </div>
               </div>

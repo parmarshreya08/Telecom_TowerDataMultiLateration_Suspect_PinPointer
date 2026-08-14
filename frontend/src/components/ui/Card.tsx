@@ -19,11 +19,16 @@ const paddingClass = {
 export function Card({ children, className, hover, padding = 'md', onClick }: CardProps) {
   return (
     <div
-      className={cn(hover ? 'card-hover' : 'card', paddingClass[padding], className)}
+      className={cn(
+        hover ? 'card-hover' : 'card',
+        paddingClass[padding],
+        onClick && 'cursor-pointer focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:outline-none',
+        className
+      )}
       onClick={onClick}
       role={onClick ? 'button' : undefined}
       tabIndex={onClick ? 0 : undefined}
-      onKeyDown={onClick ? (e) => e.key === 'Enter' && onClick() : undefined}
+      onKeyDown={onClick ? (e) => (e.key === 'Enter' || e.key === ' ') && onClick() : undefined}
     >
       {children}
     </div>
