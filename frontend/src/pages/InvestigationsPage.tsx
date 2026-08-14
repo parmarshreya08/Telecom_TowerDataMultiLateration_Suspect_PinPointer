@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { motion } from 'motion/react'
 import { Plus, Search, FolderOpen, ChevronRight, RefreshCw, AlertCircle } from 'lucide-react'
 import { Badge } from '@/components/ui/Badge'
@@ -21,11 +21,21 @@ const STATUS_TABS: { label: string; value: CaseStatus | 'All' }[] = [
 
 export default function InvestigationsPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const [activeTab, setActiveTab] = useState<CaseStatus | 'All'>('All')
   const [search, setSearch] = useState('')
   const [cases, setCases] = useState<Investigation[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [successMessage, setSuccessMessage] = useState<string | null>(
+    (location.state as { message?: string } | null)?.message ?? null
+  )
+
+  useEffect(() => {
+    if ((location.state as { message?: string } | null)?.message) {
+      navigate(location.pathname, { replace: true, state: {} })
+    }
+  }, [location.pathname, location.state, navigate])
 
   const fetchCases = useCallback(async () => {
     const res = await investigationApi.list()
@@ -87,6 +97,12 @@ export default function InvestigationsPage() {
           </Button>
         </div>
       </div>
+
+      {successMessage && (
+        <div className="p-4 rounded-xl bg-green-50 dark:bg-green-900/20 border border-green-200 text-green-700 dark:text-green-300 text-sm">
+          {successMessage}
+        </div>
+      )}
 
       {/* Error state */}
       {error && (

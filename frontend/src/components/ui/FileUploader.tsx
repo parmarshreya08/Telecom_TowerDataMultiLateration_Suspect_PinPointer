@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react'
+import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { useFileUpload } from '@/hooks/useFileUpload'
 import { formatFileSize, cn } from '@/utils'
 import { FILE_UPLOAD_STATUS_COLORS, FILE_UPLOAD_STATUS_LABELS } from '@/constants'
@@ -21,12 +21,16 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ caseId, onUploadComp
   const [renameTarget, setRenameTarget] = useState<{ id: string; name: string } | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const {
     files,
     isLoading,
     error,
+    successMessage,
+    deletingId,
+    fetchFiles,
     uploadFiles,
     uploadFromUrl,
     renameFile,
@@ -39,6 +43,10 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ caseId, onUploadComp
     caseId,
     onComplete: onUploadComplete,
   })
+
+  useEffect(() => {
+    fetchFiles()
+  }, [fetchFiles])
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -107,12 +115,15 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ caseId, onUploadComp
     setRenameTarget(null)
   }, [renameTarget, renameValue, renameFile])
 
-  const handleDeleteConfirm = useCallback(() => {
-    if (deleteTarget) {
-      deleteFile(deleteTarget.id)
+  const handleDeleteConfirm = useCallback(async () => {
+    if (!deleteTarget || isDeleting) return
+    setIsDeleting(true)
+    const ok = await deleteFile(deleteTarget.id)
+    setIsDeleting(false)
+    if (ok) {
+      setDeleteTarget(null)
     }
-    setDeleteTarget(null)
-  }, [deleteTarget, deleteFile])
+  }, [deleteTarget, deleteFile, isDeleting])
 
   return (
     <div className="space-y-4">
@@ -168,6 +179,12 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ caseId, onUploadComp
           <Button type="button" variant="primary" size="md" onClick={handleUrlSubmit} disabled={!urlInput.trim() || isLoading}>
             Upload
           </Button>
+        </div>
+      )}
+
+      {successMessage && (
+        <div className="rounded-md border border-green-200 bg-green-50 p-3 dark:border-green-800 dark:bg-green-900/20">
+          <p className="text-sm text-green-700 dark:text-green-300">{successMessage}</p>
         </div>
       )}
 
@@ -273,10 +290,11 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ caseId, onUploadComp
                   </button>
                   <button
                     onClick={() => setDeleteTarget({ id: file.upload_id, name: file.display_name })}
-                    className="p-1 text-surface-400 hover:text-danger dark:hover:text-red-400"
+                    disabled={deletingId === file.upload_id}
+                    className="p-1 text-surface-400 hover:text-danger disabled:opacity-50 dark:hover:text-red-400"
                     title="Delete"
                   >
-                    🗑️
+                    {deletingId === file.upload_id ? '…' : '🗑️'}
                   </button>
                 </div>
               </div>
@@ -308,18 +326,25 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ caseId, onUploadComp
 
       <Modal
         open={!!deleteTarget}
-        onClose={() => setDeleteTarget(null)}
-        title="Delete File"
+        onClose={() => { if (!isDeleting) setDeleteTarget(null) }}
+        title="Delete this CDR?"
         footer={
           <>
-            <Button variant="secondary" onClick={() => setDeleteTarget(null)}>Cancel</Button>
-            <Button variant="danger" onClick={handleDeleteConfirm}>Delete</Button>
+            <Button variant="secondary" onClick={() => setDeleteTarget(null)} disabled={isDeleting}>Cancel</Button>
+            <Button variant="danger" onClick={handleDeleteConfirm} disabled={isDeleting}>
+              {isDeleting ? 'Deleting...' : 'Delete'}
+            </Button>
           </>
         }
       >
         <p className="text-sm text-surface-600 dark:text-surface-300">
-          Delete &quot;{deleteTarget?.name}&quot;? This cannot be undone.
+          This will permanently remove this uploaded CDR.
         </p>
+        {deleteTarget && (
+          <p className="mt-2 text-sm font-medium text-surface-800 dark:text-surface-200">
+            {deleteTarget.name}
+          </p>
+        )}
       </Modal>
 
       <Modal

@@ -16,6 +16,7 @@ from app.core.logging import logger
 from app.database.repository import TelecomRepository
 from app.database.session import get_db_session
 from app.localization.engine import LocalizationEngine
+from app.services.supabase_storage import storage_service
 from app.utils.datetime_utils import parse_iso_datetime_naive
 
 router = APIRouter()
@@ -548,6 +549,58 @@ async def get_case_detail(
             for u in uploads
         ],
         "fix_count": len(fixes),
+    }
+
+
+@router.delete(
+    "/api/case/{case_id}",
+    status_code=status.HTTP_200_OK,
+    summary="Delete an investigation case and its associated data",
+)
+async def delete_investigation_case(
+    case_id: str,
+    officer: "OfficerModel" = Depends(get_current_officer),
+    db: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    """
+    Deletes a case, its uploads, dependent pipeline records, localization fixes,
+    and Supabase storage objects. Tower reference data is not removed.
+    """
+    repo = TelecomRepository(db)
+    case = await repo.get_case_by_id(case_id)
+    if not case:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Investigation not found.",
+        )
+
+    uploads = await repo.get_uploads_by_case(case_id)
+    for upload in uploads:
+        if upload.supabase_path:
+            try:
+                storage_service.delete_file(upload.supabase_path)
+            except Exception as e:
+                logger.warning(
+                    "supabase_delete_failed_during_case_delete",
+                    path=upload.supabase_path,
+                    error=str(e),
+                )
+
+    try:
+        await repo.delete_case(case_id)
+        await db.commit()
+    except Exception as e:
+        await db.rollback()
+        logger.error("case_delete_failed", case_id=case_id, error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete investigation.",
+        ) from e
+
+    logger.info("case_deleted", case_id=case_id, officer=officer.officer_name)
+    return {
+        "case_id": case_id,
+        "message": "Investigation deleted successfully",
     }
 
 

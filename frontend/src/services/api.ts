@@ -4,6 +4,7 @@
 
 import axios from 'axios'
 import { API_BASE_URL } from '@/constants'
+import { extractErrorMessage } from '@/utils'
 import type {
   HealthStatus,
   UploadResponse,
@@ -36,6 +37,23 @@ apiClient.interceptors.request.use((config) => {
   }
   return config
 })
+
+export function formatDeleteError(err: unknown, resource: 'file' | 'investigation'): string {
+  if (axios.isAxiosError(err)) {
+    if (!err.response) return 'Could not connect to the backend.'
+    if (err.response.status === 404) {
+      return resource === 'investigation' ? 'Investigation not found.' : 'File not found.'
+    }
+    if (err.response.status >= 500) {
+      return resource === 'investigation'
+        ? 'Failed to delete investigation.'
+        : 'Failed to delete CDR. The server encountered an error.'
+    }
+    const detail = err.response.data?.detail
+    if (typeof detail === 'string') return detail
+  }
+  return extractErrorMessage(err)
+}
 
 // Response interceptor — on 401 (except auth endpoints), clear session + go to login
 apiClient.interceptors.response.use(

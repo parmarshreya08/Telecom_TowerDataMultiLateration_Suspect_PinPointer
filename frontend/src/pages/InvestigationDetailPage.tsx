@@ -2,12 +2,13 @@ import { useEffect, useState, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { motion } from 'motion/react'
 import {
-  ArrowLeft, Upload, MapPin, FileText, Plus, RefreshCw, AlertCircle, Clock, CheckCircle2, FolderOpen,
+  ArrowLeft, Upload, MapPin, FileText, Plus, RefreshCw, AlertCircle, Clock, CheckCircle2, FolderOpen, Trash2,
 } from 'lucide-react'
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
-import { investigationApi, trackingApi } from '@/services/api'
+import { Modal } from '@/components/ui/Modal'
+import { fileApi, investigationApi, trackingApi, formatDeleteError } from '@/services/api'
 import type { Investigation, UploadMetadata } from '@/types'
 import { formatDateTime, formatFileSize, cn } from '@/utils'
 import { TRACKING_STATUS_COLORS, OPERATOR_COLORS } from '@/constants'
@@ -21,6 +22,12 @@ export default function InvestigationDetailPage() {
   const [events, setEvents] = useState<unknown[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [deleteCdrTarget, setDeleteCdrTarget] = useState<{ id: string; name: string } | null>(null)
+  const [showDeleteCaseConfirm, setShowDeleteCaseConfirm] = useState(false)
+  const [deletingCdrId, setDeletingCdrId] = useState<string | null>(null)
+  const [isDeletingCase, setIsDeletingCase] = useState(false)
+  const [actionMessage, setActionMessage] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
 
   const fetchDetails = useCallback(async () => {
     if (!id) return null
@@ -55,6 +62,39 @@ export default function InvestigationDetailPage() {
       })
       .finally(() => setIsLoading(false))
   }, [fetchDetails])
+
+  const handleDeleteCdr = useCallback(async () => {
+    if (!deleteCdrTarget || deletingCdrId) return
+    setDeletingCdrId(deleteCdrTarget.id)
+    setActionError(null)
+    setActionMessage(null)
+    try {
+      await fileApi.deleteFile(deleteCdrTarget.id)
+      setUploads((prev) => prev.filter((u) => u.upload_id !== deleteCdrTarget.id))
+      setDeleteCdrTarget(null)
+      setActionMessage('CDR deleted successfully.')
+    } catch (err: unknown) {
+      setActionError(formatDeleteError(err, 'file'))
+    } finally {
+      setDeletingCdrId(null)
+    }
+  }, [deleteCdrTarget, deletingCdrId])
+
+  const handleDeleteCase = useCallback(async () => {
+    if (!id || isDeletingCase) return
+    setIsDeletingCase(true)
+    setActionError(null)
+    setActionMessage(null)
+    try {
+      await investigationApi.delete(id)
+      navigate('/investigations', { replace: true, state: { message: 'Investigation deleted successfully.' } })
+    } catch (err: unknown) {
+      setActionError(formatDeleteError(err, 'investigation'))
+      setShowDeleteCaseConfirm(false)
+    } finally {
+      setIsDeletingCase(false)
+    }
+  }, [id, isDeletingCase, navigate])
 
   useEffect(() => {
     let ignore = false
@@ -150,6 +190,17 @@ export default function InvestigationDetailPage() {
         </div>
       </motion.div>
 
+      {(actionMessage || actionError) && (
+        <div className={cn(
+          'rounded-md border p-3 text-sm',
+          actionMessage
+            ? 'border-green-200 bg-green-50 text-green-700 dark:border-green-800 dark:bg-green-900/20 dark:text-green-300'
+            : 'border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300'
+        )}>
+          {actionMessage || actionError}
+        </div>
+      )}
+
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Left column */}
         <div className="space-y-5 lg:col-span-2">
@@ -222,6 +273,14 @@ export default function InvestigationDetailPage() {
                     <span className={cn('rounded-full px-2.5 py-0.5 text-xs font-medium', OPERATOR_COLORS[up.operator] || 'bg-surface-100 text-surface-600 dark:bg-surface-800 dark:text-surface-300')}>
                       {up.operator || 'Telecom'}
                     </span>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={deletingCdrId === up.upload_id}
+                      onClick={() => setDeleteCdrTarget({ id: up.upload_id, name: up.original_filename })}
+                    >
+                      {deletingCdrId === up.upload_id ? 'Deleting...' : 'Delete'}
+                    </Button>
                   </div>
                 ))}
               </div>
@@ -243,6 +302,15 @@ export default function InvestigationDetailPage() {
               </Button>
               <Button size="md" variant="secondary" className="w-full justify-start" icon={<FileText className="h-4 w-4" />} onClick={() => navigate('/reports')}>
                 View Forensic Report
+              </Button>
+              <Button
+                size="md"
+                variant="danger"
+                className="w-full justify-start"
+                icon={<Trash2 className="h-4 w-4" />}
+                onClick={() => setShowDeleteCaseConfirm(true)}
+              >
+                Delete Investigation
               </Button>
             </div>
           </Card>
@@ -269,6 +337,43 @@ export default function InvestigationDetailPage() {
           </Card>
         </div>
       </div>
+
+      <Modal
+        open={!!deleteCdrTarget}
+        onClose={() => { if (!deletingCdrId) setDeleteCdrTarget(null) }}
+        title="Delete this CDR?"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setDeleteCdrTarget(null)} disabled={!!deletingCdrId}>Cancel</Button>
+            <Button variant="danger" onClick={handleDeleteCdr} disabled={!!deletingCdrId}>
+              {deletingCdrId ? 'Deleting...' : 'Delete'}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-surface-600 dark:text-surface-300">
+          This will permanently remove this uploaded CDR.
+        </p>
+      </Modal>
+
+      <Modal
+        open={showDeleteCaseConfirm}
+        onClose={() => { if (!isDeletingCase) setShowDeleteCaseConfirm(false) }}
+        title="Delete Investigation?"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setShowDeleteCaseConfirm(false)} disabled={isDeletingCase}>Cancel</Button>
+            <Button variant="danger" onClick={handleDeleteCase} disabled={isDeletingCase}>
+              {isDeletingCase ? 'Deleting...' : 'Delete Permanently'}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-2 text-sm text-surface-600 dark:text-surface-300">
+          <p>This will permanently delete this investigation and its associated uploaded files/data.</p>
+          <p className="font-medium text-surface-800 dark:text-surface-200">This action cannot be undone.</p>
+        </div>
+      </Modal>
     </div>
   )
 }

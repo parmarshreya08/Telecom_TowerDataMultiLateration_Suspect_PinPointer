@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from 'react'
-import { fileApi, uploadApi } from '@/services/api'
+import { fileApi, uploadApi, formatDeleteError } from '@/services/api'
 import { extractErrorMessage } from '@/utils'
 import { POLL_INTERVAL } from '@/constants'
 import type { CaseFile, UploadResult } from '@/types'
@@ -15,11 +15,13 @@ interface UseFileUploadReturn {
   uploadQueue: UploadResult[]
   isLoading: boolean
   error: string | null
+  successMessage: string | null
+  deletingId: string | null
   fetchFiles: () => Promise<void>
   uploadFiles: (files: File[]) => Promise<void>
   uploadFromUrl: (url: string, filename?: string) => Promise<void>
   renameFile: (uploadId: string, newName: string) => Promise<void>
-  deleteFile: (uploadId: string) => Promise<void>
+  deleteFile: (uploadId: string) => Promise<boolean>
   batchDelete: (uploadIds: string[]) => Promise<void>
   reinitialize: () => Promise<void>
   retryFile: (uploadId: string) => Promise<void>
@@ -30,6 +32,8 @@ export function useFileUpload({ caseId, onComplete, onError }: UseFileUploadOpti
   const [uploadQueue, setUploadQueue] = useState<UploadResult[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [successMessage, setSuccessMessage] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
   const pollingRef = useRef<NodeJS.Timeout | null>(null)
 
   const fetchFiles = useCallback(async () => {
@@ -118,14 +122,22 @@ export function useFileUpload({ caseId, onComplete, onError }: UseFileUploadOpti
     }
   }, [fetchFiles])
 
-  const deleteFile = useCallback(async (uploadId: string) => {
+  const deleteFile = useCallback(async (uploadId: string): Promise<boolean> => {
+    setDeletingId(uploadId)
+    setError(null)
+    setSuccessMessage(null)
     try {
       await fileApi.deleteFile(uploadId)
-      await fetchFiles()
+      setFiles((prev) => prev.filter((f) => f.upload_id !== uploadId))
+      setSuccessMessage('CDR deleted successfully.')
+      return true
     } catch (err: unknown) {
-      setError(extractErrorMessage(err))
+      setError(formatDeleteError(err, 'file'))
+      return false
+    } finally {
+      setDeletingId(null)
     }
-  }, [fetchFiles])
+  }, [])
 
   const batchDelete = useCallback(async (uploadIds: string[]) => {
     try {
@@ -155,6 +167,8 @@ export function useFileUpload({ caseId, onComplete, onError }: UseFileUploadOpti
     uploadQueue,
     isLoading,
     error,
+    successMessage,
+    deletingId,
     fetchFiles,
     uploadFiles,
     uploadFromUrl,

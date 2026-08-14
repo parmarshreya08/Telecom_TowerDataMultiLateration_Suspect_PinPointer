@@ -66,14 +66,22 @@ class TelecomRepository:
 
     async def delete_case(self, case_id: str) -> bool:
         """
-        Deletes a case and all its uploads (cascade).
+        Deletes a case after removing uploads, pipeline data, and localization fixes.
         """
         case = await self.get_case_by_id(case_id)
         if not case:
             return False
+        await self.delete_uploads_by_case(case_id)
+        await self.delete_localization_fixes_by_case(case_id)
         await self.session.delete(case)
         await self.session.flush()
         return True
+
+    async def delete_localization_fixes_by_case(self, case_id: str) -> None:
+        """Removes all localization fixes for a case (including orphaned rows)."""
+        await self.session.execute(
+            delete(LocalizationFixModel).where(LocalizationFixModel.case_id == case_id)
+        )
 
     # ── Upload Metadata ──────────────────────────────────────
 
@@ -649,12 +657,12 @@ class TelecomRepository:
                 SubscriberEventRecordModel.upload_id == upload_id
             )
         )
-        await self.session.execute(
-            delete(MeasurementTowerModel).where(
-                MeasurementTowerModel.upload_id == upload_id
-            )
-        )
         if frame_ids:
+            await self.session.execute(
+                delete(MeasurementTowerModel).where(
+                    MeasurementTowerModel.frame_id.in_(frame_ids)
+                )
+            )
             await self.session.execute(
                 delete(LocalizationFixModel).where(
                     LocalizationFixModel.frame_id.in_(frame_ids)
