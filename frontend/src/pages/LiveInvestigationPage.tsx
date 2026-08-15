@@ -17,6 +17,7 @@ import { ShareLocationModal } from '@/components/investigation/ShareLocationModa
 import {
   formatCoordinate, formatDateTime, formatAccuracy,
   downloadBlob, extractErrorMessage, cn,
+  buildGoogleMapsUrl, copyToClipboard,
 } from '@/utils'
 import { TRACKING_STATUS_COLORS, DEFAULT_MAP_CENTER } from '@/constants'
 import { investigationApi, trackingApi, exportApi, fileApi } from '@/services/api'
@@ -114,10 +115,10 @@ export default function LiveInvestigationPage() {
         setMobileActionsOpen(false)
       }
     }
-    document.addEventListener('mousedown', handleClickOutside)
+    document.addEventListener('click', handleClickOutside)
     window.addEventListener('keydown', handleKeyDown)
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('click', handleClickOutside)
       window.removeEventListener('keydown', handleKeyDown)
     }
   }, [])
@@ -402,41 +403,55 @@ export default function LiveInvestigationPage() {
     } finally { setExporting(null) }
   }
 
-  const mapsCenter = () => {
-    if (fixes.length === 0) return null
-    return fixes.length === 1
-      ? { lat: fixes[0].latitude, lng: fixes[0].longitude }
-      : {
-        lat: fixes.reduce((s, f) => s + f.latitude, 0) / fixes.length,
-        lng: fixes.reduce((s, f) => s + f.longitude, 0) / fixes.length,
-      }
-  }
-
-  const googleMapsLink = () => {
-    const c = mapsCenter()
-    return c ? `https://www.google.com/maps/search/?api=1&query=${c.lat},${c.lng}` : null
-  }
-
-  const handleGoogleMapsLink = () => {
-    const url = googleMapsLink()
-    if (!url) return
-    navigator.clipboard.writeText(url).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    })
-  }
-
-  const openGoogleMaps = () => {
-    const url = googleMapsLink()
-    if (url) window.open(url, '_blank')
-  }
-
   const latestFix = fixes.length > 0 ? fixes[fixes.length - 1] : null
 
   // ── Timeline playback scrubber ──
   const [scrubIdx, setScrubIdx] = useState<number | null>(null)
   const [playing, setPlaying] = useState(false)
   const activeFix = scrubIdx != null && fixes[scrubIdx] ? fixes[scrubIdx] : latestFix
+
+  // Single Source of Truth for current suspect location
+  const currentSuspectLocation = (() => {
+    if (activeFix && typeof activeFix.latitude === 'number' && typeof activeFix.longitude === 'number') {
+      return { latitude: activeFix.latitude, longitude: activeFix.longitude }
+    }
+    if (latestFix && typeof latestFix.latitude === 'number' && typeof latestFix.longitude === 'number') {
+      return { latitude: latestFix.latitude, longitude: latestFix.longitude }
+    }
+    if (fixes.length > 0 && typeof fixes[0].latitude === 'number' && typeof fixes[0].longitude === 'number') {
+      return { latitude: fixes[0].latitude, longitude: fixes[0].longitude }
+    }
+    if (geojson?.features) {
+      const pt = geojson.features.find((f) => f.geometry.type === 'Point')
+      if (pt) {
+        const coords = (pt.geometry as { coordinates: [number, number] }).coordinates
+        if (Array.isArray(coords) && typeof coords[1] === 'number' && typeof coords[0] === 'number') {
+          return { latitude: coords[1], longitude: coords[0] }
+        }
+      }
+    }
+    return null
+  })()
+
+  const suspectGoogleMapsUrl = currentSuspectLocation
+    ? buildGoogleMapsUrl(currentSuspectLocation.latitude, currentSuspectLocation.longitude)
+    : null
+
+  const handleGoogleMapsLink = () => {
+    if (!suspectGoogleMapsUrl) return
+    copyToClipboard(suspectGoogleMapsUrl).then((ok) => {
+      if (ok) {
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+      }
+    })
+  }
+
+  const openGoogleMaps = () => {
+    if (suspectGoogleMapsUrl) {
+      window.open(suspectGoogleMapsUrl, '_blank', 'noopener,noreferrer')
+    }
+  }
 
   useEffect(() => {
     if (!playing) return
@@ -666,7 +681,7 @@ export default function LiveInvestigationPage() {
               size="sm" variant="secondary" className="w-full justify-start"
               icon={copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
               onClick={handleGoogleMapsLink}
-              disabled={fixes.length === 0}
+              disabled={!suspectGoogleMapsUrl}
             >
               {copied ? 'Link Copied!' : 'Copy Google Maps Link'}
             </Button>
@@ -674,7 +689,7 @@ export default function LiveInvestigationPage() {
               size="sm" variant="secondary" className="w-full justify-start mt-1"
               icon={<Globe className="h-3.5 w-3.5" />}
               onClick={openGoogleMaps}
-              disabled={fixes.length === 0}
+              disabled={!suspectGoogleMapsUrl}
             >
               Open in Google Maps
             </Button>
@@ -688,7 +703,7 @@ export default function LiveInvestigationPage() {
     <div className="flex h-[calc(100vh-4rem)] flex-col -m-6 max-w-none overflow-hidden relative">
 
       {/* ── Topbar ── */}
-      <div className="flex shrink-0 items-center justify-between border-b border-surface-200 bg-white px-3 sm:px-5 py-2.5 sm:py-3 dark:border-surface-700 dark:bg-surface-900 z-20">
+      <div className="relative z-[1001] flex shrink-0 items-center justify-between border-b border-surface-200 bg-white px-3 sm:px-5 py-2.5 sm:py-3 dark:border-surface-700 dark:bg-surface-900">
         
         {/* Left: Back + Case Identity */}
         <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1 mr-2">
@@ -804,49 +819,63 @@ export default function LiveInvestigationPage() {
 
           <div className="relative">
             <button
-              onClick={() => setMobileActionsOpen(!mobileActionsOpen)}
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                setMobileActionsOpen((prev) => !prev)
+              }}
               className="flex h-10 w-10 items-center justify-center rounded-lg border border-surface-200 bg-white text-surface-600 hover:bg-surface-100 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-300 dark:hover:bg-surface-700 transition-colors cursor-pointer"
               title="More actions"
               aria-label="More actions"
+              aria-expanded={mobileActionsOpen}
             >
               <MoreVertical className="h-5 w-5" />
             </button>
 
             {mobileActionsOpen && (
-              <div className="absolute right-0 top-full mt-1.5 z-50 w-56 rounded-xl border border-surface-200 bg-white p-2 shadow-xl dark:border-surface-700 dark:bg-surface-800 animate-fade-in">
-                <div className="px-2.5 py-1 text-2xs font-semibold uppercase tracking-wider text-surface-400">
+              <div className="absolute right-0 top-full mt-1.5 z-[1002] w-56 rounded-xl border border-surface-200 bg-white p-2 shadow-2xl dark:border-surface-700 dark:bg-surface-800 animate-fade-in">
+                <div className="px-3 py-1.5 text-2xs font-semibold uppercase tracking-wider text-surface-400 dark:text-surface-500">
                   Tracking Mode
                 </div>
                 <button
+                  type="button"
                   onClick={() => { setMode('multilateration'); setMobileActionsOpen(false) }}
                   className={cn(
-                    'flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-xs font-medium transition-colors cursor-pointer',
+                    'flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-xs font-medium transition-colors cursor-pointer min-h-[40px]',
                     mode === 'multilateration'
                       ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300 font-semibold'
                       : 'text-surface-700 hover:bg-surface-100 dark:text-surface-200 dark:hover:bg-surface-700'
                   )}
                 >
-                  <span>Multilateration</span>
-                  {mode === 'multilateration' && <Check className="h-4 w-4 text-primary-600" />}
+                  <div className="flex items-center gap-2">
+                    <Navigation className="h-4 w-4 text-primary-600 dark:text-primary-400" />
+                    <span>Multilateration</span>
+                  </div>
+                  {mode === 'multilateration' && <Check className="h-4 w-4 text-primary-600 dark:text-primary-400" />}
                 </button>
                 <button
+                  type="button"
                   onClick={() => { setMode('rtt'); loadRttObservations(); setMobileActionsOpen(false) }}
                   className={cn(
-                    'flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-xs font-medium transition-colors cursor-pointer',
+                    'flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-xs font-medium transition-colors cursor-pointer min-h-[40px]',
                     mode === 'rtt'
                       ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300 font-semibold'
                       : 'text-surface-700 hover:bg-surface-100 dark:text-surface-200 dark:hover:bg-surface-700'
                   )}
                 >
-                  <span>RTT / TA Rings</span>
-                  {mode === 'rtt' && <Check className="h-4 w-4 text-primary-600" />}
+                  <div className="flex items-center gap-2">
+                    <Radio className="h-4 w-4 text-primary-600 dark:text-primary-400" />
+                    <span>RTT / TA Rings</span>
+                  </div>
+                  {mode === 'rtt' && <Check className="h-4 w-4 text-primary-600 dark:text-primary-400" />}
                 </button>
 
                 <div className="my-1.5 border-t border-surface-100 dark:border-surface-700/60" />
 
                 <button
+                  type="button"
                   onClick={() => { setShareOpen(true); setMobileActionsOpen(false) }}
-                  className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs font-medium text-surface-700 hover:bg-surface-100 dark:text-surface-200 dark:hover:bg-surface-700 transition-colors cursor-pointer"
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-xs font-medium text-surface-700 hover:bg-surface-100 dark:text-surface-200 dark:hover:bg-surface-700 transition-colors cursor-pointer min-h-[40px]"
                 >
                   <Share2 className="h-4 w-4 text-primary-500" />
                   <span>Share Location</span>
@@ -1201,8 +1230,9 @@ export default function LiveInvestigationPage() {
       <ShareLocationModal
         open={shareOpen}
         onClose={() => setShareOpen(false)}
-        latitude={latestFix?.latitude ?? DEFAULT_MAP_CENTER[0]}
-        longitude={latestFix?.longitude ?? DEFAULT_MAP_CENTER[1]}
+        latitude={currentSuspectLocation?.latitude ?? null}
+        longitude={currentSuspectLocation?.longitude ?? null}
+        loading={loading}
       />
     </div>
   )

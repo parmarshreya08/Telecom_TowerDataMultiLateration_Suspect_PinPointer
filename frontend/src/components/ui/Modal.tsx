@@ -1,4 +1,5 @@
 import { type ReactNode, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'motion/react'
 import { X } from 'lucide-react'
 import { cn } from '@/utils'
@@ -68,18 +69,20 @@ export function Modal({ open, onClose, title, children, size = 'md', footer }: M
     return () => document.removeEventListener('keydown', trapFocus)
   }, [open])
 
-  return (
+  if (typeof document === 'undefined') return null
+
+  return createPortal(
     <AnimatePresence>
       {open && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          className="fixed inset-0 z-[10010] flex items-center justify-center p-4"
           role="dialog"
           aria-modal="true"
           aria-labelledby={title ? 'modal-title' : undefined}
         >
           {/* Backdrop */}
           <motion.div
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -91,7 +94,7 @@ export function Modal({ open, onClose, title, children, size = 'md', footer }: M
           <motion.div
             ref={panelRef}
             className={cn(
-              'relative w-full rounded-xl bg-white shadow-2xl dark:bg-surface-800',
+              'relative z-10 w-full rounded-xl bg-white shadow-2xl dark:bg-surface-800',
               'border border-surface-200 dark:border-surface-700',
               sizeClass[size]
             )}
@@ -112,7 +115,7 @@ export function Modal({ open, onClose, title, children, size = 'md', footer }: M
                 <button
                   ref={closeBtnRef}
                   onClick={onClose}
-                  className="btn btn-ghost btn-sm rounded-lg p-1.5"
+                  className="btn btn-ghost btn-sm rounded-lg p-1.5 cursor-pointer text-surface-500 hover:bg-surface-100 dark:hover:bg-surface-700 transition-colors"
                   aria-label="Close modal"
                 >
                   <X className="h-4 w-4" />
@@ -122,7 +125,7 @@ export function Modal({ open, onClose, title, children, size = 'md', footer }: M
               <button
                 ref={closeBtnRef}
                 onClick={onClose}
-                className="btn btn-ghost btn-sm absolute right-4 top-4 rounded-lg p-1.5"
+                className="btn btn-ghost btn-sm absolute right-4 top-4 rounded-lg p-1.5 cursor-pointer text-surface-500 hover:bg-surface-100 dark:hover:bg-surface-700 transition-colors"
                 aria-label="Close modal"
               >
                 <X className="h-4 w-4" />
@@ -141,6 +144,7 @@ export function Modal({ open, onClose, title, children, size = 'md', footer }: M
           </motion.div>
         </div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   )
 }
