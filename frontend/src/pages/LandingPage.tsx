@@ -8,8 +8,8 @@
  */
 
 import { lazy, Suspense } from 'react'
-import { useNavigate }    from 'react-router-dom'
-import { motion }         from 'motion/react'
+import { useNavigate } from 'react-router-dom'
+import { motion } from 'motion/react'
 import {
   MapPin, Radio, FileSearch, ChevronRight,
   Cpu, Database, BarChart3, ArrowRight,
@@ -17,7 +17,8 @@ import {
   Sun, Moon,
 } from 'lucide-react'
 import { useThemeContext } from '@/hooks/useThemeContext'
-import { Logo }            from '@/components/ui/Logo'
+import { Logo } from '@/components/ui/Logo'
+import { cn } from '@/utils'
 
 // TechBackground: full-canvas atmospheric Three.js scene — lazy-loaded so
 // Three.js (~500 kB) doesn't block the initial page paint.
@@ -31,11 +32,11 @@ const TechBackground = lazy(() =>
 
 const FEATURES = [
   { icon: FileSearch, title: 'Multi-Tower CDR Ingestion', desc: 'Ingest historical telecom logs containing CGI, sector, timing, and location observations for the target.' },
-  { icon: Radio,      title: 'Adjacent Tower Intelligence', desc: 'Resolve relevant cell towers and their geographical information to build multi-tower observation sets.' },
-  { icon: MapPin,     title: 'Multi-Tower Trilateration', desc: 'Combine overlapping tower signal regions to estimate a refined probable suspect location.' },
-  { icon: Cpu,        title: 'Kalman Movement Filtering', desc: 'Smooth sequential location estimates and reduce deviation across the suspect\'s movement path.' },
-  { icon: BarChart3,  title: 'Probability Heatmap', desc: 'Visualize probable suspect zones and narrow the search from a broad radius toward block/street level.' },
-  { icon: Database,   title: 'Auditable Investigation Data', desc: 'Maintain timestamped investigation data, fixes, traces, and analysis results for case workflows.' },
+  { icon: Radio, title: 'Adjacent Tower Intelligence', desc: 'Resolve relevant cell towers and their geographical information to build multi-tower observation sets.' },
+  { icon: MapPin, title: 'Multi-Tower Trilateration', desc: 'Combine overlapping tower signal regions to estimate a refined probable suspect location.' },
+  { icon: Cpu, title: 'Kalman Movement Filtering', desc: 'Smooth sequential location estimates and reduce deviation across the suspect\'s movement path.' },
+  { icon: BarChart3, title: 'Probability Heatmap', desc: 'Visualize probable suspect zones and narrow the search from a broad radius toward block/street level.' },
+  { icon: Database, title: 'Auditable Investigation Data', desc: 'Maintain timestamped investigation data, fixes, traces, and analysis results for case workflows.' },
 ]
 
 const PIPELINE_STEPS = [
@@ -51,14 +52,14 @@ const PIPELINE_STEPS = [
 ]
 
 const STACK = [
-  { label: 'FastAPI',     color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' },
-  { label: 'PostgreSQL',  color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300' },
+  { label: 'FastAPI', color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' },
+  { label: 'PostgreSQL', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300' },
   { label: 'Python 3.12', color: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300' },
-  { label: 'React 19',    color: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300' },
-  { label: 'TypeScript',  color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300' },
+  { label: 'React 19', color: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300' },
+  { label: 'TypeScript', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300' },
   { label: 'Pydantic v2', color: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' },
-  { label: 'Socket.io',   color: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300' },
-  { label: 'Leaflet',     color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' },
+  { label: 'Socket.io', color: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300' },
+  { label: 'Leaflet', color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' },
 ]
 
 // ---------------------------------------------------------------------------
@@ -70,18 +71,20 @@ export default function LandingPage() {
   const { isDark, toggleTheme } = useThemeContext()
 
   return (
-    <div className="min-h-screen bg-surface-50 dark:bg-surface-950 text-surface-900 dark:text-surface-100">
+    <div className="min-h-screen bg-surface-50 dark:bg-surface-950 text-surface-900 dark:text-surface-100 transition-colors duration-200">
 
       {/* ── Navbar ──────────────────────────────────────────────────────── */}
-      <header className="sticky top-0 z-50 border-b border-surface-200 bg-white/80 backdrop-blur dark:border-surface-800 dark:bg-surface-900/80">
-        <div className="mx-auto flex h-24 max-w-7xl items-center justify-between px-6">
+      <header className="sticky top-0 z-50 border-b border-surface-200/80 bg-white/90 backdrop-blur-md dark:border-surface-800/80 dark:bg-[#060e1a]/90 transition-colors duration-200">
+        <div className="mx-auto flex h-16 sm:h-18 max-w-7xl items-center justify-between px-6">
 
           {/* Brand */}
-          <div className="flex items-center gap-4">
-            <Logo size={64} />
+          <div className="flex items-center gap-3">
+            <Logo size={36} />
             <div>
-              <span className="text-xl font-bold tracking-wide">E-RAKSHAK</span>
-              <span className="ml-3 hidden text-sm text-surface-400 sm:inline">
+              <span className="text-lg sm:text-xl font-bold tracking-wide text-surface-900 dark:text-white">
+                E-RAKSHAK
+              </span>
+              <span className="ml-3 hidden text-xs sm:text-sm text-surface-500 dark:text-slate-400 md:inline font-normal">
                 Telecom Investigation Platform
               </span>
             </div>
@@ -92,7 +95,7 @@ export default function LandingPage() {
             {/* Theme toggle */}
             <button
               onClick={toggleTheme}
-              className="rounded-lg p-2 text-surface-500 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors"
+              className="rounded-lg p-2 text-surface-500 hover:text-surface-900 hover:bg-surface-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-surface-800/80 transition-colors cursor-pointer"
               aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
             >
               {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
@@ -101,13 +104,12 @@ export default function LandingPage() {
             {/* Sign In — uses existing /login route */}
             <button
               onClick={() => navigate('/login')}
-              className="hidden sm:inline-flex btn btn-md btn-secondary text-sm"
+              className="hidden sm:inline-flex items-center gap-2 rounded-lg border border-surface-200 bg-surface-50 px-3.5 py-1.5 text-xs font-semibold text-surface-700 hover:bg-surface-100 hover:text-surface-900 hover:border-surface-300 dark:border-surface-700/80 dark:bg-surface-800/80 dark:text-surface-200 dark:hover:bg-surface-750 dark:hover:text-white dark:hover:border-surface-600 transition-all shadow-xs cursor-pointer"
               aria-label="Sign in to E-RAKSHAK"
             >
-              <LogIn className="h-4 w-4" />
+              <LogIn className="h-3.5 w-3.5" />
               Sign In
             </button>
-
           </div>
         </div>
 
@@ -115,7 +117,7 @@ export default function LandingPage() {
         <div className="sm:hidden flex items-center justify-end gap-2 px-6 pb-2">
           <button
             onClick={() => navigate('/login')}
-            className="btn btn-sm btn-secondary text-xs"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-surface-200 bg-surface-50 px-3 py-1 text-xs font-semibold text-surface-700 hover:bg-surface-100 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200 cursor-pointer"
             aria-label="Sign in to E-RAKSHAK"
           >
             <LogIn className="h-3.5 w-3.5" />
@@ -126,95 +128,93 @@ export default function LandingPage() {
 
       {/* ── Hero ────────────────────────────────────────────────────────── */}
       <section
-        className="relative overflow-hidden text-white"
-        style={{ minHeight: '100vh', background: 'linear-gradient(160deg, #060d1a 0%, #0c1a33 55%, #07111f 100%)' }}
+        className="relative overflow-hidden min-h-[calc(100vh-4.5rem)]"
         aria-label="Hero section"
       >
+        {/* Layer 1: Dark theme background base */}
+        <div className="absolute inset-0 hero-bg-layer-dark pointer-events-none" aria-hidden="true" />
+
+        {/* Layer 1b: Light theme background base */}
+        <div className="absolute inset-0 hero-bg-layer-light pointer-events-none" aria-hidden="true" />
+
         {/* ── Three.js atmospheric background — full canvas, pointer-events:none ── */}
-        {/* Occupies the entire hero, sits behind all content.                       */}
         <div
           className="absolute inset-0 pointer-events-none"
-          style={{ zIndex: 0 }}
+          style={{ zIndex: 1 }}
           aria-hidden="true"
         >
           <Suspense fallback={null}>
-            <TechBackground className="w-full h-full" />
+            <TechBackground isDark={isDark} className="w-full h-full" />
           </Suspense>
         </div>
 
-        {/* Dark gradient overlay — keeps text readable regardless of animation    */}
-        {/* Stronger on the left where content lives, lighter on the right.        */}
+        {/* Dark readability overlay — smooth cross-fade */}
+        <div className="absolute inset-0 hero-overlay-dark pointer-events-none" style={{ zIndex: 2 }} aria-hidden="true" />
+
+        {/* Light readability overlay — smooth cross-fade */}
+        <div className="absolute inset-0 hero-overlay-light pointer-events-none" style={{ zIndex: 2 }} aria-hidden="true" />
+
+        {/* Faint grid — very low opacity so it doesn't fight the Three.js scene */}
         <div
-          className="absolute inset-0 pointer-events-none"
-          style={{
-            background: [
-              'linear-gradient(to right, rgba(6,13,26,0.90) 0%, rgba(6,13,26,0.70) 50%, rgba(6,13,26,0.30) 100%)',
-              'linear-gradient(to bottom, rgba(6,13,26,0.20) 0%, transparent 30%, transparent 70%, rgba(6,13,26,0.40) 100%)',
-            ].join(', '),
-            zIndex: 1,
-          }}
+          className="absolute inset-0 bg-grid-pattern pointer-events-none opacity-5 dark:opacity-10 transition-opacity duration-300"
+          style={{ zIndex: 3 }}
           aria-hidden="true"
         />
 
-        {/* Faint grid — very low opacity so it doesn't fight the Three.js scene   */}
+        {/* Left-side radial glow — anchors the content area visually */}
         <div
-          className="absolute inset-0 bg-grid-pattern pointer-events-none"
-          style={{ opacity: 0.07, zIndex: 2 }}
-          aria-hidden="true"
-        />
-
-        {/* Left-side radial glow — anchors the content area visually              */}
-        <div
-          className="absolute pointer-events-none"
+          className="absolute pointer-events-none opacity-50 dark:opacity-100 transition-opacity duration-300"
           style={{
-            left: '5%', top: '30%',
+            left: '5%', top: '35%',
             width: 600, height: 600,
             transform: 'translate(-20%, -50%)',
-            background: 'radial-gradient(circle, rgba(37,99,235,0.10) 0%, transparent 65%)',
-            zIndex: 2,
+            background: 'radial-gradient(circle, rgba(37,99,235,0.12) 0%, transparent 65%)',
+            zIndex: 3,
           }}
           aria-hidden="true"
         />
 
-        {/* ── Hero content ─────────────────────────────────────────────────── */}
+        {/* ── Hero content with generous responsive top breathing space ─────── */}
         <div
-          className="relative mx-auto max-w-7xl px-6 py-28 lg:py-36 flex items-center min-h-screen"
-          style={{ zIndex: 3 }}
+          className="relative mx-auto max-w-7xl px-6 pt-16 sm:pt-20 md:pt-24 lg:pt-28 pb-16 sm:pb-20 md:pb-24 lg:pb-28 flex items-center min-h-[calc(100vh-4.5rem)]"
+          style={{ zIndex: 4 }}
         >
           <div className="max-w-2xl">
             <motion.div
-              initial={{ opacity: 0, y: 28 }}
+              initial={{ opacity: 0, y: 24 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.7, ease: 'easeOut' }}
+              transition={{ duration: 0.6, ease: 'easeOut' }}
             >
               {/* Badge */}
-              <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-primary-700/50 bg-primary-950/60 px-4 py-1.5 text-xs text-primary-300 backdrop-blur-sm">
-                <Zap className="h-3 w-3" aria-hidden="true" />
-                <span>ERH26_PS_09 · Telecom &amp; Security Systems</span>
+              <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50/90 text-blue-700 dark:border-blue-500/30 dark:bg-blue-950/60 dark:text-blue-300 px-4 py-1.5 text-xs font-medium backdrop-blur-md shadow-xs ring-1 ring-blue-500/10 transition-colors duration-300">
+                <Zap className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400 transition-colors duration-300" aria-hidden="true" />
+                <span>DOMAIN · Telecom &amp; Security Systems</span>
               </div>
 
               {/* Headline */}
               <h1 className="mb-5 text-4xl font-bold leading-tight tracking-tight sm:text-5xl lg:text-6xl">
-                From Tower Signals<br />
-                <span
-                  style={{
-                    background: 'linear-gradient(95deg, #93c5fd 0%, #38bdf8 55%, #60a5fa 100%)',
-                    WebkitBackgroundClip: 'text',
-                    WebkitTextFillColor: 'transparent',
-                    backgroundClip: 'text',
-                  }}
-                >
+                <span className="text-surface-900 dark:text-white transition-colors duration-300">
+                  From Tower Signals
+                </span>
+                <br />
+                <span className="hero-gradient-text font-bold tracking-tight">
                   to a Precise Suspect Pin
                 </span>
               </h1>
 
               {/* Sub-headline */}
-              <p className="mb-9 max-w-lg text-base leading-relaxed text-slate-300 sm:text-lg">
+              <p className={cn(
+                'mb-8 max-w-lg text-base leading-relaxed sm:text-lg',
+                isDark ? 'text-slate-300' : 'text-surface-600'
+              )}>
                 Refine coarse telecom location data using multi-tower trilateration, Kalman filtering, and probability heatmaps.
               </p>
 
               {/* Trust signals */}
-              <div className="mb-10 flex flex-wrap items-center gap-x-7 gap-y-2 text-xs text-slate-400">
+              <div className={cn(
+                'mb-9 flex flex-wrap items-center gap-x-7 gap-y-2 text-xs font-medium',
+                isDark ? 'text-slate-400' : 'text-surface-500'
+              )}>
                 <span className="flex items-center gap-1.5">
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" aria-hidden="true" />
                   Multi-Tower Analysis
@@ -229,19 +229,14 @@ export default function LandingPage() {
                 </span>
               </div>
 
-              {/* CTAs */}
-              <div className="flex flex-wrap items-center gap-4 mt-8">
+              {/* Primary CTA — Sign In */}
+              <div className="flex flex-wrap items-center gap-4 mt-6">
                 <button
                   onClick={() => navigate('/login')}
-                  className="btn btn-lg w-full sm:w-64 text-base justify-center"
-                  style={{
-                    background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
-                    color: 'white',
-                    boxShadow: '0 0 24px rgba(37,99,235,0.35)',
-                  }}
+                  className="w-full sm:w-60 px-6 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 shadow-lg shadow-blue-600/30 flex items-center justify-center gap-2.5 text-sm sm:text-base transition-all duration-200 cursor-pointer"
                   aria-label="Sign in to E-RAKSHAK"
                 >
-                  <LogIn className="h-5 w-5 mr-2" aria-hidden="true" />
+                  <LogIn className="h-4.5 w-4.5" aria-hidden="true" />
                   Sign In
                 </button>
               </div>
@@ -284,7 +279,7 @@ export default function LandingPage() {
                 Single-tower data can leave officers searching across a broad radius.
               </p>
             </motion.div>
-            
+
             {/* The Solution */}
             <motion.div
               initial={{ opacity: 0, y: 16 }}
@@ -438,10 +433,10 @@ export default function LandingPage() {
               </div>
               <div className="space-y-3">
                 {[
-                  { label: 'CDR Operators Supported',  value: '4' },
-                  { label: 'Localization Algorithms',  value: '3' },
-                  { label: 'Export Formats',           value: '5' },
-                  { label: 'API Endpoints',            value: '2 (expandable)' },
+                  { label: 'CDR Operators Supported', value: '4' },
+                  { label: 'Localization Algorithms', value: '3' },
+                  { label: 'Export Formats', value: '5' },
+                  { label: 'API Endpoints', value: '2 (expandable)' },
                 ].map(({ label, value }) => (
                   <div key={label} className="flex items-center justify-between border-b border-surface-100 pb-3 last:border-0 last:pb-0 dark:border-surface-700">
                     <span className="text-xs text-surface-500 dark:text-surface-400">{label}</span>

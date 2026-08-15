@@ -98,18 +98,72 @@
     scroll-behavior: smooth;
   }
 
-  /* Smooth cross-fade when switching light/dark (only while .theme-transition is set) */
-  html.theme-transition,
-  html.theme-transition *,
-  html.theme-transition *::before,
-  html.theme-transition *::after {
-    transition:
-      background-color 0.35s ease,
-      border-color 0.35s ease,
-      color 0.35s ease,
-      fill 0.35s ease,
-      stroke 0.35s ease,
-      box-shadow 0.35s ease !important;
+  :root {
+    --hero-grad-start: #2563eb;
+    --hero-grad-mid:   #0284c7;
+    --hero-grad-end:   #1d4ed8;
+  }
+
+  .dark {
+    --hero-grad-start: #93c5fd;
+    --hero-grad-mid:   #38bdf8;
+    --hero-grad-end:   #60a5fa;
+  }
+
+  /* Bulletproof gradient text heading — strictly clipped to text glyphs, zero rectangles in all browsers */
+  .hero-gradient-text {
+    display: inline-block;
+    background-image: linear-gradient(95deg, var(--hero-grad-start) 0%, var(--hero-grad-mid) 55%, var(--hero-grad-end) 100%);
+    background-clip: text !important;
+    -webkit-background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+    color: transparent !important;
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+    transition: none !important;
+    animation: none !important;
+  }
+
+  /* Hero background base layers — pure CSS theme-coordinated transition */
+  .hero-bg-layer-dark {
+    opacity: 0;
+    transition: opacity 0.35s ease-in-out;
+    background: linear-gradient(160deg, #050b14 0%, #0a1628 55%, #07101e 100%);
+  }
+  .dark .hero-bg-layer-dark {
+    opacity: 1;
+  }
+
+  .hero-bg-layer-light {
+    opacity: 1;
+    transition: opacity 0.35s ease-in-out;
+    background: linear-gradient(160deg, #f8fafc 0%, #edf4fc 55%, #f1f5f9 100%);
+  }
+  .dark .hero-bg-layer-light {
+    opacity: 0;
+  }
+
+  /* Hero readability overlays — smooth cross-fade */
+  .hero-overlay-dark {
+    opacity: 0;
+    transition: opacity 0.35s ease-in-out;
+    background:
+      linear-gradient(to right, rgba(5,11,20,0.92) 0%, rgba(5,11,20,0.72) 50%, rgba(5,11,20,0.25) 100%),
+      linear-gradient(to bottom, rgba(5,11,20,0.15) 0%, transparent 30%, transparent 70%, rgba(5,11,20,0.40) 100%);
+  }
+  .dark .hero-overlay-dark {
+    opacity: 1;
+  }
+
+  .hero-overlay-light {
+    opacity: 1;
+    transition: opacity 0.35s ease-in-out;
+    background:
+      linear-gradient(to right, rgba(248,250,252,0.95) 0%, rgba(248,250,252,0.75) 50%, rgba(248,250,252,0.25) 100%),
+      linear-gradient(to bottom, rgba(248,250,252,0.15) 0%, transparent 30%, transparent 70%, rgba(248,250,252,0.40) 100%);
+  }
+  .dark .hero-overlay-light {
+    opacity: 0;
   }
 
   body {
@@ -118,6 +172,7 @@
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    transition: background-color 0.3s ease, color 0.3s ease;
   }
 
   .dark body {

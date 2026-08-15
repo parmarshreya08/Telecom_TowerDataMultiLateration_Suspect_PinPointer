@@ -9,27 +9,23 @@ const getInitialTheme = (): Theme => {
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
 }
 
-const applyTheme = (theme: Theme, animate: boolean) => {
+const applyTheme = (theme: Theme) => {
   const root = document.documentElement
-  if (animate) root.classList.add('theme-transition')
   root.classList.toggle('dark', theme === 'dark')
   root.style.colorScheme = theme
-  if (animate) {
-    window.setTimeout(() => root.classList.remove('theme-transition'), 400)
-  }
 }
 
 export function useTheme() {
   const [theme, setThemeState] = useState<Theme>(getInitialTheme)
 
   useEffect(() => {
-    applyTheme(theme, false)
+    applyTheme(theme)
     localStorage.setItem(LS_KEYS.THEME, theme)
   }, [theme])
 
   const setTheme = (t: Theme) => {
+    applyTheme(t)
     setThemeState(t)
-    applyTheme(t, true)
   }
 
   const toggleTheme = () => setTheme(theme === 'dark' ? 'light' : 'dark')

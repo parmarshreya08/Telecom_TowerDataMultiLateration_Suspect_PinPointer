@@ -25,12 +25,12 @@ export function Sidebar({ open, onToggle }: SidebarProps) {
 
   return (
     <motion.aside
-      className="relative z-30 flex h-full flex-col bg-surface-900 text-white"
+      className="relative z-30 flex h-full flex-col border-r border-surface-200 bg-white text-surface-900 transition-colors duration-200 dark:border-surface-700 dark:bg-surface-900 dark:text-white"
       animate={{ width: open ? 240 : 64 }}
       transition={{ duration: 0.25, ease: 'easeInOut' }}
     >
       {/* Logo */}
-      <div className={cn('flex h-16 items-center border-b border-surface-700 px-4', open ? 'gap-3' : 'justify-center')}>
+      <div className={cn('flex h-16 items-center border-b border-surface-200 px-4 dark:border-surface-700', open ? 'gap-3' : 'justify-center')}>
         <Logo size={32} />
         <AnimatePresence>
           {open && (
@@ -41,8 +41,8 @@ export function Sidebar({ open, onToggle }: SidebarProps) {
               transition={{ duration: 0.15 }}
               className="overflow-hidden"
             >
-              <p className="text-sm font-bold tracking-wide">E-RAKSHAK</p>
-              <p className="text-2xs text-surface-400">Investigation Platform</p>
+              <p className="text-sm font-bold tracking-wide text-surface-900 dark:text-white">E-RAKSHAK</p>
+              <p className="text-2xs text-surface-500 dark:text-surface-400">Investigation Platform</p>
             </motion.div>
           )}
         </AnimatePresence>
@@ -60,12 +60,17 @@ export function Sidebar({ open, onToggle }: SidebarProps) {
                   className={cn(
                     'group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors duration-150',
                     isActive
-                      ? 'bg-primary-600 text-white'
-                      : 'text-surface-300 hover:bg-surface-700 hover:text-white'
+                      ? 'bg-primary-600 text-white shadow-xs'
+                      : 'text-surface-600 hover:bg-surface-100 hover:text-surface-900 dark:text-surface-300 dark:hover:bg-surface-800 dark:hover:text-white'
                   )}
                   aria-current={isActive ? 'page' : undefined}
                 >
-                  <Icon className="h-4 w-4 shrink-0" />
+                  <Icon className={cn(
+                    'h-4 w-4 shrink-0 transition-colors',
+                    isActive
+                      ? 'text-white'
+                      : 'text-surface-500 group-hover:text-surface-900 dark:text-surface-400 dark:group-hover:text-white'
+                  )} />
                   <AnimatePresence>
                     {open && (
                       <motion.div
@@ -76,7 +81,7 @@ export function Sidebar({ open, onToggle }: SidebarProps) {
                       >
                         <span className="whitespace-nowrap">{label}</span>
                         {badge && (
-                          <span className="ml-auto rounded bg-green-500 px-1.5 py-0.5 text-2xs font-bold text-white animate-pulse-slow">
+                          <span className="ml-auto rounded bg-emerald-500 px-1.5 py-0.5 text-2xs font-bold text-white animate-pulse-slow">
                             {badge}
                           </span>
                         )}
@@ -91,10 +96,10 @@ export function Sidebar({ open, onToggle }: SidebarProps) {
 
         {/* System status */}
         {open && (
-          <div className="mt-6 mx-2 rounded-lg bg-surface-800 p-3">
+          <div className="mt-6 mx-2 rounded-lg border border-surface-200 bg-surface-50/80 p-3 dark:border-surface-700/60 dark:bg-surface-800 transition-colors">
             <div className="flex items-center gap-2 mb-2">
-              <Radio className="h-3.5 w-3.5 text-green-400" />
-              <span className="text-2xs font-semibold uppercase tracking-wider text-surface-400">System Status</span>
+              <Radio className="h-3.5 w-3.5 text-emerald-500 dark:text-emerald-400" />
+              <span className="text-2xs font-semibold uppercase tracking-wider text-surface-500 dark:text-surface-400">System Status</span>
             </div>
             <div className="space-y-1.5">
               <StatusRow label="Backend API" status="online" />
@@ -108,7 +113,7 @@ export function Sidebar({ open, onToggle }: SidebarProps) {
       {/* Toggle button */}
       <button
         onClick={onToggle}
-        className="absolute -right-3 top-20 flex h-6 w-6 items-center justify-center rounded-full bg-surface-700 border border-surface-600 text-surface-300 hover:bg-primary-600 hover:text-white transition-colors"
+        className="absolute -right-3 top-20 flex h-6 w-6 items-center justify-center rounded-full border border-surface-200 bg-white text-surface-500 shadow-xs hover:border-primary-600 hover:bg-primary-600 hover:text-white dark:border-surface-700 dark:bg-surface-800 dark:text-surface-300 dark:hover:border-primary-600 dark:hover:bg-primary-600 dark:hover:text-white transition-colors"
         aria-label={open ? 'Collapse sidebar' : 'Expand sidebar'}
       >
         {open ? <ChevronLeft className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
@@ -118,14 +123,14 @@ export function Sidebar({ open, onToggle }: SidebarProps) {
 }
 
 function StatusRow({ label, status }: { label: string; status: 'online' | 'offline' | 'idle' }) {
-  const dotColor = { online: 'bg-green-400', offline: 'bg-danger', idle: 'bg-yellow-400' }[status]
+  const dotColor = { online: 'bg-emerald-500', offline: 'bg-danger', idle: 'bg-amber-500' }[status]
   const text = { online: 'Online', offline: 'Offline', idle: 'Idle' }[status]
   return (
     <div className="flex items-center justify-between">
-      <span className="text-2xs text-surface-400">{label}</span>
+      <span className="text-2xs text-surface-500 dark:text-surface-400">{label}</span>
       <div className="flex items-center gap-1.5">
         <span className={cn('h-1.5 w-1.5 rounded-full', dotColor)} />
-        <span className="text-2xs text-surface-300">{text}</span>
+        <span className="text-2xs font-medium text-surface-700 dark:text-surface-300">{text}</span>
       </div>
     </div>
   )
