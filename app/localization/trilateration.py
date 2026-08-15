@@ -150,7 +150,22 @@ class JPLTrilateration:
             if np.linalg.norm(delta_P) < tol:
                 break
 
-        gdop = np.sqrt(max(1e-8, np.trace(last_ATA_inv)))
+        # Calculate unweighted, dimensionless GDOP safely
+        try:
+            ATA = A.T @ A
+            cond = np.linalg.cond(ATA)
+            if cond > 1e4:
+                ATA_inv = np.linalg.pinv(ATA)
+            else:
+                ATA_inv = np.linalg.inv(ATA)
+            gdop = np.sqrt(max(1e-8, np.trace(ATA_inv)))
+        except (np.linalg.LinAlgError, ValueError):
+            try:
+                ATA_inv = np.linalg.pinv(A.T @ A)
+                gdop = np.sqrt(max(1e-8, np.trace(ATA_inv)))
+            except Exception:
+                gdop = 99.9  # Safe penalty fallback value
+
 
         final_computed = np.linalg.norm(self.tower_coords - P[:2], axis=1) + P[2]
         final_residuals = pseudoranges - final_computed

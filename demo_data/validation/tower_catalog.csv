@@ -1,0 +1,4 @@
+cgi,latitude,longitude,azimuth,beamwidth,range_meters,site_address
+404-45-101-1,21.168,72.828,45.0,65.0,1200.0,Surat South-West Site
+404-45-101-2,21.18,72.832,135.0,70.0,1500.0,Surat North-West Site
+404-45-101-3,21.172,72.845,270.0,80.0,2000.0,Surat East Site

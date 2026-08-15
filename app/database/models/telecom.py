@@ -192,4 +192,5 @@ class LocalizationFixModel(Base):
     ta_outer_m: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     rss_i_dbm: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     covariance_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    geocoded_address: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now_ist, nullable=False)

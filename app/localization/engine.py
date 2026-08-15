@@ -272,6 +272,7 @@ class LocalizationEngine:
         fixes: list[LocalizationFix],
         include_ellipses: bool = True,
         include_sector_wedges: bool = True,
+        frames: Optional[list[Any]] = None,
     ) -> dict[str, Any]:
         """
         Serializes fixes into a GeoJSON FeatureCollection for map rendering.
@@ -281,12 +282,37 @@ class LocalizationEngine:
         """
         features: list[dict[str, Any]] = []
 
+        frames_map = {f.frame_id: f for f in frames} if frames else {}
+
         for fix in fixes:
             e, n, zone = GISUtils.latlon_to_utm(fix.latitude, fix.longitude)
 
             ta_uncertainty = 0.0
             if fix.ta_inner_m is not None and fix.ta_outer_m is not None:
                 ta_uncertainty = (fix.ta_outer_m - fix.ta_inner_m) / 2.0
+
+            # Expose explainability parameters
+            towers_info = []
+            constraints_info = []
+            if fix.frame_id in frames_map:
+                frame = frames_map[fix.frame_id]
+                for t in getattr(frame, "towers", []):
+                    towers_info.append({
+                        "cgi": t.cgi,
+                        "lat": t.latitude,
+                        "lon": t.longitude,
+                        "signal_strength": t.signal_strength,
+                    })
+                    c = f"CGI {t.cgi}: "
+                    parts = []
+                    if t.timing_advance is not None:
+                        parts.append(f"TA {t.timing_advance}")
+                    if t.rtt is not None:
+                        parts.append(f"RTT {t.rtt}ms")
+                    if t.pseudorange_meters is not None:
+                        parts.append(f"Range {round(t.pseudorange_meters)}m")
+                    c += " + ".join(parts) if parts else "No range data"
+                    constraints_info.append(c)
 
             point_feature: dict[str, Any] = {
                 "type": "Feature",
@@ -307,6 +333,11 @@ class LocalizationEngine:
                     "ta_inner_m": fix.ta_inner_m,
                     "ta_outer_m": fix.ta_outer_m,
                     "rss_i_dbm": fix.rss_i_dbm,
+                    "geocoded_address": fix.geocoded_address,
+                    "localization_method": "3-Tower Multilateration + Kalman" if fix.velocity_east is not None else "3-Tower Multilateration",
+                    "kalman_applied": fix.velocity_east is not None,
+                    "towers_used": towers_info,
+                    "measurement_constraints": constraints_info,
                 },
             }
             features.append(point_feature)

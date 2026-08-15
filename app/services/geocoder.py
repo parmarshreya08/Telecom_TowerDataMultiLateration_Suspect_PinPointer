@@ -1,6 +1,7 @@
-"""Reverse geocoder service via OSM Nominatim with grid cache."""
+"""Reverse geocoder service via OSM Nominatim with grid cache and robust fallbacks."""
 
 import time
+from typing import Optional
 
 import httpx
 
@@ -21,21 +22,67 @@ def _grid_key(lat: float, lon: float) -> tuple[float, float]:
 
 def _label_from_address(data: dict) -> str:
     addr = data.get("address") or {}
-    for key in ("road", "pedestrian", "suburb", "neighbourhood", "hamlet", "village", "town", "city"):
+
+    # Extract all relevant landmark details
+    landmark = None
+    for key in ("amenity", "railway", "shop", "tourism", "historic", "office", "leisure", "building"):
         if addr.get(key):
-            return str(addr[key])
-    name = data.get("display_name") or ""
-    return name.split(",")[0].strip() if name else "Unknown area"
+            landmark = str(addr[key])
+            break
+
+    # Extract street level details
+    road = addr.get("road") or addr.get("pedestrian") or addr.get("path") or addr.get("street") or addr.get("highway")
+    
+    # Extract locality hierarchy details
+    neighbourhood = addr.get("neighbourhood")
+    suburb = addr.get("suburb") or addr.get("village") or addr.get("hamlet") or addr.get("neighbourhood_district")
+    city = addr.get("city") or addr.get("town") or addr.get("municipality")
+    district = addr.get("district") or addr.get("county")
+    state = addr.get("state")
+    postcode = addr.get("postcode")
+
+    # Combine parts into a structured descriptive address
+    parts = []
+    if landmark:
+        parts.append(f"Near {landmark}")
+    if road:
+        parts.append(str(road))
+    if neighbourhood:
+        parts.append(str(neighbourhood))
+    if suburb and suburb != neighbourhood:
+        parts.append(str(suburb))
+    if city:
+        parts.append(str(city))
+    if district and district != city:
+        parts.append(str(district))
+    if state:
+        parts.append(str(state))
+    if postcode:
+        parts.append(str(postcode))
+
+    if parts:
+        return ", ".join(parts)
+
+    name = data.get("display_name")
+    if name:
+        return name.strip()
+
+    return "Unknown area"
 
 
-def reverse_geocode(lat: float, lon: float) -> str:
+def reverse_geocode(lat: float, lon: float, fallback_area: Optional[str] = None) -> str:
     global _last_call
     key = _grid_key(lat, lon)
     cached = _cache.get(key)
     if cached:
         return cached
 
-    label = "Unknown area"
+    # Pre-configure fallback label representing Latitude + Longitude + Area/locality
+    if fallback_area:
+        label = f"{lat:.6f}, {lon:.6f} ({fallback_area})"
+    else:
+        label = f"{lat:.6f}, {lon:.6f} (Unknown area)"
+
     try:
         elapsed = time.monotonic() - _last_call
         if elapsed < _MIN_INTERVAL:

@@ -33,3 +33,27 @@ def test_tighter_fix_carries_higher_weight_near_peak():
     near = [peak["geometry"]["coordinates"][1], peak["geometry"]["coordinates"][0]]
     assert abs(near[0] - 21.1702) < 0.002
     assert abs(near[1] - 72.8211) < 0.002
+
+
+def test_heatmap_one_fix_returns_circular():
+    fixes = [_fix(21.1702, 72.8211, 100)]
+    out = compute_heatmap(fixes, resolution_m=50)
+    assert len(out["features"]) > 0
+    weights = [f["properties"]["weight"] for f in out["features"]]
+    assert 1.0 in weights
+    assert out["metadata"]["fixes"] == 1
+
+
+def test_heatmap_two_fixes_returns_corridor():
+    fixes = [_fix(21.1702, 72.8211, 100), _fix(21.1712, 72.8221, 100)]
+    out = compute_heatmap(fixes, resolution_m=50)
+    assert len(out["features"]) > 0
+    assert out["metadata"]["fixes"] == 2
+
+
+def test_heatmap_collinear_fixes_fallback():
+    fixes = [_fix(21.1700, 72.8200, 100), _fix(21.1701, 72.8201, 100), _fix(21.1702, 72.8202, 100)]
+    out = compute_heatmap(fixes, resolution_m=50)
+    assert len(out["features"]) > 0
+    assert out["metadata"]["fixes"] == 3
+    assert out["metadata"].get("fallback") == "multipoint_corridor"

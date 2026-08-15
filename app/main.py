@@ -40,6 +40,32 @@ async def app_lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         docs_url=f"http://{settings.HOST}:{settings.PORT}/docs"
     )
 
+    # 3. Recover and re-enqueue any stuck uploads from previous runs
+    try:
+        from app.database.session import AsyncSessionLocal
+        from app.database.models.telecom import UploadMetadataModel
+        from app.services.ingest_queue import ingest_queue
+        from sqlalchemy import select
+
+        async with AsyncSessionLocal() as session:
+            stmt = select(UploadMetadataModel).where(
+                UploadMetadataModel.upload_status.in_(["pending", "uploaded", "processing"])
+            )
+            result = await session.execute(stmt)
+            stuck_uploads = result.scalars().all()
+            if stuck_uploads:
+                logger.info("re_enqueuing_stuck_uploads_count", count=len(stuck_uploads))
+                for upload in stuck_uploads:
+                    logger.info(
+                        "re_enqueuing_stuck_upload",
+                        upload_id=str(upload.upload_id),
+                        case_id=upload.case_id,
+                        status=upload.upload_status,
+                    )
+                    await ingest_queue.enqueue(upload.upload_id, upload.case_id, upload.supabase_path)
+    except Exception as e:
+        logger.error("stuck_upload_recovery_failed", error=str(e))
+
     yield
 
     logger.info("stopping_erakshak_backend", reason="system_shutdown")

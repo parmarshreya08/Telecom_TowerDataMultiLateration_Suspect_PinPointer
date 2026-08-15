@@ -20,6 +20,7 @@ export default function InvestigationDetailPage() {
   const [inv, setInv] = useState<Investigation | null>(null)
   const [uploads, setUploads] = useState<UploadMetadata[]>([])
   const [events, setEvents] = useState<unknown[]>([])
+  const [qualityReport, setQualityReport] = useState<any | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [deleteCdrTarget, setDeleteCdrTarget] = useState<{ id: string; name: string } | null>(null)
@@ -31,12 +32,13 @@ export default function InvestigationDetailPage() {
 
   const fetchDetails = useCallback(async () => {
     if (!id) return null
-    const [caseData, uploadsData, eventsData] = await Promise.allSettled([
+    const [caseData, uploadsData, eventsData, qualityData] = await Promise.allSettled([
       investigationApi.getById(id),
       trackingApi.getCaseUploads(id),
       investigationApi.getCaseEvents(id, 100),
+      investigationApi.getQualityReport(id),
     ])
-    return { caseData, uploadsData, eventsData }
+    return { caseData, uploadsData, eventsData, qualityData }
   }, [id])
 
   const refresh = useCallback(() => {
@@ -56,6 +58,9 @@ export default function InvestigationDetailPage() {
         if (result.eventsData.status === 'fulfilled') {
           setEvents(result.eventsData.value?.events ?? [])
         }
+        if (result.qualityData.status === 'fulfilled') {
+          setQualityReport(result.qualityData.value)
+        }
       })
       .catch((err: unknown) => {
         setError((err as Error)?.message || 'Failed to load investigation details')
@@ -73,12 +78,14 @@ export default function InvestigationDetailPage() {
       setUploads((prev) => prev.filter((u) => u.upload_id !== deleteCdrTarget.id))
       setDeleteCdrTarget(null)
       setActionMessage('CDR deleted successfully.')
+      // Refresh quality report as well
+      investigationApi.getQualityReport(id).then(setQualityReport).catch(() => {})
     } catch (err: unknown) {
       setActionError(formatDeleteError(err, 'file'))
     } finally {
       setDeletingCdrId(null)
     }
-  }, [deleteCdrTarget, deletingCdrId])
+  }, [id, deleteCdrTarget, deletingCdrId])
 
   const handleDeleteCase = useCallback(async () => {
     if (!id || isDeletingCase) return
@@ -112,6 +119,9 @@ export default function InvestigationDetailPage() {
         if (result.eventsData.status === 'fulfilled') {
           setEvents(result.eventsData.value?.events ?? [])
         }
+        if (result.qualityData.status === 'fulfilled') {
+          setQualityReport(result.qualityData.value)
+        }
       })
       .catch((err: unknown) => {
         if (!ignore) setError((err as Error)?.message || 'Failed to load investigation details')
@@ -120,7 +130,7 @@ export default function InvestigationDetailPage() {
     return () => {
       ignore = true
     }
-  }, [fetchDetails])
+  }, [id, fetchDetails])
 
   if (isLoading) {
     return (
@@ -335,6 +345,55 @@ export default function InvestigationDetailPage() {
               </div>
             </div>
           </Card>
+
+          {/* Data Quality Report Card */}
+          {qualityReport && (
+            <Card>
+              <CardHeader><CardTitle>Data Quality Report</CardTitle></CardHeader>
+              <div className="space-y-2 text-xs">
+                <div className="flex justify-between py-1 border-b border-surface-100 dark:border-surface-700/50">
+                  <span className="text-surface-500 text-left">Total Records</span>
+                  <span className="font-semibold text-surface-800 dark:text-surface-200 text-right">{qualityReport.total_records.toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-surface-100 dark:border-surface-700/50">
+                  <span className="text-surface-500 text-left">Rejected Records</span>
+                  <span className={cn("font-semibold text-right", qualityReport.rejected_records > 0 ? "text-danger" : "text-green-500")}>
+                    {qualityReport.rejected_records.toLocaleString()}
+                  </span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-surface-100 dark:border-surface-700/50">
+                  <span className="text-surface-500 text-left">Unique Towers</span>
+                  <span className="font-semibold text-surface-800 dark:text-surface-200 text-right">{qualityReport.unique_towers}</span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-surface-100 dark:border-surface-700/50">
+                  <span className="text-surface-500 text-left">Target Identifiers</span>
+                  <span className="font-semibold text-surface-800 dark:text-surface-200 text-right">{qualityReport.unique_subscribers}</span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-surface-100 dark:border-surface-700/50">
+                  <span className="text-surface-500 text-left">TA Availability</span>
+                  <span className="font-semibold text-surface-800 dark:text-surface-200 text-right">{qualityReport.ta_available_pct}%</span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-surface-100 dark:border-surface-700/50">
+                  <span className="text-surface-500 text-left">RTT Availability</span>
+                  <span className="font-semibold text-surface-800 dark:text-surface-200 text-right">{qualityReport.rtt_available_pct}%</span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-surface-100 dark:border-surface-700/50">
+                  <span className="text-surface-500 text-left">Measurement Frames</span>
+                  <span className="font-semibold text-primary-600 text-right">{qualityReport.frames_created}</span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-surface-100 dark:border-surface-700/50">
+                  <span className="text-surface-500 text-left">Frames Skipped (Unusable)</span>
+                  <span className={cn("font-semibold text-right", qualityReport.frames_skipped > 0 ? "text-warning" : "text-surface-800 dark:text-surface-200")}>
+                    {qualityReport.frames_skipped}
+                  </span>
+                </div>
+                <div className="flex justify-between py-1">
+                  <span className="text-surface-500 text-left">Localization Fixes</span>
+                  <span className="font-semibold text-green-500 text-right">{qualityReport.fixes_generated}</span>
+                </div>
+              </div>
+            </Card>
+          )}
         </div>
       </div>
 

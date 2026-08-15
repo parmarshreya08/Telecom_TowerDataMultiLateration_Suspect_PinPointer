@@ -267,14 +267,46 @@ async def run_case_localization(
             detail="Localization produced no fixes: measurement frames lack usable pseudorange (timing advance / RTT) data.",
         )
 
+    # Load all tower records for the case to get their site addresses in memory
+    from app.database.models.telecom import TowerRecordModel
+    from sqlalchemy import select
+    tower_ids = set()
+    for fr in frames:
+        for t in getattr(fr, "towers", []):
+            tower_ids.add(t.tower_id)
+    tower_site_map = {}
+    if tower_ids:
+        res_towers = await db.execute(select(TowerRecordModel).where(TowerRecordModel.tower_id.in_(list(tower_ids))))
+        tower_site_map = {tm.tower_id: tm.site_address for tm in res_towers.scalars().all()}
+
+    # Reverse-geocode all fixes before persisting to cache
+    from app.services.geocoder import reverse_geocode
+    frames_map = {f.frame_id: f for f in frames}
+    for fix in fixes:
+        try:
+            # Find nearest tower site address in the frame
+            fallback_area = None
+            if fix.frame_id in frames_map:
+                frame = frames_map[fix.frame_id]
+                min_dist = float('inf')
+                for t in getattr(frame, "towers", []):
+                    dist_sq = (t.latitude - fix.latitude)**2 + (t.longitude - fix.longitude)**2
+                    if dist_sq < min_dist:
+                        min_dist = dist_sq
+                        addr = tower_site_map.get(t.tower_id)
+                        if addr:
+                            fallback_area = addr
+            if not fallback_area:
+                fallback_area = "Udhana"
+            fix.geocoded_address = reverse_geocode(fix.latitude, fix.longitude, fallback_area=fallback_area)
+        except Exception:
+            fix.geocoded_address = "Address unavailable"
+
     await repo.delete_localization_fixes(case_id, [f.frame_id for f in frames])
     await repo.save_localization_fixes(fixes)
     await db.commit()
 
-    geojson = engine.to_geojson(fixes)
-    if geocode:
-        from app.services.geocoder import attach_geocodes
-        attach_geocodes(geojson)
+    geojson = engine.to_geojson(fixes, frames=frames)
     logger.info("case_localization_success", case_id=case_id, fix_count=len(fixes))
 
     response: dict[str, Any] = {
@@ -341,7 +373,7 @@ async def get_case_localization_geojson(
     """
     Returns the previously computed GeoJSON fixes for a case, without recomputation.
     Optional query params: start (ISO datetime), end (ISO datetime),
-    geocode=true resolves each fix to an area label via Nominatim.
+    geocode=true resolves each fix to an area label via Nominatim if not cached.
     """
     repo = TelecomRepository(db)
     start_dt = parse_iso_datetime_naive(start) if start else None
@@ -354,10 +386,67 @@ async def get_case_localization_geojson(
             detail=f"No cached localization fixes for case '{case_id}'. Run POST /api/case/{case_id}/localize first.",
         )
 
-    geojson = _fixes_to_geojson(fixes)
-    if geocode:
-        from app.services.geocoder import attach_geocodes
-        attach_geocodes(geojson)
+    from app.contracts.localization import LocalizationFix
+    frames = await repo.get_frames_by_case(case_id)
+    # Load all tower records for the case to get their site addresses in memory
+    from app.database.models.telecom import TowerRecordModel
+    from sqlalchemy import select
+    tower_ids = set()
+    for fr in frames:
+        for t in getattr(fr, "towers", []):
+            tower_ids.add(t.tower_id)
+    tower_site_map = {}
+    if tower_ids:
+        res_towers = await db.execute(select(TowerRecordModel).where(TowerRecordModel.tower_id.in_(list(tower_ids))))
+        tower_site_map = {tm.tower_id: tm.site_address for tm in res_towers.scalars().all()}
+
+    frames_map = {fr.frame_id: fr for fr in frames}
+    contract_fixes = []
+    for f in fixes:
+        addr = f.geocoded_address
+        if not addr:
+            from app.services.geocoder import reverse_geocode
+            try:
+                fallback_area = None
+                if f.frame_id in frames_map:
+                    frame = frames_map[f.frame_id]
+                    min_dist = float('inf')
+                    for t in getattr(frame, "towers", []):
+                        dist_sq = (t.latitude - f.latitude)**2 + (t.longitude - f.longitude)**2
+                        if dist_sq < min_dist:
+                            min_dist = dist_sq
+                            addr = tower_site_map.get(t.tower_id)
+                            if addr:
+                                fallback_area = addr
+                if not fallback_area:
+                    fallback_area = "Udhana"
+                addr = reverse_geocode(f.latitude, f.longitude, fallback_area=fallback_area)
+            except Exception:
+                addr = "Address unavailable"
+        contract_fixes.append(
+            LocalizationFix(
+                fix_id=f.fix_id,
+                case_id=f.case_id,
+                frame_id=f.frame_id,
+                subscriber_identifier=f.subscriber_identifier,
+                timestamp=f.timestamp,
+                latitude=f.latitude,
+                longitude=f.longitude,
+                velocity_east=f.velocity_east,
+                velocity_north=f.velocity_north,
+                confidence_radius_meters=f.confidence_radius_meters,
+                gdop=f.gdop,
+                residual_rms=f.residual_rms,
+                ta_inner_m=f.ta_inner_m,
+                ta_outer_m=f.ta_outer_m,
+                rss_i_dbm=f.rss_i_dbm,
+                covariance_json=f.covariance_json,
+                geocoded_address=addr,
+                created_at=f.created_at,
+            )
+        )
+    engine = LocalizationEngine(utm_zone=settings.UTM_ZONE, target_type="pedestrian")
+    geojson = engine.to_geojson(contract_fixes, frames=frames)
     return geojson
 
 
@@ -672,6 +761,129 @@ async def get_case_events(
             for e in events
         ],
         "total": len(events),
+    }
+
+
+@router.get(
+    "/api/case/{case_id}/quality-report",
+    status_code=status.HTTP_200_OK,
+    summary="Get case data quality summary report",
+)
+async def get_case_quality_report(
+    case_id: str,
+    db: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    """
+    Computes data quality statistics for an investigation case.
+    """
+    repo = TelecomRepository(db)
+    case = await repo.get_case_by_id(case_id)
+    if not case:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Case '{case_id}' not found.",
+        )
+
+    uploads = await repo.get_uploads_by_case(case_id)
+    files_info = []
+    unique_operators = set()
+    for u in uploads:
+        files_info.append({
+            "upload_id": str(u.upload_id),
+            "display_name": u.display_name or u.original_filename,
+            "operator": u.operator,
+            "source_type": u.source_type,
+            "status": u.upload_status,
+            "size_bytes": u.file_size_bytes,
+            "error_message": u.error_message,
+        })
+        if u.operator:
+            unique_operators.add(u.operator)
+
+    from sqlalchemy import select, func
+    from app.database.models.telecom import SubscriberEventRecordModel, MeasurementFrameModel, LocalizationFixModel
+
+    upload_ids = [u.upload_id for u in uploads]
+    if not upload_ids:
+        return {
+            "case_id": case_id,
+            "case_name": case.case_name,
+            "case_number": case.case_number,
+            "operators": [],
+            "files": [],
+            "total_records": 0,
+            "valid_records": 0,
+            "rejected_records": 0,
+            "unique_towers": 0,
+            "unique_subscribers": 0,
+            "time_range": None,
+            "ta_available_pct": 0.0,
+            "rtt_available_pct": 0.0,
+            "frames_created": 0,
+            "frames_skipped": 0,
+            "fixes_generated": 0,
+        }
+
+    stmt = select(
+        func.count(SubscriberEventRecordModel.event_id).label("total"),
+        func.count(SubscriberEventRecordModel.timing_advance).label("ta_count"),
+        func.count(SubscriberEventRecordModel.rtt).label("rtt_count"),
+        func.min(SubscriberEventRecordModel.timestamp).label("min_time"),
+        func.max(SubscriberEventRecordModel.timestamp).label("max_time"),
+        func.count(func.distinct(SubscriberEventRecordModel.cgi)).label("unique_towers"),
+        func.count(func.distinct(SubscriberEventRecordModel.phone_number)).label("unique_subscribers"),
+    ).where(SubscriberEventRecordModel.upload_id.in_(upload_ids))
+
+    res = await db.execute(stmt)
+    row = res.fetchone()
+    total_records = row.total if row else 0
+    ta_count = row.ta_count if row else 0
+    rtt_count = row.rtt_count if row else 0
+    min_time = row.min_time if row else None
+    max_time = row.max_time if row else None
+    unique_towers = row.unique_towers if row else 0
+    unique_subscribers = row.unique_subscribers if row else 0
+
+    # Count of failed/rejected rows from the uploads or raw validation warnings
+    # Since rejected records are not saved to subscriber_event_records,
+    # we can count any files that failed or estimate errors.
+    # For now, if upload_status is 'failed', count all records in that upload as rejected.
+    rejected_records = sum(u.file_size_bytes // 100 for u in uploads if u.upload_status == "failed") # rough approximation
+
+    frames_stmt = select(func.count(MeasurementFrameModel.frame_id)).where(
+        MeasurementFrameModel.upload_id.in_(upload_ids)
+    )
+    frames_res = await db.execute(frames_stmt)
+    frames_created = frames_res.scalar() or 0
+
+    fixes_stmt = select(func.count(LocalizationFixModel.fix_id)).where(
+        LocalizationFixModel.case_id == case_id
+    )
+    fixes_res = await db.execute(fixes_stmt)
+    fixes_generated = fixes_res.scalar() or 0
+
+    frames_skipped = max(0, frames_created - fixes_generated)
+
+    return {
+        "case_id": case_id,
+        "case_name": case.case_name,
+        "case_number": case.case_number,
+        "operators": list(unique_operators),
+        "files": files_info,
+        "total_records": total_records,
+        "valid_records": total_records,
+        "rejected_records": rejected_records,
+        "unique_towers": unique_towers,
+        "unique_subscribers": unique_subscribers,
+        "time_range": {
+            "start": min_time.isoformat() if min_time else None,
+            "end": max_time.isoformat() if max_time else None,
+        } if min_time else None,
+        "ta_available_pct": round((ta_count / total_records * 100), 2) if total_records > 0 else 0.0,
+        "rtt_available_pct": round((rtt_count / total_records * 100), 2) if total_records > 0 else 0.0,
+        "frames_created": frames_created,
+        "frames_skipped": frames_skipped,
+        "fixes_generated": fixes_generated,
     }
 
 

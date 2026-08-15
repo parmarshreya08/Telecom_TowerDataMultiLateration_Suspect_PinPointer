@@ -34,6 +34,10 @@ interface LocalFix {
   ta_outer_m?: number
   rss_i_dbm?: number
   geocode?: string
+  localization_method?: string
+  kalman_applied?: boolean
+  towers_used?: Array<{ cgi: string; lat: number; lon: number; signal_strength?: number }>
+  measurement_constraints?: string[]
 }
 
 function parseFixes(geo: GeoJSONFeatureCollection, caseId: string): LocalFix[] {
@@ -55,6 +59,10 @@ function parseFixes(geo: GeoJSONFeatureCollection, caseId: string): LocalFix[] {
       ta_outer_m: f.properties?.ta_outer_m != null ? Number(f.properties.ta_outer_m) : undefined,
       rss_i_dbm: f.properties?.rss_i_dbm != null ? Number(f.properties.rss_i_dbm) : undefined,
       geocode: f.properties?.geocode ? String(f.properties.geocode) : undefined,
+      localization_method: f.properties?.localization_method ? String(f.properties.localization_method) : undefined,
+      kalman_applied: f.properties?.kalman_applied != null ? Boolean(f.properties.kalman_applied) : undefined,
+      towers_used: (f.properties?.towers_used as any) || [],
+      measurement_constraints: (f.properties?.measurement_constraints as any) || [],
     }))
 }
 
@@ -193,6 +201,8 @@ export default function LiveInvestigationPage() {
         setGeojson(res.geojson)
         setFixes(parseFixes(res.geojson, id))
       }
+      const heatmapPoints = await loadHeatmap()
+      setKdeHeatPoints(heatmapPoints)
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? (err as Error)?.message ?? 'Localization failed'
       setError(msg)
@@ -534,14 +544,14 @@ export default function LiveInvestigationPage() {
 
           {/* ── Suspect Pin Pointer ── */}
           <Section icon={<Navigation className="h-4 w-4 text-primary-600" />} label="Suspect Pin Pointer">
-            {latestFix ? (
+            {activeFix ? (
               <div className="space-y-2">
-                <DataRow label="Latitude" value={formatCoordinate(latestFix.latitude)} highlight />
-                <DataRow label="Longitude" value={formatCoordinate(latestFix.longitude)} highlight />
-                <DataRow label="Accuracy" value={formatAccuracy(latestFix.confidence_radius_meters)} />
-                <DataRow label="GDOP" value={(latestFix.gdop ?? 0).toFixed(2)} />
-                <DataRow label="RMS Residual" value={(latestFix.residual_rms ?? 0).toFixed(4)} />
-                <DataRow label="Timestamp" value={formatDateTime(latestFix.timestamp)} />
+                <DataRow label="Latitude" value={formatCoordinate(activeFix.latitude)} highlight />
+                <DataRow label="Longitude" value={formatCoordinate(activeFix.longitude)} highlight />
+                <DataRow label="Accuracy" value={formatAccuracy(activeFix.confidence_radius_meters)} />
+                <DataRow label="GDOP" value={(activeFix.gdop ?? 0).toFixed(2)} />
+                <DataRow label="RMS Residual" value={(activeFix.residual_rms ?? 0).toFixed(4)} />
+                <DataRow label="Timestamp" value={formatDateTime(activeFix.timestamp)} />
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center text-center py-6 text-xs text-surface-400">
@@ -556,17 +566,40 @@ export default function LiveInvestigationPage() {
           </Section>
 
           {/* ── Signal Parameters ── */}
-          {latestFix && (latestFix.ta_inner_m != null || latestFix.rss_i_dbm != null) && (
+          {activeFix && (activeFix.ta_inner_m != null || activeFix.rss_i_dbm != null) && (
             <Section icon={<Wifi className="h-4 w-4 text-primary-600" />} label="Signal Parameters">
               <div className="space-y-2">
-                {latestFix.ta_inner_m != null && (
-                  <DataRow label="TA Inner" value={`${latestFix.ta_inner_m.toFixed(0)} m`} />
+                {activeFix.ta_inner_m != null && (
+                  <DataRow label="TA Inner" value={`${activeFix.ta_inner_m.toFixed(0)} m`} />
                 )}
-                {latestFix.ta_outer_m != null && (
-                  <DataRow label="TA Outer" value={`${latestFix.ta_outer_m.toFixed(0)} m`} />
+                {activeFix.ta_outer_m != null && (
+                  <DataRow label="TA Outer" value={`${activeFix.ta_outer_m.toFixed(0)} m`} />
                 )}
-                {latestFix.rss_i_dbm != null && (
-                  <DataRow label="RSSI" value={`${latestFix.rss_i_dbm.toFixed(1)} dBm`} />
+                {activeFix.rss_i_dbm != null && (
+                  <DataRow label="RSSI" value={`${activeFix.rss_i_dbm.toFixed(1)} dBm`} />
+                )}
+              </div>
+            </Section>
+          )}
+
+          {/* ── Location Evidence ── */}
+          {activeFix && (
+            <Section icon={<Share2 className="h-4 w-4 text-primary-600" />} label="Location Evidence">
+              <div className="space-y-2">
+                <DataRow label="Method" value={activeFix.localization_method || '3-Tower Multilateration'} />
+                <DataRow label="Kalman Filtered" value={activeFix.kalman_applied ? 'Yes' : 'No'} />
+                {activeFix.geocode && (
+                  <DataRow label="Resolved Area" value={activeFix.geocode} />
+                )}
+                {activeFix.measurement_constraints && activeFix.measurement_constraints.length > 0 && (
+                  <div className="mt-2 text-2xs text-surface-500 bg-surface-100 p-2 rounded-lg border border-surface-200 dark:bg-surface-800 dark:border-surface-700">
+                    <p className="font-semibold mb-1 text-surface-600 dark:text-surface-300">Constraints Applied:</p>
+                    <ul className="list-disc pl-3 space-y-1">
+                      {activeFix.measurement_constraints.map((c, i) => (
+                        <li key={i} className="break-all">{c}</li>
+                      ))}
+                    </ul>
+                  </div>
                 )}
               </div>
             </Section>

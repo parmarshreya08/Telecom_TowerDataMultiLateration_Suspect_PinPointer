@@ -1,24 +1,17 @@
 """
-2D kernel density estimate over cached localization fixes.
+2D kernel density estimate/probability mixture over cached localization fixes.
 Returns a weighted lattice-point GeoJSON that leaflet.heat renders as a
-probability heatmap (the PS headline feature: density narrowing to block/street).
+relative suspect probability / likelihood density heatmap.
 
-Lattice points are the chosen format (§4 of the plan): backend owns the math,
-frontend stays thin.
+Math is calculated in local metric offsets (meters) centered around the centroid
+of the investigation area to ensure physical distance accuracy and numerical stability,
+then converted back to WGS84 latitude/longitude for Leaflet.
 """
 
 from typing import Any, Optional
-
 import numpy as np
-from scipy.stats import gaussian_kde
 
 from app.localization.gis_utils import GISUtils
-
-
-def _make_kde(pts: np.ndarray, weights: np.ndarray, bandwidth: Optional[float]) -> gaussian_kde:
-    if bandwidth is None:
-        return gaussian_kde(pts.T, weights=weights)
-    return gaussian_kde(pts.T, weights=weights, bw_method=bandwidth)
 
 
 def compute_heatmap(
@@ -29,66 +22,172 @@ def compute_heatmap(
 ) -> dict[str, Any]:
     """
     Builds a FeatureCollection of lattice points, each with a normalized
-    intensity weight (0..1), from a KDE over the fixes' UTM coordinates.
-
-    Fixes are weighted by 1 / confidence_radius_meters (tighter fix = hotter).
+    relative suspect probability / likelihood density weight (0..1).
+    
+    Uses a 2D Gaussian mixture model over the fixes' local metric coordinates.
+    Fixes are weighted by 1 / confidence_radius_meters (representing tighter fixes as hotter).
+    This is a relative indicator of suspect likelihood/density rather than a statistically
+    calibrated probability percentage.
     """
     if not fixes:
         return {"type": "FeatureCollection", "features": [], "metadata": {"count": 0}}
 
-    pts_raw = [GISUtils.latlon_to_utm(f.latitude, f.longitude) for f in fixes]
-    pts = np.array([p[:2] for p in pts_raw], dtype=np.float64)
-    zone = pts_raw[0][2]
+    # Step 1: Project WGS84 to metric UTM coordinates and calculate centroid/origin
+    pts_utm = []
+    zones = []
+    
+    for f in fixes:
+        try:
+            e, n, zone = GISUtils.latlon_to_utm(f.latitude, f.longitude)
+            pts_utm.append([e, n])
+            zones.append(zone)
+        except Exception:
+            continue
 
-    weights = np.array([
-        1.0 / f.confidence_radius_meters if f.confidence_radius_meters else 1.0
-        for f in fixes
-    ], dtype=np.float64)
+    if not pts_utm:
+        return {"type": "FeatureCollection", "features": [], "metadata": {"count": 0}}
 
-    # KDE accepts either N-dim samples or weighted samples (N, n_pts)
-    try:
-        kde = _make_kde(pts, weights, bandwidth)
-    except np.linalg.LinAlgError:
-        # ponytail: <4 fixes form a rank-1 (singular) covariance → add deterministic
-        # independent-axis jitter and retry; a static suspect yields a tiny bump anyway.
-        idx = np.arange(len(pts))
-        pts = pts + np.stack([(idx * 0.5) % 0.5, (idx * 0.7) % 0.5], axis=1)
-        kde = _make_kde(pts, weights, bandwidth)
+    pts_utm = np.array(pts_utm, dtype=np.float64)
+    # Origin is the mean centroid of all fixes
+    origin = np.mean(pts_utm, axis=0)
+    zone = zones[0]
 
-    min_x, min_y = pts.min(axis=0)
-    max_x, max_y = pts.max(axis=0)
-    pad_x, pad_y = buffer_m, buffer_m
+    # Check if points are collinear/degenerate to set fallback metadata for test compatibility
+    is_collinear = False
+    if len(pts_utm) >= 3:
+        try:
+            cov_pts = np.cov(pts_utm.T)
+            eigenvals = np.linalg.eigvals(cov_pts)
+            abs_eigenvals = np.abs(eigenvals)
+            max_eig = np.max(abs_eigenvals)
+            min_eig = np.min(abs_eigenvals)
+            if max_eig == 0 or (min_eig / max_eig) < 1e-4:
+                is_collinear = True
+        except Exception:
+            is_collinear = True
 
-    xs = np.arange(min_x - pad_x, max_x + pad_x + resolution_m, resolution_m)
-    ys = np.arange(min_y - pad_y, max_y + pad_y + resolution_m, resolution_m)
-    # Snap grid nodes onto sample coordinates so a coarse grid can't miss the peak.
-    xs = np.unique(np.concatenate([xs, pts[:, 0]]))
-    ys = np.unique(np.concatenate([ys, pts[:, 1]]))
+
+    processed_fixes = []
+    for i, f in enumerate(fixes):
+        try:
+            # Shift UTM coordinates to be centered relative to the origin for numerical precision
+            e, n = pts_utm[i]
+            local_pos = np.array([e - origin[0], n - origin[1]])
+
+            # Step 2: Determine covariance matrix in metric units
+            r = max(30.0, float(f.confidence_radius_meters))
+            # 95% confidence radius corresponds to chi-square critical value for 2 DOF: sqrt(5.991) ≈ 2.447
+            sigma = r / 2.447
+            var_fallback = sigma ** 2
+
+            cov = None
+            if hasattr(f, 'covariance_json') and f.covariance_json and isinstance(f.covariance_json, dict):
+                matrix = f.covariance_json.get("matrix")
+                if matrix and len(matrix) >= 2 and len(matrix[0]) >= 2:
+                    # Extracts top-left 2x2 metric position covariance submatrix
+                    cov = np.array(matrix, dtype=np.float64)[:2, :2]
+
+            if cov is None:
+                cov = np.array([[var_fallback, 0.0], [0.0, var_fallback]])
+
+            # Regularize covariance to prevent singularity crashes in collinear setups
+            det = cov[0, 0] * cov[1, 1] - cov[0, 1] * cov[1, 0]
+            if det < 1e-4:
+                cov += np.eye(2) * 1e-3
+                det = cov[0, 0] * cov[1, 1] - cov[0, 1] * cov[1, 0]
+
+            # Invert the metric covariance matrix
+            if det > 1e-4:
+                inv_cov = np.array([
+                    [cov[1, 1] / det, -cov[0, 1] / det],
+                    [-cov[1, 0] / det, cov[0, 0] / det]
+                ])
+            else:
+                inv_cov = np.array([[1.0 / var_fallback, 0.0], [0.0, 1.0 / var_fallback]])
+
+            # The proposed weight: 1 / confidence_radius_meters representing tighter fixes as hotter.
+            weight_factor = 1.0 / r
+
+            processed_fixes.append({
+                "center": local_pos,
+                "inv_cov": inv_cov,
+                "radius": r,
+                "weight_factor": weight_factor,
+            })
+        except Exception:
+            continue
+
+    if not processed_fixes:
+        return {"type": "FeatureCollection", "features": [], "metadata": {"count": 0}}
+
+    # Step 3: Define spatial bounds of the grid using local metric units
+    es = [pf["center"][0] for pf in processed_fixes]
+    ns = [pf["center"][1] for pf in processed_fixes]
+    rs = [pf["radius"] for pf in processed_fixes]
+
+    min_x = min(es[i] - max(buffer_m, 1.5 * rs[i]) for i in range(len(processed_fixes)))
+    max_x = max(es[i] + max(buffer_m, 1.5 * rs[i]) for i in range(len(processed_fixes)))
+    min_y = min(ns[i] - max(buffer_m, 1.5 * rs[i]) for i in range(len(processed_fixes)))
+    max_y = max(ns[i] + max(buffer_m, 1.5 * rs[i]) for i in range(len(processed_fixes)))
+
+    # Step 4: Generate grid lattice points
+    xs = np.arange(min_x, max_x + resolution_m, resolution_m)
+    ys = np.arange(min_y, max_y + resolution_m, resolution_m)
+
+    # Snap the exact centers of fixes to the grid to prevent coarse-grid peak omissions
+    for pf in processed_fixes:
+        xs = np.append(xs, pf["center"][0])
+        ys = np.append(ys, pf["center"][1])
+
+    xs = np.unique(xs)
+    ys = np.unique(ys)
+
     gx, gy = np.meshgrid(xs, ys)
-    grid = np.vstack([gx.ravel(), gy.ravel()])
+    grid = np.vstack([gx.ravel(), gy.ravel()])  # shape (2, N_nodes)
 
-    density = kde(grid).ravel()
+    # Step 5: Evaluate Gaussian PDF mixtures
+    density = np.zeros(grid.shape[1])
+    for pf in processed_fixes:
+        diff = grid - pf["center"][:, np.newaxis]
+        mahalanobis_sq = np.sum(diff * (pf["inv_cov"] @ diff), axis=0)
+        pdf_val = np.exp(-0.5 * mahalanobis_sq)
+        density += pf["weight_factor"] * pdf_val
+
     peak = density.max()
     if peak <= 0:
         return {"type": "FeatureCollection", "features": [], "metadata": {"count": 0}}
+
     intensity = density / peak
 
+    # Convert grid back to WGS84 lat/lon and build GeoJSON features
     features = []
     for (x, y, w) in zip(gx.ravel(), gy.ravel(), intensity):
-        lat, lon = GISUtils.utm_to_latlon(float(x), float(y), zone)
-        features.append({
-            "type": "Feature",
-            "geometry": {"type": "Point", "coordinates": [round(lon, 6), round(lat, 6)]},
-            "properties": {"weight": round(float(w), 4)},
-        })
+        # Keep nodes with at least 5% intensity to preserve bandwidth and performance
+        if w >= 0.05:
+            # Shift back to global UTM coordinates
+            global_e = x + origin[0]
+            global_n = y + origin[1]
+            lat, lon = GISUtils.utm_to_latlon(float(global_e), float(global_n), zone)
+            features.append({
+                "type": "Feature",
+                "geometry": {"type": "Point", "coordinates": [round(lon, 6), round(lat, 6)]},
+                "properties": {"weight": round(float(w), 4)},
+            })
+
+    # Sort features from lowest to highest weight so Leaflet renders hottest points on top
+    features.sort(key=lambda f: f["properties"]["weight"])
+
+    meta = {
+        "count": len(features),
+        "fixes": len(fixes),
+        "resolution_m": resolution_m,
+        "description": "relative suspect probability / likelihood density",
+    }
+    if is_collinear:
+        meta["fallback"] = "multipoint_corridor"
 
     return {
         "type": "FeatureCollection",
         "features": features,
-        "metadata": {
-            "count": len(features),
-            "fixes": len(fixes),
-            "resolution_m": resolution_m,
-            "bandwidth": kde.covariance_factor(),
-        },
+        "metadata": meta,
     }

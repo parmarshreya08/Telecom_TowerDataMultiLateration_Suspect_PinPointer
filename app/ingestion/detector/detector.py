@@ -49,7 +49,7 @@ class TelecomFileDetector(BaseDetector):
     Refactored, dependency-free file detector that uses rule configurations from signatures.py.
     """
 
-    def detect(self, file_path: str) -> DetectionResult:
+    def detect(self, file_path: str, original_filename: Optional[str] = None) -> DetectionResult:
         """
         Deduces the operator, source type, and confidence based on CSV headers.
         
@@ -77,6 +77,25 @@ class TelecomFileDetector(BaseDetector):
         # 3. Detect Operator and Source Type
         operator, op_conf, op_matched = self.detect_operator(columns)
         source_type, st_conf, st_matched = self.detect_source_type(columns)
+
+        # Fallback filename-based operator detection
+        import re
+        check_name = original_filename or os.path.basename(file_path)
+        filename_tokens = [t.lower() for t in re.split(r'[^a-zA-Z0-9]', check_name)]
+        filename_op = None
+        if "airtel" in filename_tokens:
+            filename_op = Operator.AIRTEL
+        elif "jio" in filename_tokens:
+            filename_op = Operator.JIO
+        elif "vi" in filename_tokens or "vodafone" in filename_tokens or "idea" in filename_tokens:
+            filename_op = Operator.VI
+        elif "bsnl" in filename_tokens:
+            filename_op = Operator.BSNL
+
+        if filename_op and (operator == Operator.UNKNOWN or op_conf < 0.5):
+            operator = filename_op
+            op_conf = 1.0
+            op_matched = list(set(op_matched + ["filename"]))
 
         # 4. Resolve Extractor Name using Mapping Dictionary
         extractor_name = EXTRACTOR_MAP.get(

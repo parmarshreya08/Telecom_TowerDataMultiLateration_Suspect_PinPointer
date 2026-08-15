@@ -186,6 +186,9 @@ export const investigationApi = {
 
   getDashboardStats: () =>
     apiClient.get<DashboardStats>('/api/dashboard/stats').then((r) => r.data),
+
+  getQualityReport: (caseId: string): Promise<any> =>
+    apiClient.get(`/api/case/${caseId}/quality-report`).then((r) => r.data),
 }
 
 // Tracking / Localization

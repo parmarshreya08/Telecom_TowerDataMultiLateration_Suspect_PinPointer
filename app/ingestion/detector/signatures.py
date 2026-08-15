@@ -16,13 +16,13 @@ AIRTEL_SIGNATURE = {
 }
 
 JIO_SIGNATURE = {
-    "exact": ["calling party", "first cell id", "roaming circle name", "calling_party", "receiving_party", "cgi_code", "imei_number", "imsi_code"],
-    "partial": ["jio", "ta", "signal_dbm"]
+    "exact": ["calling party", "first cell id", "roaming circle name", "calling_party", "receiving_party", "cgi_code", "imei_number", "imsi_code", "ta"],
+    "partial": ["jio", "signal_dbm"]
 }
 
 VI_SIGNATURE = {
-    "exact": ["target /a party number", "first bts location", "first cell global id", "cell_global_id", "call_duration"],
-    "partial": ["vi", "vodafone", "idea", "other_party"]
+    "exact": ["target /a party number", "first bts location", "first cell global id", "cell_global_id", "call_duration", "vi"],
+    "partial": ["vodafone", "idea", "other_party"]
 }
 
 BSNL_SIGNATURE = {

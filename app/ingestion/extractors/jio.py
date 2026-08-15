@@ -25,18 +25,33 @@ class JioExtractor(BaseExtractor):
     COLUMN_MAP = {
         "calling party telephone number": "phone_number",
         "calling_party_telephone_number": "phone_number",
+        "calling_party": "phone_number",
         "imei": "imei",
+        "imei_number": "imei",
         "imsi": "imsi",
+        "imsi_code": "imsi",
         "call date": "call_date",
         "call_date": "call_date",
         "call time": "call_time",
         "call_time": "call_time",
+        "start_time": "timestamp",
+        "timestamp": "timestamp",
         "call duration": "duration_seconds",
         "call_duration": "duration_seconds",
+        "duration_sec": "duration_seconds",
+        "duration_seconds": "duration_seconds",
         "first cell id": "cgi",
         "first_cell_id": "cgi",
+        "cgi_code": "cgi",
+        "cgi": "cgi",
         "call type": "call_type",
         "call_type": "call_type",
+        "direction": "call_type",
+        "ta": "timing_advance",
+        "timing_advance": "timing_advance",
+        "rtt": "rtt",
+        "signal_dbm": "signal_strength",
+        "signal_strength": "signal_strength",
     }
 
     # Dedicated Jio CallType mapping dictionary
@@ -222,18 +237,21 @@ class JioExtractor(BaseExtractor):
             if norm_field:
                 mapped_data[norm_field] = val.strip()
 
-        # Combine Call Date and Call Time for timestamp
-        call_date = mapped_data.get("call_date")
-        call_time = mapped_data.get("call_time")
-        if not call_date:
-            raise ValueError("Row is missing mandatory Call Date column.")
-
-        if call_time:
-            timestamp_str = f"{call_date.strip()} {call_time.strip()}"
+        # Get timestamp or combine Call Date and Call Time
+        timestamp = None
+        ts_val = mapped_data.get("timestamp")
+        if ts_val:
+            timestamp = parse_telecom_datetime(ts_val)
         else:
-            timestamp_str = call_date.strip()
-
-        timestamp = parse_telecom_datetime(timestamp_str)
+            call_date = mapped_data.get("call_date")
+            call_time = mapped_data.get("call_time")
+            if not call_date:
+                raise ValueError("Row is missing mandatory Call Date or Timestamp column.")
+            if call_time:
+                timestamp_str = f"{call_date.strip()} {call_time.strip()}"
+            else:
+                timestamp_str = call_date.strip()
+            timestamp = parse_telecom_datetime(timestamp_str)
 
         # First Cell ID / CGI
         cgi = mapped_data.get("cgi")
@@ -251,6 +269,11 @@ class JioExtractor(BaseExtractor):
         # Dedicated Jio CallType mapping
         call_type_str = str(mapped_data.get("call_type", "")).strip().lower()
         call_type = self.CALL_TYPE_MAP.get(call_type_str, CallType.UNKNOWN)
+
+        # Signal strength, TA, RTT
+        signal_strength = self._safe_float(mapped_data.get("signal_strength"))
+        timing_advance = self._safe_int(mapped_data.get("timing_advance"))
+        rtt = self._safe_float(mapped_data.get("rtt"))
 
         return SubscriberEventRecord(
             event_id=uuid4(),
@@ -270,9 +293,9 @@ class JioExtractor(BaseExtractor):
             cell_id=cell_id,
             tower_latitude=None,
             tower_longitude=None,
-            signal_strength=None,
-            timing_advance=None,
-            rtt=None,
+            signal_strength=signal_strength,
+            timing_advance=timing_advance,
+            rtt=rtt,
             source_file=source_file,
             record_number=row_idx,
             raw_fields=row_dict  # Preserve every original column from the Jio file

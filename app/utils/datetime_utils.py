@@ -39,17 +39,20 @@ def parse_telecom_datetime(value: Any) -> datetime:
     Parses various date-time format strings extracted from operator logs.
     
     Tolerates typical telecom layout varieties (e.g. slashes, ISO, separate sheets).
+    All timezone-aware inputs are converted to IST (UTC+5:30) and stripped of tzinfo.
 
     Args:
         value: Datetime object, float timestamp, or formatted string.
 
     Returns:
-        TimeZone-aware or naive datetime representing the parsed stamp.
+        TimeZone-naive datetime representing the parsed stamp in IST.
 
     Raises:
         ValueError: If formatting is completely unrecognized.
     """
     if isinstance(value, datetime):
+        if value.tzinfo is not None:
+            value = value.astimezone(IST).replace(tzinfo=None)
         return value
 
     if not value:
@@ -78,7 +81,10 @@ def parse_telecom_datetime(value: Any) -> datetime:
 
     for fmt in formats:
         try:
-            return datetime.strptime(val_str, fmt)
+            dt = datetime.strptime(val_str, fmt)
+            if dt.tzinfo is not None:
+                dt = dt.astimezone(IST).replace(tzinfo=None)
+            return dt
         except ValueError:
             continue
 
@@ -90,7 +96,10 @@ def parse_telecom_datetime(value: Any) -> datetime:
     ]
     for fmt in date_only_formats:
         try:
-            return datetime.strptime(val_str, fmt)
+            dt = datetime.strptime(val_str, fmt)
+            if dt.tzinfo is not None:
+                dt = dt.astimezone(IST).replace(tzinfo=None)
+            return dt
         except ValueError:
             continue
 

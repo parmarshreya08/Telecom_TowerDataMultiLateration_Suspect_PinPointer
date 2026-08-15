@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, Polyline, Circle, Polygon, useMap } from 'react-leaflet'
 import L from 'leaflet'
+import './leaflet-setup'
 import 'leaflet.heat'
 import { Maximize2, Target, Eye, EyeOff } from 'lucide-react'
 import type { LocalizationResult, PathPoint, TowerRecord, GeoJSONFeatureCollection, RttObservation } from '@/types'
@@ -419,7 +420,7 @@ export function InvestigationMap({
         )}
 
         {/* Probability heatmap */}
-        {showHeatmap && <HeatLayer points={heatPoints} visible={showHeatmap} />}
+        <HeatLayer points={heatPoints} visible={showHeatmap} />
       </MapContainer>
 
       {/* ── Overlay controls ── */}
@@ -501,6 +502,18 @@ export function InvestigationMap({
           <p className="mt-0.5 text-sm font-semibold text-blue-700 dark:text-blue-300">
             {String(currentLocation.geocode)}
           </p>
+        </div>
+      )}
+
+      {/* ── Heatmap Legend ── */}
+      {showHeatmap && heatPoints.length > 0 && (
+        <div className="absolute bottom-4 right-4 z-[1000] rounded-lg border border-surface-200 bg-white/95 px-3 py-2 shadow-lg backdrop-blur-sm dark:border-surface-700 dark:bg-surface-900/95 flex flex-col gap-1 w-44">
+          <p className="text-[10px] font-semibold text-surface-700 dark:text-surface-300">Suspect Likelihood Density</p>
+          <div className="h-1.5 w-full rounded-sm bg-gradient-to-r from-[#3b82f6] via-[#facc15] to-[#ef4444]" />
+          <div className="flex justify-between text-[8px] font-medium text-surface-500">
+            <span>Low Probability</span>
+            <span>High Probability</span>
+          </div>
         </div>
       )}
     </div>

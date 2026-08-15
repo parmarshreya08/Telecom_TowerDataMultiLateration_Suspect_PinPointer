@@ -1,0 +1,27 @@
+[
+  {
+    "timestamp": "2026-08-15T10:00:00Z",
+    "latitude": 21.17,
+    "longitude": 72.831
+  },
+  {
+    "timestamp": "2026-08-15T10:05:00Z",
+    "latitude": 21.172,
+    "longitude": 72.833
+  },
+  {
+    "timestamp": "2026-08-15T10:10:00Z",
+    "latitude": 21.174,
+    "longitude": 72.835
+  },
+  {
+    "timestamp": "2026-08-15T10:15:00Z",
+    "latitude": 21.176,
+    "longitude": 72.837
+  },
+  {
+    "timestamp": "2026-08-15T10:20:00Z",
+    "latitude": 21.178,
+    "longitude": 72.839
+  }
+]

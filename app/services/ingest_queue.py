@@ -75,12 +75,14 @@ class IngestQueue:
                 try:
                     storage_service.download_file(supabase_path, local_path)
 
-                    # Run detection
-                    detector = TelecomFileDetector()
-                    detection_res = detector.detect(local_path)
-
                     # Update detection info
                     upload = await repo.get_upload_by_id(upload_id)
+                    original_filename = upload.original_filename if upload else None
+
+                    # Run detection
+                    detector = TelecomFileDetector()
+                    detection_res = detector.detect(local_path, original_filename=original_filename)
+
                     if upload:
                         upload.source_type = detection_res.source_type.value
                         upload.operator = detection_res.operator.value
@@ -143,8 +145,12 @@ class IngestQueue:
 
             except Exception as e:
                 logger.error("ingest_queue_failed", upload_id=str(upload_id), error=str(e))
-                await repo.update_upload_status(upload_id, "failed", error_message=str(e))
-                await db_session.commit()
+                try:
+                    await db_session.rollback()
+                    await repo.update_upload_status(upload_id, "failed", error_message=str(e))
+                    await db_session.commit()
+                except Exception as rollback_err:
+                    logger.error("ingest_queue_rollback_failed", upload_id=str(upload_id), error=str(rollback_err))
 
             finally:
                 self._tasks.pop(upload_id, None)

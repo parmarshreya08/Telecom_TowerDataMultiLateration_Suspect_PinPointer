@@ -87,6 +87,10 @@ class LocalizationFix(BaseModel):
         default=None,
         description="2x2 covariance matrix as JSON [[a,b],[c,d]].",
     )
+    geocoded_address: Optional[str] = Field(
+        default=None,
+        description="Persisted reverse-geocoded address label.",
+    )
     created_at: datetime = Field(
         default_factory=now_ist,
         description="Timestamp when the fix was computed.",

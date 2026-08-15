@@ -366,6 +366,8 @@ class TelecomRepository:
                 ta_inner_m=f.ta_inner_m,
                 ta_outer_m=f.ta_outer_m,
                 rss_i_dbm=f.rss_i_dbm,
+                covariance_json=f.covariance_json,
+                geocoded_address=f.geocoded_address,
                 created_at=f.created_at,
             )
             for f in fixes
