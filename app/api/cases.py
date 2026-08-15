@@ -1129,6 +1129,14 @@ async def verify_rf_ground_truth(
     """
     await check_case_access(case_id, officer, db)
 
+    from app.database.repository import TelecomRepository as _Repo
+    _repo = _Repo(db)
+    if not await _repo.get_case_by_id(case_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Case '{case_id}' not found.",
+        )
+
     if not scans:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
