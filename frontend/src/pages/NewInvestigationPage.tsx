@@ -35,8 +35,9 @@ export default function NewInvestigationPage() {
   const onSubmit = async (data: FormData) => {
     setIsLoading(true)
     try {
-      await investigationApi.create(data)
-      navigate(`/investigations/${data.case_number}/upload`)
+      const created = await investigationApi.create(data)
+      // Navigate using the server-assigned UUID, not the user-supplied case_number
+      navigate(`/investigations/${created.id}/upload`)
     } catch (err: unknown) {
       setError(extractErrorMessage(err))
     } finally {

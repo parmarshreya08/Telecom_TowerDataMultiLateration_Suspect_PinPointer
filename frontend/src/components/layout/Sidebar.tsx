@@ -13,11 +13,11 @@ interface SidebarProps {
 }
 
 const NAV_ITEMS = [
-  { path: '/dashboard',      label: 'Dashboard',      icon: LayoutDashboard },
-  { path: '/investigations', label: 'Investigations',  icon: FolderSearch    },
-  { path: '/live',           label: 'Live Tracking',   icon: MapPin, badge: 'LIVE' },
-  { path: '/reports',        label: 'Reports',         icon: FileBarChart    },
-  { path: '/settings',       label: 'Settings',        icon: Settings        },
+  { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { path: '/investigations', label: 'Investigations', icon: FolderSearch },
+  { path: '/live', label: 'Live Tracking', icon: MapPin, badge: 'LIVE' },
+  { path: '/reports', label: 'Reports', icon: FileBarChart },
+  { path: '/settings', label: 'Settings', icon: Settings },
 ]
 
 export function Sidebar({ open, onToggle }: SidebarProps) {
@@ -97,9 +97,9 @@ export function Sidebar({ open, onToggle }: SidebarProps) {
               <span className="text-2xs font-semibold uppercase tracking-wider text-surface-400">System Status</span>
             </div>
             <div className="space-y-1.5">
-              <StatusRow label="Backend API"    status="online" />
-              <StatusRow label="Database"       status="online" />
-              <StatusRow label="Live Tracking"  status="idle"   />
+              <StatusRow label="Backend API" status="online" />
+              <StatusRow label="Database" status="online" />
+              <StatusRow label="Live Tracking" status="idle" />
             </div>
           </div>
         )}
@@ -119,7 +119,7 @@ export function Sidebar({ open, onToggle }: SidebarProps) {
 
 function StatusRow({ label, status }: { label: string; status: 'online' | 'offline' | 'idle' }) {
   const dotColor = { online: 'bg-green-400', offline: 'bg-danger', idle: 'bg-yellow-400' }[status]
-  const text     = { online: 'Online', offline: 'Offline', idle: 'Idle' }[status]
+  const text = { online: 'Online', offline: 'Offline', idle: 'Idle' }[status]
   return (
     <div className="flex items-center justify-between">
       <span className="text-2xs text-surface-400">{label}</span>

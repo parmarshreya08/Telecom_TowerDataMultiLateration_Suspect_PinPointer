@@ -11,29 +11,36 @@ export function cn(...inputs: ClassValue[]): string {
 }
 
 // ── Date / Time ────────────────────────────────────────────
-export function formatDate(date: string | Date, pattern = 'dd MMM yyyy'): string {
+export function formatDate(
+  date: string | Date | undefined | null,
+  pattern = 'dd MMM yyyy'
+): string {
+  if (!date) return '—'
   try {
     const d = typeof date === 'string' ? parseISO(date) : date
+    if (isNaN(d.getTime())) return '—'
     return format(d, pattern)
   } catch {
     return '—'
   }
 }
 
-export function formatDateTime(date: string | Date): string {
+export function formatDateTime(date: string | Date | undefined | null): string {
   return formatDate(date, 'dd MMM yyyy, HH:mm:ss')
 }
 
-export function formatTimeAgo(date: string | Date): string {
+export function formatTimeAgo(date: string | Date | undefined | null): string {
+  if (!date) return '—'
   try {
     const d = typeof date === 'string' ? parseISO(date) : date
+    if (isNaN(d.getTime())) return '—'
     return formatDistanceToNow(d, { addSuffix: true })
   } catch {
     return '—'
   }
 }
 
-export function formatTime(date: string | Date): string {
+export function formatTime(date: string | Date | undefined | null): string {
   return formatDate(date, 'HH:mm:ss')
 }
 
@@ -158,7 +165,7 @@ export async function copyToClipboard(text: string): Promise<boolean> {
 export function downloadBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob)
   const a   = document.createElement('a')
-  a.href    = url
+  a.href     = url
   a.download = filename
   document.body.appendChild(a)
   a.click()

@@ -1,12 +1,25 @@
-import { useState, type FormEvent } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
-import { LogIn, Eye, EyeOff } from 'lucide-react'
-import { Logo } from '@/components/ui/Logo'
-import { Card } from '@/components/ui/Card'
+/**
+ * LoginPage — E-RAKSHAK officer sign-in.
+ *
+ * Visual: shares the same dark atmospheric background as the landing page
+ * (TechBackground Three.js canvas, lazy-loaded) so the transition from
+ * landing → login feels seamless rather than jarring.
+ *
+ * Auth logic is unchanged.
+ */
+
+import { lazy, Suspense, useState, type FormEvent } from 'react'
+import { useNavigate, useLocation, Link } from 'react-router-dom'
+import { LogIn, Eye, EyeOff, ShieldCheck } from 'lucide-react'
+import { Logo }   from '@/components/ui/Logo'
 import { Button } from '@/components/ui/Button'
-import { Input } from '@/components/ui/Input'
+import { Input }  from '@/components/ui/Input'
 import { authApi, setToken, setStoredOfficer } from '@/services/auth'
 import type { AxiosError } from 'axios'
+
+const TechBackground = lazy(() =>
+  import('@/components/landing/TechBackground').then((m) => ({ default: m.TechBackground }))
+)
 
 function errorMessage(err: unknown): string {
   const e = err as AxiosError<{ detail?: string }>
@@ -14,12 +27,13 @@ function errorMessage(err: unknown): string {
 }
 
 export default function LoginPage() {
-  const navigate = useNavigate()
-  const [email, setEmail] = useState('')
+  const navigate  = useNavigate()
+  const location  = useLocation()
+  const [email,    setEmail]    = useState('')
   const [password, setPassword] = useState('')
-  const [showPw, setShowPw] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
+  const [showPw,   setShowPw]   = useState(false)
+  const [error,    setError]    = useState<string | null>(null)
+  const [loading,  setLoading]  = useState(false)
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -29,7 +43,9 @@ export default function LoginPage() {
       const res = await authApi.login({ email, password })
       setToken(res.access_token)
       setStoredOfficer(res.officer)
-      navigate('/dashboard', { replace: true })
+      // Redirect back to the page the user was trying to reach, or fall back to /dashboard
+      const from = (location.state as { from?: string } | null)?.from
+      navigate(from && from !== '/login' ? from : '/dashboard', { replace: true })
     } catch (err) {
       setError(errorMessage(err))
     } finally {
@@ -38,63 +54,141 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-surface-50 p-4 dark:bg-surface-950">
-      <div className="w-full max-w-md">
-        <div className="mb-6 flex flex-col items-center gap-3">
-          <Logo size={56} />
-          <h1 className="text-2xl font-bold text-surface-900 dark:text-surface-100">E-Rakshak</h1>
-          <p className="text-sm text-surface-500">Sign in to your officer account</p>
+    <div
+      className="relative flex min-h-screen items-center justify-center p-4 overflow-hidden"
+      style={{ background: 'linear-gradient(160deg, #060d1a 0%, #0c1a33 55%, #07111f 100%)' }}
+    >
+      {/* Atmospheric Three.js background — same as landing page */}
+      <div className="absolute inset-0 pointer-events-none" aria-hidden="true">
+        <Suspense fallback={null}>
+          <TechBackground className="w-full h-full" />
+        </Suspense>
+      </div>
+
+      {/* Dark overlay — ensures form readability over the animation */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{ background: 'radial-gradient(ellipse at center, rgba(6,13,26,0.55) 0%, rgba(6,13,26,0.80) 100%)' }}
+        aria-hidden="true"
+      />
+
+      {/* Card */}
+      <div className="relative z-10 w-full max-w-sm">
+
+        {/* Logo + heading */}
+        <div className="mb-7 flex flex-col items-center gap-3 text-center">
+          <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-primary-700/40 bg-primary-950/60 backdrop-blur-sm">
+            <Logo size={36} />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-white">E-RAKSHAK</h1>
+            <p className="mt-1 text-sm text-slate-400">Sign in to your officer account</p>
+          </div>
         </div>
 
-        <Card padding="lg">
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-            <Input
-              type="email"
-              label="Email"
-              placeholder="officer@police.gov.in"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              autoComplete="email"
-              required
-            />
-            <Input
-              type={showPw ? 'text' : 'password'}
-              label="Password"
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password"
-              required
-              rightElement={
+        {/* Form card */}
+        <div
+          className="rounded-2xl border border-white/10 bg-white/5 p-7 backdrop-blur-md"
+          style={{ boxShadow: '0 8px 40px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.06)' }}
+        >
+          <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+
+            {/* Email */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                Email
+              </label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="officer@police.gov.in"
+                autoComplete="email"
+                required
+                className="w-full rounded-lg border border-white/10 bg-white/5 px-3.5 py-2.5 text-sm text-white placeholder-slate-500 backdrop-blur-sm transition focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+              />
+            </div>
+
+            {/* Password */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                Password
+              </label>
+              <div className="relative">
+                <input
+                  type={showPw ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  autoComplete="current-password"
+                  required
+                  className="w-full rounded-lg border border-white/10 bg-white/5 px-3.5 py-2.5 pr-10 text-sm text-white placeholder-slate-500 backdrop-blur-sm transition focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                />
                 <button
                   type="button"
                   onClick={() => setShowPw((v) => !v)}
-                  className="text-surface-400 hover:text-surface-600 dark:hover:text-surface-300"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors"
                   aria-label={showPw ? 'Hide password' : 'Show password'}
                 >
                   {showPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
-              }
-            />
+              </div>
+            </div>
 
+            {/* Error */}
             {error && (
-              <p className="rounded-md bg-danger/10 px-3 py-2 text-sm text-danger" role="alert">
-                {error}
-              </p>
+              <div
+                className="flex items-start gap-2 rounded-lg border border-red-500/20 bg-red-500/10 px-3.5 py-2.5 text-sm text-red-300"
+                role="alert"
+              >
+                <span className="shrink-0 mt-0.5">⚠</span>
+                <span>{error}</span>
+              </div>
             )}
 
-            <Button type="submit" loading={loading} icon={<LogIn className="h-4 w-4" />}>
-              Sign In
-            </Button>
+            {/* Submit */}
+            <button
+              type="submit"
+              disabled={loading}
+              className="mt-1 flex w-full items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-semibold text-white transition disabled:opacity-60"
+              style={{
+                background: loading
+                  ? 'rgba(37,99,235,0.5)'
+                  : 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+                boxShadow: loading ? 'none' : '0 0 20px rgba(37,99,235,0.30)',
+              }}
+            >
+              {loading ? (
+                <>
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                  Signing in…
+                </>
+              ) : (
+                <>
+                  <LogIn className="h-4 w-4" />
+                  Sign In
+                </>
+              )}
+            </button>
           </form>
-        </Card>
+        </div>
 
-        <p className="mt-4 text-center text-sm text-surface-500">
-          No account yet?{' '}
-          <Link to="/register" className="font-semibold text-primary hover:underline">
-            Register
+        {/* Footer links */}
+        <div className="mt-5 flex flex-col items-center gap-3">
+          <p className="text-sm text-slate-500">
+            No account yet?{' '}
+            <Link to="/register" className="font-semibold text-primary-400 hover:text-primary-300 transition-colors">
+              Register
+            </Link>
+          </p>
+          <Link
+            to="/"
+            className="flex items-center gap-1.5 text-xs text-slate-600 hover:text-slate-400 transition-colors"
+          >
+            <ShieldCheck className="h-3.5 w-3.5" />
+            Return to E-RAKSHAK home
           </Link>
-        </p>
+        </div>
       </div>
     </div>
   )

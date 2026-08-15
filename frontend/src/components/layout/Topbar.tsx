@@ -127,7 +127,7 @@ export function Topbar({ onToggleSidebar, unreadNotifications, onOpenNotificatio
             aria-label="Account menu"
             aria-expanded={menuOpen}
           >
-            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-xs font-semibold text-white">
+            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary-600 text-xs font-semibold text-white">
               {(officer?.officer_name ?? '?').charAt(0).toUpperCase()}
             </span>
           </button>
@@ -135,7 +135,7 @@ export function Topbar({ onToggleSidebar, unreadNotifications, onOpenNotificatio
           {menuOpen && (
             <div className="absolute right-0 top-full z-50 mt-2 w-60 rounded-xl border border-surface-200 bg-white p-2 shadow-lg dark:border-surface-700 dark:bg-surface-900">
               <div className="flex items-center gap-3 border-b border-surface-100 px-2 pb-2 dark:border-surface-700">
-                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-sm font-semibold text-white">
+                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary-600 text-sm font-semibold text-white">
                   {(officer?.officer_name ?? '?').charAt(0).toUpperCase()}
                 </span>
                 <div className="min-w-0">

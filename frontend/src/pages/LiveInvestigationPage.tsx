@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   Share2, Download, FileText, Map, Globe,
   Navigation, Radio, Wifi, WifiOff, Clock,
   ArrowLeft, Crosshair, PlayCircle, RefreshCw, AlertCircle,
-  Copy, Check, Play, Pause,
+  Copy, Check, Play, Pause, Trash2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
@@ -15,8 +15,9 @@ import {
   downloadBlob, extractErrorMessage, cn,
 } from '@/utils'
 import { TRACKING_STATUS_COLORS, DEFAULT_MAP_CENTER } from '@/constants'
-import { investigationApi, trackingApi, exportApi } from '@/services/api'
-import type { GeoJSONFeatureCollection, Investigation, TowerRecord, RttObservation } from '@/types'
+import { investigationApi, trackingApi, exportApi, fileApi } from '@/services/api'
+import type { GeoJSONFeatureCollection, Investigation, TowerRecord, RttObservation, CaseFile } from '@/types'
+import { InvestigationExplorer, SelectedItem } from '@/components/investigation/InvestigationExplorer'
 
 interface LocalFix {
   fix_id: string
@@ -86,6 +87,85 @@ export default function LiveInvestigationPage() {
   const [copied, setCopied] = useState(false)
   const [exporting, setExporting] = useState<string | null>(null)
 
+  const [files, setFiles] = useState<CaseFile[]>([])
+  const [selectedItem, setSelectedItem] = useState<SelectedItem>({ type: 'overview', id: null })
+  const [isDeletingFile, setIsDeletingFile] = useState(false)
+
+  const [explorerWidth, setExplorerWidth] = useState(() => {
+    const saved = localStorage.getItem('investigationExplorerWidth')
+    return saved ? parseInt(saved, 10) : 300
+  })
+  const [rightPanelWidth, setRightPanelWidth] = useState(() => {
+    const saved = localStorage.getItem('investigationRightPanelWidth')
+    return saved ? parseInt(saved, 10) : 320
+  })
+
+  useEffect(() => {
+    localStorage.setItem('investigationExplorerWidth', explorerWidth.toString())
+  }, [explorerWidth])
+
+  useEffect(() => {
+    localStorage.setItem('investigationRightPanelWidth', rightPanelWidth.toString())
+  }, [rightPanelWidth])
+
+  const workspaceRef = useRef<HTMLDivElement>(null)
+
+  const startExplorerResize = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    const target = e.currentTarget
+    target.setPointerCapture(e.pointerId)
+    const originalCursor = document.body.style.cursor
+    document.body.style.cursor = 'col-resize'
+
+    const onMove = (moveEvent: PointerEvent) => {
+      if (!workspaceRef.current) return
+      const rect = workspaceRef.current.getBoundingClientRect()
+      // Calculate width relative to workspace left edge
+      const newWidth = moveEvent.clientX - rect.left
+      setExplorerWidth(Math.max(240, Math.min(420, newWidth)))
+    }
+
+    const onUp = (upEvent: PointerEvent) => {
+      target.releasePointerCapture(upEvent.pointerId)
+      document.body.style.cursor = originalCursor
+      target.removeEventListener('pointermove', onMove)
+      target.removeEventListener('pointerup', onUp)
+      target.removeEventListener('pointercancel', onUp)
+    }
+
+    target.addEventListener('pointermove', onMove)
+    target.addEventListener('pointerup', onUp)
+    target.addEventListener('pointercancel', onUp)
+  }, [])
+
+  const startRightPanelResize = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    const target = e.currentTarget
+    target.setPointerCapture(e.pointerId)
+    const originalCursor = document.body.style.cursor
+    document.body.style.cursor = 'col-resize'
+
+    const onMove = (moveEvent: PointerEvent) => {
+      if (!workspaceRef.current) return
+      const rect = workspaceRef.current.getBoundingClientRect()
+      // Calculate width relative to workspace right edge
+      const newWidth = rect.right - moveEvent.clientX
+      setRightPanelWidth(Math.max(280, Math.min(450, newWidth)))
+    }
+
+    const onUp = (upEvent: PointerEvent) => {
+      target.releasePointerCapture(upEvent.pointerId)
+      document.body.style.cursor = originalCursor
+      target.removeEventListener('pointermove', onMove)
+      target.removeEventListener('pointerup', onUp)
+      target.removeEventListener('pointercancel', onUp)
+    }
+
+    target.addEventListener('pointermove', onMove)
+    target.addEventListener('pointerup', onUp)
+    target.addEventListener('pointercancel', onUp)
+  }, [])
+
   // Time range filter
   const [timeStart, setTimeStart] = useState('')
   const [timeEnd, setTimeEnd] = useState('')
@@ -130,7 +210,8 @@ export default function LiveInvestigationPage() {
 
     const towerData = await trackingApi.listAllTowers().catch(() => ({ towers: [], total: 0 }))
     const heatmapPoints = await loadHeatmap(start, end)
-    return { caseData, geo, towerData, heatmapPoints }
+    const filesData = await fileApi.listCaseFiles(id).catch(() => ({ files: [], total: 0 }))
+    return { caseData, geo, towerData, heatmapPoints, filesData }
   }, [id, loadHeatmap])
 
   const applyLoaded = useCallback((data: NonNullable<Awaited<ReturnType<typeof loadCaseData>>>) => {
@@ -157,6 +238,7 @@ export default function LiveInvestigationPage() {
       })))
     }
     setKdeHeatPoints(data.heatmapPoints ?? [])
+    setFiles(data.filesData.files ?? [])
   }, [id])
 
   const runLoad = useCallback((start?: string, end?: string) => {
@@ -183,6 +265,22 @@ export default function LiveInvestigationPage() {
 
   const applyTimeFilter = () => {
     runLoad(timeStart || undefined, timeEnd || undefined)
+  }
+
+  const handleDeleteFile = async (uploadId: string) => {
+    if (!confirm('Are you sure you want to delete this CDR? All associated tracking fixes will be lost.')) return
+    setIsDeletingFile(true)
+    try {
+      await fileApi.deleteFile(uploadId)
+      await loadCaseData().then((data) => { if (data) applyLoaded(data) })
+      if (selectedItem.id === uploadId) {
+        setSelectedItem({ type: 'overview', id: null })
+      }
+    } catch (err: unknown) {
+      setError(extractErrorMessage(err) || 'Failed to delete file')
+    } finally {
+      setIsDeletingFile(false)
+    }
   }
 
   const clearTimeFilter = () => {
@@ -257,9 +355,9 @@ export default function LiveInvestigationPage() {
     return fixes.length === 1
       ? { lat: fixes[0].latitude, lng: fixes[0].longitude }
       : {
-          lat: fixes.reduce((s, f) => s + f.latitude, 0) / fixes.length,
-          lng: fixes.reduce((s, f) => s + f.longitude, 0) / fixes.length,
-        }
+        lat: fixes.reduce((s, f) => s + f.latitude, 0) / fixes.length,
+        lng: fixes.reduce((s, f) => s + f.longitude, 0) / fixes.length,
+      }
   }
 
   const googleMapsLink = () => {
@@ -409,10 +507,39 @@ export default function LiveInvestigationPage() {
       </div>
 
       {/* ── Main split ── */}
-      <div className="flex flex-1 overflow-hidden">
+      <div ref={workspaceRef} className="flex flex-1 overflow-hidden">
 
-        {/* LEFT: Map */}
-        <div className="relative flex-1 min-w-0">
+        {/* LEFT: Explorer */}
+        <div className="flex-shrink-0" style={{ width: explorerWidth, flexBasis: explorerWidth }}>
+          <InvestigationExplorer 
+            width={explorerWidth}
+            currentCaseId={id}
+            currentCaseName={caseName}
+            files={files}
+            towersCount={towers.length}
+            framesCount={geojson?.features?.filter(f => f.geometry.type === 'Point' && f.properties?.type === 'measurement').length || 0}
+            usableFramesCount={geojson?.features?.filter(f => f.geometry.type === 'Point' && f.properties?.type === 'measurement').length || 0}
+            fixesCount={fixes.length}
+            selectedItem={selectedItem}
+            onSelectItem={(type, id) => setSelectedItem({ type, id })}
+            onRunMultilateration={handleRunLocalization}
+            isLocalizationRunning={loading}
+            onExportClick={(type) => {
+              if (type === 'pdf') handleExportPDF()
+              if (type === 'csv') handleExportCSV()
+              if (type === 'kml') handleExportKML()
+            }}
+          />
+        </div>
+
+        {/* LEFT RESIZE HANDLE */}
+        <div
+          onPointerDown={startExplorerResize}
+          className="w-2 bg-surface-200/50 hover:bg-primary-500/50 active:bg-primary-500 cursor-col-resize transition-colors z-30 flex-shrink-0"
+        />
+
+        {/* CENTER: Map */}
+        <div className="relative flex-1 min-w-0" style={{ minWidth: 400 }}>
           {initialLoading ? (
             <div className="flex h-full flex-col items-center justify-center bg-surface-100 dark:bg-surface-950">
               <RefreshCw className="h-8 w-8 text-primary-500 animate-spin mb-2" />
@@ -422,33 +549,33 @@ export default function LiveInvestigationPage() {
             <ErrorBoundary>
               <InvestigationMap
                 currentLocation={activeFix ? {
-                latitude: activeFix.latitude,
-                longitude: activeFix.longitude,
-                raw_latitude: activeFix.latitude,
-                raw_longitude: activeFix.longitude,
-                velocity_m_s: Math.sqrt(
-                  (activeFix.velocity_east ?? 0) ** 2 + (activeFix.velocity_north ?? 0) ** 2
-                ),
-                clock_bias_meters: 0,
-                residual_rms: activeFix.residual_rms ?? 0,
-                gdop: activeFix.gdop ?? 0,
-                adaptive_R_scale: 1,
-                adaptive_Q_scale: 1,
-                geojson_heatmap: null,
-                timestamp: activeFix.timestamp,
-                accuracy_meters: activeFix.confidence_radius_meters,
-                algorithm_used: 'Multilateration',
-                confidence: 0.95,
-                geocode: activeFix.geocode,
-              } : undefined}
-              pathPoints={pathPoints}
-              towers={towers}
-              onCenterRequest={() => setCenterTrigger((v) => !v)}
-              centerTrigger={centerTrigger}
-              autoFollow={autoFollow && fixes.length > 0}
-              geojson={geojson ?? undefined}
-              kdeHeatPoints={mode === 'multilateration' ? kdeHeatPoints : undefined}
-              rttObservations={mode === 'rtt' ? rttObservations : undefined}
+                  latitude: activeFix.latitude,
+                  longitude: activeFix.longitude,
+                  raw_latitude: activeFix.latitude,
+                  raw_longitude: activeFix.longitude,
+                  velocity_m_s: Math.sqrt(
+                    (activeFix.velocity_east ?? 0) ** 2 + (activeFix.velocity_north ?? 0) ** 2
+                  ),
+                  clock_bias_meters: 0,
+                  residual_rms: activeFix.residual_rms ?? 0,
+                  gdop: activeFix.gdop ?? 0,
+                  adaptive_R_scale: 1,
+                  adaptive_Q_scale: 1,
+                  geojson_heatmap: null,
+                  timestamp: activeFix.timestamp,
+                  accuracy_meters: activeFix.confidence_radius_meters,
+                  algorithm_used: 'Multilateration',
+                  confidence: 0.95,
+                  geocode: activeFix.geocode,
+                } : undefined}
+                pathPoints={pathPoints}
+                towers={towers}
+                onCenterRequest={() => setCenterTrigger((v) => !v)}
+                centerTrigger={centerTrigger}
+                autoFollow={autoFollow && fixes.length > 0}
+                geojson={geojson ?? undefined}
+                kdeHeatPoints={mode === 'multilateration' ? kdeHeatPoints : undefined}
+                rttObservations={mode === 'rtt' ? rttObservations : undefined}
               />
             </ErrorBoundary>
           )}
@@ -491,9 +618,16 @@ export default function LiveInvestigationPage() {
           )}
         </div>
 
+        <div
+          onPointerDown={startRightPanelResize}
+          className="w-1 cursor-col-resize hover:bg-primary-500 active:bg-primary-500 z-30"
+        />
+
         {/* RIGHT: Detail panel */}
-        <div className="flex w-80 shrink-0 flex-col overflow-y-auto border-l border-surface-200
-                        bg-surface-50 dark:border-surface-700 dark:bg-surface-900">
+        <div 
+          className="flex shrink-0 flex-col overflow-y-auto border-l border-surface-200 bg-surface-50 dark:border-surface-700 dark:bg-surface-900"
+          style={{ width: rightPanelWidth, flexBasis: rightPanelWidth }}
+        >
 
           {error && (
             <div className="border-b border-danger/20 bg-danger-light px-4 py-3 text-xs text-danger dark:bg-danger/10 flex items-start gap-2">
@@ -503,6 +637,30 @@ export default function LiveInvestigationPage() {
                 <p className="mt-0.5">{error}</p>
               </div>
             </div>
+          )}
+
+          {selectedItem.type === 'cdr' && selectedItem.id && (
+            <Section icon={<FileText className="h-4 w-4 text-primary-600" />} label="CDR Details">
+              {(() => {
+                const f = files.find(x => x.upload_id === selectedItem.id)
+                if (!f) return <div className="text-xs text-surface-400">File not found.</div>
+                return (
+                  <div className="space-y-3">
+                    <DataRow label="Filename" value={f.original_filename} highlight />
+                    <DataRow label="Status" value={f.upload_status} />
+                    <DataRow label="Uploaded" value={new Date(f.uploaded_at).toLocaleString()} />
+                    <Button
+                      size="sm" variant="danger" className="w-full mt-2"
+                      icon={isDeletingFile ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                      onClick={() => handleDeleteFile(f.upload_id)}
+                      disabled={isDeletingFile}
+                    >
+                      Delete CDR
+                    </Button>
+                  </div>
+                )
+              })()}
+            </Section>
           )}
 
           {/* ── Time Range Filter ── */}
@@ -701,8 +859,8 @@ function DataRow({ label, value, highlight, dim }: {
       <span className={cn(
         'text-right text-xs font-medium',
         highlight ? 'text-primary-600 dark:text-primary-400 font-bold' :
-        dim       ? 'text-surface-400'                       :
-        'text-surface-700 dark:text-surface-300'
+          dim ? 'text-surface-400' :
+            'text-surface-700 dark:text-surface-300'
       )}>
         {value}
       </span>

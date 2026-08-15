@@ -190,8 +190,7 @@ export default function ReportsPage() {
                     type="datetime-local"
                     value={timeStart}
                     onChange={(e) => setTimeStart(e.target.value)}
-                    className="w-full rounded-lg border border-surface-300 bg-white px-2.5 py-1.5 text-xs
-                               dark:border-surface-600 dark:bg-surface-800 dark:text-surface-200"
+                    className="input text-xs py-1.5"
                   />
                 </div>
                 <div>
@@ -200,8 +199,7 @@ export default function ReportsPage() {
                     type="datetime-local"
                     value={timeEnd}
                     onChange={(e) => setTimeEnd(e.target.value)}
-                    className="w-full rounded-lg border border-surface-300 bg-white px-2.5 py-1.5 text-xs
-                               dark:border-surface-600 dark:bg-surface-800 dark:text-surface-200"
+                    className="input text-xs py-1.5"
                   />
                 </div>
               </div>
