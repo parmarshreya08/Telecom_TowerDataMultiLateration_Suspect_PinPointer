@@ -4,7 +4,7 @@ import {
   ChevronRight, ChevronDown, FileText, Database, Radio, CheckCircle, Clock, XCircle, Navigation, Map, MapPin, Download, FileJson, Layers, Search, Loader2, Plus
 } from 'lucide-react'
 import { cn } from '@/utils'
-import type { CaseFile, Investigation } from '@/types'
+import type { CaseFile, Investigation, RFVerifiedFix } from '@/types'
 import { investigationApi } from '@/services/api'
 
 export type ExplorerItemType = 'overview' | 'cdr' | 'tower' | 'frame' | 'localization'
@@ -25,6 +25,9 @@ interface InvestigationExplorerProps {
   isLocalizationRunning: boolean
   onExportClick: (type: 'pdf' | 'csv' | 'kml') => void
   onUploadClick?: () => void
+  rfVerifiedFix?: RFVerifiedFix | null
+  onUploadSDRClick?: () => void
+  onSelectVerifiedTarget?: () => void
 }
 
 function Section({ 
@@ -96,7 +99,7 @@ function Item({
 }
 
 export function InvestigationExplorer({
-  width, currentCaseId, currentCaseName, files, towersCount, framesCount, usableFramesCount, fixesCount, selectedItem, onSelectItem, onRunMultilateration, isLocalizationRunning, onExportClick, onUploadClick
+  width, currentCaseId, currentCaseName, files, towersCount, framesCount, usableFramesCount, fixesCount, selectedItem, onSelectItem, onRunMultilateration, isLocalizationRunning, onExportClick, onUploadClick, rfVerifiedFix, onUploadSDRClick, onSelectVerifiedTarget
 }: InvestigationExplorerProps) {
 
   const navigate = useNavigate()
@@ -267,6 +270,46 @@ export function InvestigationExplorer({
                 onClick={() => onSelectItem('cdr', file.upload_id)} 
               />
             ))
+          )}
+        </Section>
+
+        {/* RF / SDR GROUND VERIFICATION */}
+        <Section 
+          title="RF / SDR"
+          action={
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                onUploadSDRClick?.()
+              }}
+              title="Upload SDR / RF Sweep"
+              aria-label="Upload SDR / RF Sweep"
+              className="flex h-5 w-5 items-center justify-center rounded text-cyan-600 hover:bg-cyan-100 hover:text-cyan-800 dark:text-cyan-400 dark:hover:bg-cyan-950/50 transition-colors cursor-pointer"
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </button>
+          }
+        >
+          <div className="px-3 py-1">
+            <button
+              type="button"
+              onClick={onUploadSDRClick}
+              className="flex w-full items-center gap-1.5 rounded border border-dashed border-cyan-300 bg-cyan-50/60 px-2 py-1 text-2xs font-medium text-cyan-700 hover:bg-cyan-100/70 dark:border-cyan-800/80 dark:bg-cyan-950/30 dark:text-cyan-300 dark:hover:bg-cyan-900/40 transition-colors cursor-pointer"
+            >
+              <Radio className="h-3 w-3 text-cyan-600 dark:text-cyan-400" />
+              <span>+ Upload SDR / RF Sweep</span>
+            </button>
+          </div>
+          {rfVerifiedFix && (
+            <Item 
+              icon={<Radio className="h-3.5 w-3.5 text-cyan-600 dark:text-cyan-400" />} 
+              label="Verified Target" 
+              subLabel="±5m · 98%"
+              statusIcon={<CheckCircle className="h-3.5 w-3.5 text-cyan-600 dark:text-cyan-400" />}
+              isActive={selectedItem.type === 'localization' && selectedItem.id === 'rf_verified'} 
+              onClick={onSelectVerifiedTarget} 
+            />
           )}
         </Section>
 

@@ -1,10 +1,10 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
-import { MapContainer, TileLayer, Marker, Popup, Polyline, Circle, Polygon, useMap } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, Popup, Tooltip, Polyline, Circle, Polygon, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import './leaflet-setup'
 import 'leaflet.heat'
 import { Maximize2, Target, Eye, EyeOff } from 'lucide-react'
-import type { LocalizationResult, PathPoint, TowerRecord, GeoJSONFeatureCollection, RttObservation } from '@/types'
+import type { LocalizationResult, PathPoint, TowerRecord, GeoJSONFeatureCollection, RttObservation, RFVerifiedFix } from '@/types'
 import { formatCoordinate, formatDateTime, cn } from '@/utils'
 import { DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM } from '@/constants'
 
@@ -47,6 +47,62 @@ const towerIcon = L.divIcon({
   iconAnchor: [10, 10],
 })
 
+const rogueTowerIcon = L.divIcon({
+  html: `<div style="
+    width:22px;height:22px;border-radius:4px;
+    background:#dc2626;border:2px solid white;
+    box-shadow:0 0 10px rgba(220,38,38,0.85), 0 2px 4px rgba(0,0,0,0.3);
+    display:flex;align-items:center;justify-content:center;
+    position:relative;cursor:pointer;">
+    <span style="
+      position:absolute;inset:-4px;border-radius:6px;
+      border:2px solid #ef4444;opacity:0.75;
+      animation:ping 1.6s cubic-bezier(0,0,0.2,1) infinite;"></span>
+    <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24"
+         fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round">
+      <path d="M2 9L12 4l10 5M12 4v16M8 20h8M5 11l7-3.5L19 11"/>
+    </svg>
+  </div>`,
+  className: '',
+  iconSize:   [22, 22],
+  iconAnchor: [11, 11],
+})
+
+const sdrTargetIcon = L.divIcon({
+  html: `<div style="
+    width:32px;height:32px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    position:relative;cursor:pointer;z-index:900;">
+    <!-- Outer pulse ring -->
+    <span style="
+      position:absolute;inset:-8px;border-radius:50%;
+      border:2px solid #06b6d4;opacity:0.65;
+      animation:ping 2s cubic-bezier(0,0,0.2,1) infinite;"></span>
+    <!-- Concentric radar ring -->
+    <span style="
+      position:absolute;inset:-3px;border-radius:50%;
+      border:1.5px dashed #0891b2;opacity:0.85;"></span>
+    <!-- Inner cyan core -->
+    <div style="
+      width:22px;height:22px;border-radius:50%;
+      background:#0891b2;border:2.5px solid #ffffff;
+      box-shadow:0 0 14px rgba(6,182,212,0.95), 0 2px 6px rgba(0,0,0,0.4);
+      display:flex;align-items:center;justify-content:center;">
+      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24"
+           fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round">
+        <circle cx="12" cy="12" r="10"/>
+        <line x1="22" y1="12" x2="18" y2="12"/>
+        <line x1="6" y1="12" x2="2" y2="12"/>
+        <line x1="12" y1="6" x2="12" y2="2"/>
+        <line x1="12" y1="22" x2="12" y2="18"/>
+      </svg>
+    </div>
+  </div>`,
+  className: '',
+  iconSize:   [32, 32],
+  iconAnchor: [16, 16],
+})
+
 // ── Map auto-pan controller ───────────────────────────────────
 interface LivePanProps { lat: number; lon: number; enabled: boolean }
 function LivePan({ lat, lon, enabled }: LivePanProps) {
@@ -62,6 +118,16 @@ function CenterControl({ lat, lon, trigger }: CenterControlProps) {
   const map = useMap()
   useEffect(() => {
     map.setView([lat, lon], 15, { animate: true })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trigger])
+  return null
+}
+
+interface SdrFocusControlProps { lat: number; lon: number; trigger: boolean }
+function SdrFocusControl({ lat, lon, trigger }: SdrFocusControlProps) {
+  const map = useMap()
+  useEffect(() => {
+    map.flyTo([lat, lon], 18, { animate: true, duration: 1.2 })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trigger])
   return null
@@ -237,6 +303,10 @@ interface InvestigationMapProps {
   kdeHeatPoints?:   Array<[number, number, number]>
   /** Per-frame RTT/TA observations for single-tower mode */
   rttObservations?: RttObservation[]
+  /** Field SDR / RF Ground Verification result */
+  rfVerifiedFix?:   RFVerifiedFix | null
+  /** Trigger to pan & zoom to SDR verified target */
+  sdrFocusTrigger?: boolean
 }
 
 export function InvestigationMap({
@@ -249,16 +319,25 @@ export function InvestigationMap({
   geojson,
   kdeHeatPoints,
   rttObservations,
+  rfVerifiedFix,
+  sdrFocusTrigger = false,
 }: InvestigationMapProps) {
-  const [showPath,       setShowPath]       = useState(true)
-  const [showTowers,     setShowTowers]     = useState(true)
-  const [showEllipse,    setShowEllipse]    = useState(true)
-  const [showSectors,    setShowSectors]    = useState(true)
-  const [showHeatmap,    setShowHeatmap]    = useState(true)
-  const [isFullscreen,   setIsFullscreen]   = useState(false)
+  const [showPath,        setShowPath]        = useState(true)
+  const [showTowers,      setShowTowers]      = useState(true)
+  const [showRogueTowers, setShowRogueTowers] = useState(true)
+  const [showSdrTarget,   setShowSdrTarget]   = useState(true)
+  const [showEllipse,     setShowEllipse]     = useState(true)
+  const [showSectors,     setShowSectors]     = useState(true)
+  const [showHeatmap,     setShowHeatmap]     = useState(true)
+  const [isFullscreen,    setIsFullscreen]    = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const tileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
   const tileAttribution = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+
+  // Auto-enable SDR layer when verified fix becomes available
+  useEffect(() => {
+    if (rfVerifiedFix) setShowSdrTarget(true)
+  }, [rfVerifiedFix])
 
   const sectorWedges = parseSectorWedges(geojson)
   const ellipses = parseEllipses(geojson)
@@ -317,6 +396,15 @@ export function InvestigationMap({
             lat={currentLocation.latitude}
             lon={currentLocation.longitude}
             trigger={centerTrigger}
+          />
+        )}
+
+        {/* SDR Target Focus control */}
+        {rfVerifiedFix && (
+          <SdrFocusControl
+            lat={rfVerifiedFix.latitude}
+            lon={rfVerifiedFix.longitude}
+            trigger={sdrFocusTrigger}
           />
         )}
 
@@ -407,8 +495,8 @@ export function InvestigationMap({
           <RttLayer key={`rtt-${uid}`} observations={rttObservations} uploadId={uid} color={colorForUpload(uid)} />
         ))}
 
-        {/* Cell towers */}
-        {showTowers && towers.map((tower) => (
+        {/* Cell towers (registered) */}
+        {showTowers && towers.filter((t) => !t.is_rogue).map((tower) => (
           <Marker
             key={tower.tower_id}
             position={[tower.latitude, tower.longitude]}
@@ -428,7 +516,37 @@ export function InvestigationMap({
           </Marker>
         ))}
 
-        {/* Current suspect marker */}
+        {/* Rogue BTS / IMSI Catcher Towers */}
+        {showRogueTowers && towers.filter((t) => t.is_rogue).map((tower) => (
+          <Marker
+            key={`rogue-${tower.tower_id}`}
+            position={[tower.latitude, tower.longitude]}
+            icon={rogueTowerIcon}
+          >
+            <Tooltip direction="top" offset={[0, -12]} opacity={0.95}>
+              <div className="text-xs font-bold text-red-600 dark:text-red-400">
+                ROGUE BTS DETECTED
+                <span className="block text-[10px] font-medium text-amber-600 dark:text-amber-400">Possible IMSI Catcher</span>
+              </div>
+            </Tooltip>
+            <Popup>
+              <div className="text-xs leading-relaxed">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <span className="inline-block h-2 w-2 rounded-full bg-red-500 animate-pulse" />
+                  <p className="font-bold text-red-600 dark:text-red-400">ROGUE BTS DETECTED</p>
+                </div>
+                <p className="font-semibold text-amber-600 dark:text-amber-400">Possible IMSI Catcher</p>
+                <p className="font-mono text-surface-800 dark:text-surface-200 mt-1">ID: {tower.cgi || tower.tower_id}</p>
+                <p className="text-surface-600 dark:text-surface-300">{tower.operator} · {tower.radio || 'Unknown'}</p>
+                <p>{formatCoordinate(tower.latitude)}°N, {formatCoordinate(tower.longitude)}°E</p>
+                {tower.range_meters && <p>Range: {tower.range_meters}m</p>}
+                {tower.site_address && <p className="text-surface-400 dark:text-surface-500 mt-1">{tower.site_address}</p>}
+              </div>
+            </Popup>
+          </Marker>
+        ))}
+
+        {/* Current suspect marker (multilateration broad result) */}
         {currentLocation && (
           <Marker
             position={[currentLocation.latitude, currentLocation.longitude]}
@@ -449,6 +567,62 @@ export function InvestigationMap({
           </Marker>
         )}
 
+        {/* SDR Verified Target (High Precision ±5m) */}
+        {showSdrTarget && rfVerifiedFix && (
+          <>
+            {/* Precision ±5m circle */}
+            <Circle
+              center={[rfVerifiedFix.latitude, rfVerifiedFix.longitude]}
+              radius={rfVerifiedFix.accuracy_m}
+              pathOptions={{
+                color: '#0891b2',
+                fillColor: '#06b6d4',
+                fillOpacity: 0.22,
+                weight: 2,
+                dashArray: '4 4',
+              }}
+            />
+
+            {/* SDR Target Marker with permanent label */}
+            <Marker
+              position={[rfVerifiedFix.latitude, rfVerifiedFix.longitude]}
+              icon={sdrTargetIcon}
+            >
+              <Tooltip permanent direction="top" offset={[0, -18]} opacity={0.95}>
+                <div className="text-left font-sans leading-tight select-none">
+                  <div className="flex items-center gap-1">
+                    <span className="inline-block h-1.5 w-1.5 rounded-full bg-cyan-500 animate-pulse" />
+                    <span className="font-bold text-cyan-600 dark:text-cyan-400 text-xs">VERIFIED TARGET</span>
+                  </div>
+                  <div className="mt-0.5 space-y-0.5 text-[10px] text-surface-700 dark:text-surface-300 font-mono">
+                    <div>RSSI: <span className="font-semibold">{rfVerifiedFix.rssi_dbm} dBm</span></div>
+                    <div>Accuracy: <span className="font-semibold text-cyan-600 dark:text-cyan-400">±{rfVerifiedFix.accuracy_m} m</span></div>
+                    <div>Confidence: <span className="font-semibold text-green-600 dark:text-green-400">{rfVerifiedFix.confidence}%</span></div>
+                  </div>
+                </div>
+              </Tooltip>
+              <Popup>
+                <div className="text-xs leading-relaxed">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <span className="inline-block h-2 w-2 rounded-full bg-cyan-500 animate-pulse" />
+                    <p className="font-bold text-cyan-700 dark:text-cyan-400">VERIFIED TARGET (SDR)</p>
+                  </div>
+                  <p className="text-surface-600 dark:text-surface-300 font-medium">Source: Field SDR / RF Sweep</p>
+                  <p className="font-mono text-surface-800 dark:text-surface-200 mt-1">
+                    {formatCoordinate(rfVerifiedFix.latitude)}°N, {formatCoordinate(rfVerifiedFix.longitude)}°E
+                  </p>
+                  <p>Accuracy: ±{rfVerifiedFix.accuracy_m}m</p>
+                  <p>Signal (RSSI): {rfVerifiedFix.rssi_dbm} dBm</p>
+                  <p>Confidence: {rfVerifiedFix.confidence}%</p>
+                  {rfVerifiedFix.filename && (
+                    <p className="text-surface-400 dark:text-surface-500 mt-1">File: {rfVerifiedFix.filename}</p>
+                  )}
+                </div>
+              </Popup>
+            </Marker>
+          </>
+        )}
+
         {/* Probability heatmap */}
         <HeatLayer points={heatPoints} visible={showHeatmap} />
       </MapContainer>
@@ -459,7 +633,7 @@ export function InvestigationMap({
         <button
           onClick={() => setIsFullscreen((v) => !v)}
           className="flex h-8 w-8 items-center justify-center rounded-lg bg-white shadow-md
-                     hover:bg-primary-50 dark:bg-surface-800 dark:hover:bg-surface-700 transition-colors"
+                     hover:bg-primary-50 dark:bg-surface-800 dark:hover:bg-surface-700 transition-colors cursor-pointer"
           title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
           aria-label={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
         >
@@ -470,7 +644,7 @@ export function InvestigationMap({
         <button
           onClick={onCenterRequest}
           className="flex h-8 w-8 items-center justify-center rounded-lg bg-white shadow-md
-                     hover:bg-primary-50 dark:bg-surface-800 dark:hover:bg-surface-700 transition-colors"
+                     hover:bg-primary-50 dark:bg-surface-800 dark:hover:bg-surface-700 transition-colors cursor-pointer"
           title="Center on suspect"
           aria-label="Center map on suspect"
         >
@@ -480,17 +654,19 @@ export function InvestigationMap({
         {/* Layer toggles */}
         <div className="overflow-hidden rounded-lg bg-white shadow-md dark:bg-surface-800">
           {[
-            { label: 'Path',    state: showPath,    set: setShowPath    },
-            { label: 'Towers',  state: showTowers,  set: setShowTowers  },
-            { label: 'Ellipse', state: showEllipse, set: setShowEllipse },
-            { label: 'Sectors', state: showSectors, set: setShowSectors },
-            { label: 'Heatmap', state: showHeatmap, set: setShowHeatmap },
+            { label: 'Path',                state: showPath,        set: setShowPath        },
+            { label: 'Towers',              state: showTowers,      set: setShowTowers      },
+            { label: 'Rogue Towers',        state: showRogueTowers, set: setShowRogueTowers },
+            ...(rfVerifiedFix ? [{ label: 'SDR Target', state: showSdrTarget, set: setShowSdrTarget }] : []),
+            { label: 'Ellipse',             state: showEllipse,     set: setShowEllipse     },
+            { label: 'Sectors',             state: showSectors,     set: setShowSectors     },
+            { label: 'Heatmap',             state: showHeatmap,     set: setShowHeatmap     },
           ].map(({ label, state, set }, i, arr) => (
             <button
               key={label}
               onClick={() => set((v) => !v)}
               className={cn(
-                'flex h-8 w-full items-center gap-2 px-3 text-xs transition-colors',
+                'flex h-8 w-full items-center gap-2 px-3 text-xs transition-colors cursor-pointer',
                 'hover:bg-surface-50 dark:hover:bg-surface-700',
                 i < arr.length - 1 && 'border-b border-surface-100 dark:border-surface-700'
               )}
@@ -500,7 +676,7 @@ export function InvestigationMap({
                 ? <Eye     className="h-3.5 w-3.5 text-primary-600" />
                 : <EyeOff  className="h-3.5 w-3.5 text-surface-400" />
               }
-              <span className={state ? 'text-surface-700 dark:text-surface-300' : 'text-surface-400'}>
+              <span className={state ? 'text-surface-700 dark:text-surface-300 font-medium' : 'text-surface-400'}>
                 {label}
               </span>
             </button>

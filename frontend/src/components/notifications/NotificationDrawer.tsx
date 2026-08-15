@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'motion/react'
-import { X, Bell, CheckCheck, MapPin, Radio, WifiOff, AlertCircle, FileText, Upload } from 'lucide-react'
+import { X, Bell, CheckCheck, MapPin, Radio, WifiOff, AlertCircle, FileText, Upload, AlertTriangle, ShieldAlert } from 'lucide-react'
 import type { Notification } from '@/types'
 import { formatTimeAgo } from '@/utils'
 import { cn } from '@/utils'
@@ -17,15 +17,17 @@ interface NotificationDrawerProps {
 // Maps type string → icon. Falls back to <Bell> for unknown types.
 function getIcon(type?: string) {
   const map: Record<string, React.ReactNode> = {
-    location_updated:        <MapPin    className="h-4 w-4" />,
-    tower_changed:           <Radio     className="h-4 w-4" />,
-    signal_lost:             <WifiOff   className="h-4 w-4" />,
-    tracking_resumed:        <Radio     className="h-4 w-4" />,
-    email_sent:              <Bell      className="h-4 w-4" />,
-    investigation_completed: <CheckCheck className="h-4 w-4" />,
-    report_generated:        <FileText  className="h-4 w-4" />,
-    upload_completed:        <Upload    className="h-4 w-4" />,
-    error:                   <AlertCircle className="h-4 w-4" />,
+    location_updated:        <MapPin       className="h-4 w-4" />,
+    tower_changed:           <Radio        className="h-4 w-4" />,
+    signal_lost:             <WifiOff      className="h-4 w-4" />,
+    tracking_resumed:        <Radio        className="h-4 w-4" />,
+    email_sent:              <Bell         className="h-4 w-4" />,
+    investigation_completed: <CheckCheck   className="h-4 w-4" />,
+    report_generated:        <FileText     className="h-4 w-4" />,
+    upload_completed:        <Upload       className="h-4 w-4" />,
+    rogue_tower:             <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />,
+    security_alert:          <ShieldAlert  className="h-4 w-4 text-red-600 dark:text-red-400" />,
+    error:                   <AlertCircle  className="h-4 w-4" />,
   }
   return map[type ?? ''] ?? <Bell className="h-4 w-4" />
 }
@@ -40,6 +42,8 @@ function getColor(type?: string): string {
     investigation_completed: 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400',
     report_generated:        'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400',
     upload_completed:        'bg-teal-100 text-teal-600 dark:bg-teal-900/30 dark:text-teal-400',
+    rogue_tower:             'bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400 ring-1 ring-red-400/50',
+    security_alert:          'bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400 ring-1 ring-red-400/50',
     error:                   'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400',
   }
   return map[type ?? ''] ?? 'bg-surface-100 text-surface-600 dark:bg-surface-700 dark:text-surface-300'

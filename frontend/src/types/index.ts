@@ -130,6 +130,7 @@ export interface TowerRecord {
   beamwidth?: number
   range_meters?: number
   site_address?: string
+  is_rogue?: boolean
   [key: string]: unknown
 }
 
@@ -408,12 +409,32 @@ export interface AlgorithmResult {
   [key: string]: unknown
 }
 
+export type InvestigationEventType = 'device_swap' | 'sim_swap' | string
+
+export interface InvestigationSwapEvent {
+  id?: string
+  event_type: 'device_swap' | 'sim_swap'
+  timestamp: string
+  old_imei?: string
+  new_imei?: string
+  old_imsi?: string
+  new_imsi?: string
+  title?: string
+  description?: string
+  fix_index?: number
+}
+
 export interface TimelineEvent {
   id: string
   timestamp: string
   type: string
   description: string
   title?: string
+  old_imei?: string
+  new_imei?: string
+  old_imsi?: string
+  new_imsi?: string
+  event_type?: InvestigationEventType
   [key: string]: unknown
 }
 
@@ -577,3 +598,19 @@ export interface Notification {
 
 // SocketEventType - any string (socket.io events are dynamic)
 export type SocketEventType = string
+
+// ── RF / SDR Ground Verification ───────────────────────────
+export interface RFVerifiedFix {
+  id: string
+  type: 'rf_verified_fix'
+  latitude: number
+  longitude: number
+  rssi_dbm: number
+  accuracy_m: number
+  confidence: number
+  timestamp: string
+  source: 'SDR'
+  filename?: string
+  frequency_mhz?: number
+  [key: string]: unknown
+}

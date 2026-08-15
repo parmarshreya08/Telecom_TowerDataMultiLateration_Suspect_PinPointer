@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'motion/react'
 import { useParams, useNavigate } from 'react-router-dom'
@@ -8,12 +8,13 @@ import {
   ArrowLeft, Crosshair, PlayCircle, RefreshCw, AlertCircle,
   Copy, Check, Play, Pause, Trash2,
   FolderOpen, SlidersHorizontal, MoreVertical, X,
-  ChevronUp, ChevronDown,
+  ChevronUp, ChevronDown, Smartphone, ShieldAlert,
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
 import { InvestigationMap } from '@/components/map/InvestigationMap'
 import { ShareLocationModal } from '@/components/investigation/ShareLocationModal'
+import { SDRUploadModal } from '@/components/investigation/SDRUploadModal'
 import {
   formatCoordinate, formatDateTime, formatAccuracy,
   downloadBlob, extractErrorMessage, cn,
@@ -21,7 +22,7 @@ import {
 } from '@/utils'
 import { TRACKING_STATUS_COLORS, DEFAULT_MAP_CENTER } from '@/constants'
 import { investigationApi, trackingApi, exportApi, fileApi } from '@/services/api'
-import type { GeoJSONFeatureCollection, Investigation, TowerRecord, RttObservation, CaseFile } from '@/types'
+import type { GeoJSONFeatureCollection, Investigation, TowerRecord, RttObservation, CaseFile, InvestigationSwapEvent, RFVerifiedFix } from '@/types'
 import { InvestigationExplorer, SelectedItem } from '@/components/investigation/InvestigationExplorer'
 
 interface LocalFix {
@@ -72,6 +73,49 @@ function parseFixes(geo: GeoJSONFeatureCollection, caseId: string): LocalFix[] {
     }))
 }
 
+// TEMPORARY FRONTEND MOCK — replace with backend event stream later
+export const ENABLE_SWAP_EVENT_MOCKS = true
+
+export const MOCK_SWAP_TEMPLATES = [
+  {
+    id: 'mock-sim-swap-1',
+    event_type: 'sim_swap' as const,
+    old_imsi: '404450123456789',
+    new_imsi: '404450987654321',
+    title: 'SIM Swap Detected',
+    description: 'Subscriber IMSI changed: 404450123456789 → 404450987654321',
+  },
+  {
+    id: 'mock-device-swap-1',
+    event_type: 'device_swap' as const,
+    old_imei: '862045041234567',
+    new_imei: '354089097654321',
+    title: 'Device Handover / IMEI Swap Detected',
+    description: 'Device IMEI changed: 862045041234567 → 354089097654321',
+  },
+]
+
+// TEMPORARY FRONTEND MOCK — replace with backend is_rogue data
+export const ENABLE_ROGUE_BTS_MOCK = true
+
+export function createMockRogueTower(referenceLat?: number, referenceLon?: number): TowerRecord {
+  const lat = referenceLat ?? 28.6139
+  const lon = referenceLon ?? 77.2090
+  return {
+    tower_id: 'MOCK-ROGUE-BTS-01',
+    cgi: '404-45-ROGUE-99',
+    operator: 'UNREGISTERED / UNKNOWN',
+    radio: 'Fake GSM/LTE',
+    latitude: lat + 0.0072,
+    longitude: lon + 0.0058,
+    azimuth: 180,
+    beamwidth: 360,
+    range_meters: 850,
+    site_address: '⚠️ Unregistered Mobile BTS / IMSI Catcher Unit',
+    is_rogue: true,
+  }
+}
+
 export default function LiveInvestigationPage() {
   const { id = '' } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -95,6 +139,11 @@ export default function LiveInvestigationPage() {
   const [files, setFiles] = useState<CaseFile[]>([])
   const [selectedItem, setSelectedItem] = useState<SelectedItem>({ type: 'overview', id: null })
   const [isDeletingFile, setIsDeletingFile] = useState(false)
+
+  // RF / SDR Ground Verification state
+  const [rfVerifiedFix, setRfVerifiedFix] = useState<RFVerifiedFix | null>(null)
+  const [sdrModalOpen, setSdrModalOpen] = useState(false)
+  const [sdrFocusTrigger, setSdrFocusTrigger] = useState(false)
 
   // Mobile drawer states
   const [mobileExplorerOpen, setMobileExplorerOpen] = useState(false)
@@ -275,21 +324,30 @@ export default function LiveInvestigationPage() {
       setFixes(parseFixes(data.geo, id))
     }
 
-    if (data.towerData.towers.length > 0) {
-      setTowers(data.towerData.towers.map((t) => ({
-        tower_id: t.tower_id,
-        operator: t.operator as TowerRecord['operator'],
-        radio: t.radio as TowerRecord['radio'],
-        mcc: 0, mnc: 0, lac: 0, cell_id: 0,
-        cgi: t.cgi,
-        latitude: t.latitude,
-        longitude: t.longitude,
-        azimuth: t.azimuth,
-        beamwidth: t.beamwidth,
-        range_meters: t.range_meters,
-        site_address: t.site_address,
-      })))
+    const parsedTowers: TowerRecord[] = (data.towerData?.towers ?? []).map((t) => ({
+      tower_id: t.tower_id,
+      operator: t.operator as TowerRecord['operator'],
+      radio: t.radio as TowerRecord['radio'],
+      mcc: 0, mnc: 0, lac: 0, cell_id: 0,
+      cgi: t.cgi,
+      latitude: t.latitude,
+      longitude: t.longitude,
+      azimuth: t.azimuth,
+      beamwidth: t.beamwidth,
+      range_meters: t.range_meters,
+      site_address: t.site_address,
+      is_rogue: (t as any).is_rogue ?? false,
+    }))
+
+    let allTowers = parsedTowers
+    if (ENABLE_ROGUE_BTS_MOCK && !allTowers.some((t) => t.is_rogue)) {
+      const parsedFixes = data.geo ? parseFixes(data.geo, id) : []
+      const refLat = allTowers[0]?.latitude ?? parsedFixes[0]?.latitude ?? DEFAULT_MAP_CENTER[0]
+      const refLon = allTowers[0]?.longitude ?? parsedFixes[0]?.longitude ?? DEFAULT_MAP_CENTER[1]
+      allTowers = [...allTowers, createMockRogueTower(refLat, refLon)]
     }
+
+    setTowers(allTowers)
     setKdeHeatPoints(data.heatmapPoints ?? [])
     setFiles(data.filesData.files ?? [])
   }, [id])
@@ -471,6 +529,62 @@ export default function LiveInvestigationPage() {
   const scrubValue = scrubIdx ?? fixes.length - 1
   const maxScrub = Math.max(fixes.length - 1, 0)
 
+  // ── Multi-SIM / Device Handover Events (Bonus Feature 1) ──
+  // Derives swap events only when real timeline fixes exist to map against.
+  // Never marks index 0 as a swap event by default on 1/1 cases.
+  const timelineSwapEvents: InvestigationSwapEvent[] = useMemo(() => {
+    if (!ENABLE_SWAP_EVENT_MOCKS || fixes.length < 2) {
+      return []
+    }
+
+    const events: InvestigationSwapEvent[] = []
+
+    if (fixes.length >= 3) {
+      // Place SIM swap at historical index 1 (timestamp derived from real fixes[1])
+      events.push({
+        ...MOCK_SWAP_TEMPLATES[0],
+        timestamp: fixes[1].timestamp,
+        fix_index: 1,
+      })
+
+      // If 4 or more fixes, place Device swap at historical index 2 (timestamp from real fixes[2])
+      if (fixes.length >= 4) {
+        events.push({
+          ...MOCK_SWAP_TEMPLATES[1],
+          timestamp: fixes[2].timestamp,
+          fix_index: 2,
+        })
+      }
+    } else if (fixes.length === 2) {
+      // For exactly 2 fixes, map SIM swap to historical index 0
+      // Since default load selects index 1 (the latest), no alert is shown on initial load
+      events.push({
+        ...MOCK_SWAP_TEMPLATES[0],
+        timestamp: fixes[0].timestamp,
+        fix_index: 0,
+      })
+    }
+
+    return events
+  }, [fixes])
+
+  // Active swap event is determined strictly when the currently selected fix matches a swap event
+  const activeSwapEvent = useMemo(() => {
+    if (timelineSwapEvents.length === 0) return null
+    const currentIdx = scrubIdx != null ? scrubIdx : fixes.length - 1
+    return timelineSwapEvents.find((e) => e.fix_index === currentIdx) ?? null
+  }, [timelineSwapEvents, scrubIdx, fixes.length])
+
+  const formatEventTime = (isoString: string): string => {
+    try {
+      const d = new Date(isoString)
+      if (isNaN(d.getTime())) return isoString
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
+    } catch {
+      return isoString
+    }
+  }
+
   const pathPoints = fixes.map((f) => ({
     latitude: f.latitude,
     longitude: f.longitude,
@@ -635,6 +749,103 @@ export default function LiveInvestigationPage() {
                 </ul>
               </div>
             )}
+          </div>
+        </Section>
+      )}
+
+      {/* ── RF / SDR Ground Verification ── */}
+      <Section icon={<Radio className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />} label="RF / SDR Ground Verification">
+        {rfVerifiedFix ? (
+          <div className="space-y-2.5">
+            <div className="flex items-center justify-between rounded-lg border border-cyan-200 bg-cyan-50/70 p-2.5 dark:border-cyan-800/60 dark:bg-cyan-950/30">
+              <div className="flex items-center gap-2">
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-cyan-600 text-white text-xs font-bold shadow-xs">✓</span>
+                <div>
+                  <p className="text-xs font-semibold text-cyan-900 dark:text-cyan-200">Target Verified</p>
+                  <p className="text-[10px] text-cyan-700 dark:text-cyan-400">High precision field sweep</p>
+                </div>
+              </div>
+              <span className="rounded-full bg-cyan-100 px-2 py-0.5 text-2xs font-bold text-cyan-800 dark:bg-cyan-900/60 dark:text-cyan-300">
+                ±{rfVerifiedFix.accuracy_m}m
+              </span>
+            </div>
+
+            <div className="space-y-1.5">
+              <DataRow label="Status" value="✓ Verified" highlight />
+              <DataRow label="Peak RSSI" value={`${rfVerifiedFix.rssi_dbm} dBm`} />
+              <DataRow label="Accuracy" value={`±${rfVerifiedFix.accuracy_m} meters`} highlight />
+              <DataRow label="Confidence" value={`${rfVerifiedFix.confidence}%`} />
+              <DataRow label="Source" value="Field SDR Sweep" />
+              {rfVerifiedFix.filename && <DataRow label="Scan File" value={rfVerifiedFix.filename} />}
+            </div>
+
+            <Button
+              size="sm"
+              variant="primary"
+              className="w-full mt-1.5 justify-center text-xs bg-cyan-600 hover:bg-cyan-700 text-white dark:bg-cyan-600 dark:hover:bg-cyan-700 cursor-pointer"
+              onClick={() => setSdrFocusTrigger((v) => !v)}
+            >
+              <Crosshair className="h-3.5 w-3.5 mr-1.5" />
+              Focus Verified Target (±5m)
+            </Button>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-surface-500 dark:text-surface-400">Status</span>
+              <span className="font-medium text-surface-600 dark:text-surface-300">Not Verified</span>
+            </div>
+            <p className="text-2xs text-surface-400 leading-relaxed">
+              Upload a field SDR/RF sweep log to narrow the multilateration region down to ±5 meter verified target.
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-full mt-1 border-cyan-300 text-cyan-700 hover:bg-cyan-50 dark:border-cyan-800 dark:text-cyan-300 dark:hover:bg-cyan-950/40 text-xs justify-center cursor-pointer"
+              onClick={() => setSdrModalOpen(true)}
+            >
+              <Radio className="h-3.5 w-3.5 mr-1.5 text-cyan-600 dark:text-cyan-400" />
+              Upload SDR Scan
+            </Button>
+          </div>
+        )}
+      </Section>
+
+      {/* ── Multi-SIM & Device Evasion Tactics ── */}
+      {timelineSwapEvents.length > 0 && (
+        <Section icon={<ShieldAlert className="h-4 w-4 text-amber-600 dark:text-amber-400" />} label="Evasion Tactics Detected">
+          <div className="space-y-2">
+            {timelineSwapEvents.map((evt, idx) => (
+              <div
+                key={evt.id || idx}
+                onClick={() => { setScrubIdx(evt.fix_index ?? 0); setPlaying(false) }}
+                className={cn(
+                  "p-2.5 rounded-lg border text-xs cursor-pointer transition-all",
+                  scrubValue === evt.fix_index
+                    ? "border-amber-400 bg-amber-50 dark:bg-amber-950/40 ring-1 ring-amber-400/50"
+                    : "border-surface-200 bg-white hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:hover:bg-surface-750"
+                )}
+              >
+                <div className="flex items-center justify-between gap-1 mb-1">
+                  <div className="flex items-center gap-1.5 font-semibold text-surface-900 dark:text-surface-100">
+                    {evt.event_type === 'device_swap' ? (
+                      <Smartphone className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                    ) : (
+                      <Radio className="h-3.5 w-3.5 text-orange-600 dark:text-orange-400" />
+                    )}
+                    <span>{evt.event_type === 'device_swap' ? 'Device Handover' : 'SIM Card Swap'}</span>
+                  </div>
+                  <span className="text-2xs font-mono text-surface-400">
+                    {formatDateTime(evt.timestamp)}
+                  </span>
+                </div>
+                <p className="text-2xs text-surface-600 dark:text-surface-300 font-mono break-all">
+                  {evt.event_type === 'device_swap'
+                    ? (evt.old_imei && evt.new_imei ? `IMEI: ${evt.old_imei} → ${evt.new_imei}` : 'IMEI Swap Detected')
+                    : (evt.old_imsi && evt.new_imsi ? `IMSI: ${evt.old_imsi} → ${evt.new_imsi}` : 'SIM Swap Detected')}
+                </p>
+              </div>
+            ))}
           </div>
         </Section>
       )}
@@ -886,6 +1097,52 @@ export default function LiveInvestigationPage() {
         </div>
       </div>
 
+      {/* ── Multi-SIM / Device Handover Evasion Alert Banner ── */}
+      <AnimatePresence>
+        {activeSwapEvent && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="relative z-[1000] shrink-0 border-b border-amber-400/40 bg-amber-50 dark:bg-amber-950/60 px-3 sm:px-5 py-2 text-amber-950 dark:text-amber-200 shadow-xs overflow-hidden"
+          >
+            <div className="flex items-center justify-between gap-2 max-w-full">
+              <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-200 text-amber-800 dark:bg-amber-900/60 dark:text-amber-300 ring-1 ring-amber-400/40">
+                  {activeSwapEvent.event_type === 'device_swap' ? (
+                    <Smartphone className="h-3.5 w-3.5" />
+                  ) : (
+                    <Radio className="h-3.5 w-3.5" />
+                  )}
+                </div>
+                <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                  <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-200/90 text-amber-900 dark:bg-amber-900/80 dark:text-amber-200 shrink-0">
+                    <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+                    Evasion Tactic Detected
+                  </span>
+                  <span className="text-xs font-semibold truncate">
+                    {activeSwapEvent.event_type === 'device_swap'
+                      ? `Suspect changed device at ${formatEventTime(activeSwapEvent.timestamp)}`
+                      : `Suspect changed SIM card at ${formatEventTime(activeSwapEvent.timestamp)}`}
+                    {(activeSwapEvent.old_imei || activeSwapEvent.old_imsi) && (
+                      <span className="hidden sm:inline font-mono font-normal text-2xs ml-1.5 text-amber-800/90 dark:text-amber-300/90">
+                        ({activeSwapEvent.event_type === 'device_swap' ? `${activeSwapEvent.old_imei} → ${activeSwapEvent.new_imei}` : `${activeSwapEvent.old_imsi} → ${activeSwapEvent.new_imsi}`})
+                      </span>
+                    )}
+                  </span>
+                </div>
+              </div>
+              <div className="shrink-0 flex items-center gap-1.5">
+                <span className="text-2xs font-mono font-bold text-amber-800 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/40 px-2 py-0.5 rounded border border-amber-300 dark:border-amber-700/50">
+                  {activeSwapEvent.event_type === 'device_swap' ? 'IMEI Swap' : 'SIM Swap'}
+                </span>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* ── Main Workspace ── */}
       <div ref={workspaceRef} className="flex flex-1 overflow-hidden relative w-full h-full">
 
@@ -910,6 +1167,9 @@ export default function LiveInvestigationPage() {
               if (type === 'kml') handleExportKML()
             }}
             onUploadClick={() => navigate(`/investigations/${id}/upload`)}
+            rfVerifiedFix={rfVerifiedFix}
+            onUploadSDRClick={() => setSdrModalOpen(true)}
+            onSelectVerifiedTarget={() => setSdrFocusTrigger((v) => !v)}
           />
         </div>
 
@@ -994,6 +1254,8 @@ export default function LiveInvestigationPage() {
                 geojson={geojson ?? undefined}
                 kdeHeatPoints={mode === 'multilateration' ? kdeHeatPoints : undefined}
                 rttObservations={mode === 'rtt' ? rttObservations : undefined}
+                rfVerifiedFix={rfVerifiedFix}
+                sdrFocusTrigger={sdrFocusTrigger}
               />
             </ErrorBoundary>
           )}
@@ -1009,16 +1271,60 @@ export default function LiveInvestigationPage() {
                 >
                   {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 ml-0.5" />}
                 </button>
-                <input
-                  type="range"
-                  min={0}
-                  max={maxScrub}
-                  value={scrubValue}
-                  disabled={fixes.length < 2}
-                  onChange={(e) => { setScrubIdx(Number(e.target.value)); setPlaying(false) }}
-                  className="flex-1 accent-primary-600 min-w-0 h-2 cursor-pointer"
-                  aria-label="Timeline playback position"
-                />
+
+                <div className="relative flex-1 min-w-0 flex flex-col justify-center">
+                  {/* Event Markers above the slider track */}
+                  {timelineSwapEvents.length > 0 && (
+                    <div className="relative h-3.5 w-full mb-0.5">
+                      {timelineSwapEvents.map((evt, idx) => {
+                        const targetIdx = evt.fix_index ?? 0
+                        const percent = maxScrub > 0 ? (targetIdx / maxScrub) * 100 : 0
+                        const isSelected = scrubValue === targetIdx
+                        const tooltipText = evt.event_type === 'device_swap'
+                          ? (evt.old_imei && evt.new_imei ? `IMEI Swap Detected: ${evt.old_imei} → ${evt.new_imei}` : 'IMEI Swap Detected')
+                          : (evt.old_imsi && evt.new_imsi ? `SIM Swap Detected: ${evt.old_imsi} → ${evt.new_imsi}` : 'SIM Swap Detected')
+
+                        return (
+                          <button
+                            key={evt.id || idx}
+                            type="button"
+                            onClick={() => { setScrubIdx(targetIdx); setPlaying(false) }}
+                            title={tooltipText}
+                            aria-label={tooltipText}
+                            style={{ left: `${percent}%` }}
+                            className={cn(
+                              "absolute -translate-x-1/2 top-0 flex items-center justify-center h-3.5 w-3.5 rounded-full border shadow-xs transition-transform cursor-pointer hover:scale-125",
+                              isSelected
+                                ? "ring-2 ring-amber-500 scale-125 z-10"
+                                : "",
+                              evt.event_type === 'device_swap'
+                                ? "bg-amber-100 border-amber-400 text-amber-700 dark:bg-amber-950 dark:border-amber-500 dark:text-amber-300"
+                                : "bg-orange-100 border-orange-400 text-orange-700 dark:bg-orange-950 dark:border-orange-500 dark:text-orange-300"
+                            )}
+                          >
+                            {evt.event_type === 'device_swap' ? (
+                              <Smartphone className="h-2 w-2" />
+                            ) : (
+                              <Radio className="h-2 w-2" />
+                            )}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+
+                  <input
+                    type="range"
+                    min={0}
+                    max={maxScrub}
+                    value={scrubValue}
+                    disabled={fixes.length < 2}
+                    onChange={(e) => { setScrubIdx(Number(e.target.value)); setPlaying(false) }}
+                    className="w-full accent-primary-600 min-w-0 h-2 cursor-pointer"
+                    aria-label="Timeline playback position"
+                  />
+                </div>
+
                 <span className="shrink-0 text-xs text-surface-600 dark:text-surface-300 font-mono font-medium">
                   {scrubIdx != null ? scrubIdx + 1 : fixes.length}/{fixes.length}
                 </span>
@@ -1156,6 +1462,15 @@ export default function LiveInvestigationPage() {
                       navigate(`/investigations/${id}/upload`)
                       setMobileExplorerOpen(false)
                     }}
+                    rfVerifiedFix={rfVerifiedFix}
+                    onUploadSDRClick={() => {
+                      setSdrModalOpen(true)
+                      setMobileExplorerOpen(false)
+                    }}
+                    onSelectVerifiedTarget={() => {
+                      setSdrFocusTrigger((v) => !v)
+                      setMobileExplorerOpen(false)
+                    }}
                   />
                 </div>
               </motion.div>
@@ -1233,6 +1548,18 @@ export default function LiveInvestigationPage() {
         latitude={currentSuspectLocation?.latitude ?? null}
         longitude={currentSuspectLocation?.longitude ?? null}
         loading={loading}
+      />
+
+      <SDRUploadModal
+        isOpen={sdrModalOpen}
+        onClose={() => setSdrModalOpen(false)}
+        currentSuspectLat={activeFix?.latitude ?? fixes[0]?.latitude}
+        currentSuspectLon={activeFix?.longitude ?? fixes[0]?.longitude}
+        currentTimestamp={activeFix?.timestamp ?? fixes[0]?.timestamp}
+        onVerificationComplete={(fix) => {
+          setRfVerifiedFix(fix)
+          setSdrFocusTrigger((v) => !v)
+        }}
       />
     </div>
   )
