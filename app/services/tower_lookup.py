@@ -16,12 +16,16 @@ from app.database.repository import TelecomRepository
 from app.services.cgi_decoder import CgiDecoder
 from app.services.opencellid import OpenCellIDService
 
-_tower_cache: dict[str, TowerRecord] = {}
+_catalog_cache: dict[str, TowerRecord] = {}
 
 
 class TowerLookupService:
     """
     Locates spatial metadata coordinates for cell towers based on Cell Global Identity.
+
+    The authoritative whitelist is the ``tower_records`` DB catalog. OpenCellID is
+    only a last-resort resolver and its results are explicitly marked ``is_catalog=False``
+    so rogue-BTS detection can exclude them from solves and flag them.
     """
 
     def __init__(self, db_session: AsyncSession) -> None:
@@ -31,7 +35,10 @@ class TowerLookupService:
     async def find_by_cgi(self, cgi: str) -> Optional[TowerRecord]:
         """
         Looks up a cell site record by its CGI code.
-        Falls back to OpenCellID API when not found in DB.
+
+        DB ``tower_records`` catalog is checked first and cached separately (never
+        evicted by OpenCellID results). OpenCellID is consulted only when the CGI
+        is absent from the catalog, and its result carries ``is_catalog=False``.
 
         Args:
             cgi: MCC-MNC-LAC-CI formatted identifier.
@@ -42,15 +49,15 @@ class TowerLookupService:
         if not cgi:
             return None
 
-        if cgi in _tower_cache:
-            return _tower_cache[cgi]
+        if cgi in _catalog_cache:
+            return _catalog_cache[cgi]
 
         tower = await self.repo.get_tower_by_cgi(cgi)
         if tower:
-            _tower_cache[cgi] = tower
+            _catalog_cache[cgi] = tower
             return tower
 
-        # OpenCellID fallback
+        # OpenCellID fallback (NOT part of the authoritative whitelist)
         decoded = CgiDecoder.decode(cgi)
         if all(decoded[k] is not None for k in ("mcc", "mnc", "lac", "cell_id")):
             oc_result = await self._opencellid.lookup(
@@ -72,8 +79,21 @@ class TowerLookupService:
                     latitude=oc_result["latitude"],
                     longitude=oc_result["longitude"],
                     range_meters=oc_result.get("range_meters"),
+                    is_catalog=False,
                 )
-                _tower_cache[cgi] = tower
                 return tower
 
         return None
+
+    async def is_catalog(self, cgi: str) -> bool:
+        """
+        Whitelist membership test: is this CGI present in the authoritative
+        ``tower_records`` DB catalog? OpenCellID fallbacks do not count.
+        """
+        if cgi in _catalog_cache:
+            return True
+        tower = await self.repo.get_tower_by_cgi(cgi)
+        if tower:
+            _catalog_cache[cgi] = tower
+            return True
+        return False

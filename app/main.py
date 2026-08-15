@@ -9,7 +9,7 @@ from typing import AsyncGenerator
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import admin_router, auth_router, cases_router, exports_router, files_router, health_router, upload_router
+from app.api import admin_router, auth_router, cases_router, exports_router, files_router, health_router, tracking_ws_router, upload_router
 from app.core.config import settings
 from app.core.deps import get_current_officer
 from app.core.logging import logger, setup_logging
@@ -116,6 +116,9 @@ app.include_router(files_router, dependencies=[Depends(get_current_officer)])
 
 # Health check stays public
 app.include_router(health_router)
+
+# WebSocket tracking (auth validated inside the handler before accept)
+app.include_router(tracking_ws_router)
 
 
 if __name__ == "__main__":

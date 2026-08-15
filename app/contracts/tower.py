@@ -85,6 +85,12 @@ class TowerRecord(BaseModel):
         description="Physical site address location string.",
         examples=["Bandra West, Mumbai, Maharashtra 400050"]
     )
+    is_catalog: bool = Field(
+        default=True,
+        description="True when resolved from the authoritative tower_records DB catalog; "
+                    "False when resolved via external fallback (e.g. OpenCellID). "
+                    "Whitelist for rogue-BTS detection uses DB catalog only.",
+    )
 
     @field_validator("latitude")
     @classmethod

@@ -59,7 +59,10 @@ class MeasurementFrameBuilder:
 
         by_subscriber: dict[str, list[SubscriberEventRecord]] = {}
         for rec in records:
-            sub_id = rec.phone_number or rec.imsi or "Unknown"
+            # Device-first pivot: a handset (IMEI) is the physical entity we track.
+            # SIMs (IMSI) and phone numbers (MSISDN) can change on it — swapping SIMs
+            # or moving the number between handsets must not split one device's trail.
+            sub_id = rec.imei or rec.phone_number or rec.imsi or "Unknown"
             by_subscriber.setdefault(sub_id, []).append(rec)
 
         for subscriber_id, sub_records in by_subscriber.items():
@@ -170,6 +173,7 @@ class MeasurementFrameBuilder:
                     timing_advance=rec.timing_advance,
                     rtt=rec.rtt,
                     pseudorange_meters=distance_est,
+                    is_catalog=tower_info.is_catalog,
                 )
             )
             seen_cgis.add(rec.cgi)
@@ -190,11 +194,16 @@ class MeasurementFrameBuilder:
             (window_records[-1].timestamp - window_records[0].timestamp) / 2
         )
 
+        # SIM swap / multi-SIM handover: more than one distinct IMSI seen on this
+        # device within the frame.
+        distinct_imsis = {r.imsi for r in window_records if r.imsi}
+
         return MeasurementFrame(
             frame_id=uuid4(),
             upload_id=window_records[0].upload_id,
             subscriber_identifier=subscriber_id,
             timestamp=midpoint_ts,
             towers=towers_seen,
+            sim_swap=len(distinct_imsis) > 1,
             status=FrameStatus.READY,
         )

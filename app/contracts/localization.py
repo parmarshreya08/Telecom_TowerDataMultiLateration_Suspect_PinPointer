@@ -91,6 +91,11 @@ class LocalizationFix(BaseModel):
         default=None,
         description="Persisted reverse-geocoded address label.",
     )
+    rogue_cgis: list[str] = Field(
+        default_factory=list,
+        description="CGIs in this fix's measurement frame that were NOT in the tower_records "
+                    "catalog (rogue BTS / IMSI-catcher candidates) and were excluded from the solve.",
+    )
     created_at: datetime = Field(
         default_factory=now_ist,
         description="Timestamp when the fix was computed.",

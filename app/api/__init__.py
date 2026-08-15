@@ -8,6 +8,7 @@ from app.api.cases import router as cases_router
 from app.api.exports import router as exports_router
 from app.api.files import router as files_router
 from app.api.health import router as health_router
+from app.api.tracking_ws import router as tracking_ws_router
 from app.api.upload import router as upload_router
 
 __all__ = [
@@ -17,5 +18,6 @@ __all__ = [
     "exports_router",
     "files_router",
     "health_router",
+    "tracking_ws_router",
     "upload_router",
 ]

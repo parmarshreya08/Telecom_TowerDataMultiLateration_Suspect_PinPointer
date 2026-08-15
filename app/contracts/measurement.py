@@ -66,6 +66,11 @@ class MeasurementTower(BaseModel):
         description="Estimated ranges/distances from handset to cell site in meters.",
         examples=[234.5]
     )
+    is_catalog: bool = Field(
+        default=True,
+        description="True when resolved from the authoritative tower_records catalog. "
+                    "False when resolved via OpenCellID fallback (rogue-BTS whitelist excludes these).",
+    )
 
     @field_validator("latitude")
     @classmethod
@@ -135,6 +140,11 @@ class MeasurementFrame(BaseModel):
     towers: list[MeasurementTower] = Field(
         ..., 
         description="List of observed towers. Must contain at least 3 elements to allow trilateration solver."
+    )
+    sim_swap: bool = Field(
+        default=False,
+        description="True when this frame's records contain more than one distinct IMSI "
+                    "on the same device (SIM swap / multi-SIM device handover).",
     )
     status: FrameStatus = Field(
         ..., 

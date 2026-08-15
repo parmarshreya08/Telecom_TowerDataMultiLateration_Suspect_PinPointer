@@ -64,13 +64,13 @@ async def builder() -> MeasurementFrameBuilder:
         "404-20-100-3": make_tower("404-20-100-3", 21.1752, 72.8411),
         "404-20-100-4": make_tower("404-20-100-4", 21.1852, 72.8261),
     }
-    tower_lookup_module._tower_cache.update(cgis)
+    tower_lookup_module._catalog_cache.update(cgis)
 
     service = TowerLookupService(mock_db_session())
     yield MeasurementFrameBuilder(service)
 
     for cgi in cgis:
-        tower_lookup_module._tower_cache.pop(cgi, None)
+        tower_lookup_module._catalog_cache.pop(cgi, None)
 
 
 def mock_db_session():
@@ -147,3 +147,37 @@ async def test_less_than_3_towers_dropped(builder):
     ]
     frames = await builder.build_frames(events, time_window_minutes=5)
     assert frames == [], "frames with <3 unique towers must be dropped"
+
+
+@pytest.mark.asyncio
+async def test_device_first_pivot_merges_sim_swap_on_same_imei(builder):
+    # Same IMEI carries two different IMSIs (SIM swap) but one phone number —
+    # old pivot split on phone_number; device-first pivot merges into one frame
+    # and flags sim_swap.
+    events = [
+        make_event("404-20-100-1", T0),
+        make_event("404-20-100-2", T0 + timedelta(minutes=2)),
+        make_event("404-20-100-3", T0 + timedelta(minutes=4)),
+        make_event("404-20-100-4", T0 + timedelta(minutes=6)),
+    ]
+    for idx, rec in enumerate(events):
+        rec.imei = "358765432109876"
+        rec.imsi = "404450123456789" if idx < 2 else "404450999999999"
+    frames = await builder.build_frames(events, time_window_minutes=5)
+    assert len(frames) == 1, "same IMEI must merge into one frame"
+    assert frames[0].sim_swap is True, "two distinct IMSIs must flag sim_swap"
+
+
+@pytest.mark.asyncio
+async def test_single_sim_no_swap_flag(builder):
+    events = [
+        make_event("404-20-100-1", T0),
+        make_event("404-20-100-2", T0 + timedelta(minutes=2)),
+        make_event("404-20-100-3", T0 + timedelta(minutes=4)),
+    ]
+    for rec in events:
+        rec.imei = "358765432109876"
+        rec.imsi = "404450123456789"
+    frames = await builder.build_frames(events, time_window_minutes=5)
+    assert len(frames) == 1
+    assert frames[0].sim_swap is False, "one IMSI must not flag sim_swap"

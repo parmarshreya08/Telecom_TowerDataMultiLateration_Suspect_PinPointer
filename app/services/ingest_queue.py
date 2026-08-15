@@ -34,6 +34,12 @@ class IngestQueue:
         """
         logger.info("ingest_queue_enqueue", upload_id=str(upload_id), case_id=case_id)
 
+        from app.services.ws_manager import connection_manager
+        await connection_manager.broadcast(
+            case_id, "upload:status",
+            {"upload_id": str(upload_id), "case_id": case_id, "status": "queued"},
+        )
+
         task = asyncio.create_task(
             self._process_upload(upload_id, case_id, supabase_path)
         )
@@ -65,8 +71,15 @@ class IngestQueue:
             repo = TelecomRepository(db_session)
 
             try:
+                frames: list[Any] = []
                 await repo.update_upload_status(upload_id, "processing")
                 await db_session.commit()
+
+                from app.services.ws_manager import connection_manager
+                await connection_manager.broadcast(
+                    case_id, "upload:status",
+                    {"upload_id": str(upload_id), "case_id": case_id, "status": "processing"},
+                )
 
                 # Download from Supabase to temp file
                 with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as tmp:
@@ -139,6 +152,13 @@ class IngestQueue:
                     await db_session.commit()
                     logger.info("ingest_queue_complete", upload_id=str(upload_id))
 
+                    frame_count = len(frames)
+                    await connection_manager.broadcast(
+                        case_id, "upload:completed",
+                        {"upload_id": str(upload_id), "case_id": case_id,
+                         "status": "completed", "frame_count": frame_count},
+                    )
+
                 finally:
                     if os.path.exists(local_path):
                         os.remove(local_path)
@@ -151,6 +171,12 @@ class IngestQueue:
                     await db_session.commit()
                 except Exception as rollback_err:
                     logger.error("ingest_queue_rollback_failed", upload_id=str(upload_id), error=str(rollback_err))
+                from app.services.ws_manager import connection_manager
+                await connection_manager.broadcast(
+                    case_id, "upload:status",
+                    {"upload_id": str(upload_id), "case_id": case_id,
+                     "status": "failed", "error": str(e)},
+                )
 
             finally:
                 self._tasks.pop(upload_id, None)

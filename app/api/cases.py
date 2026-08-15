@@ -15,10 +15,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.deps import check_case_access, get_current_officer, require_admin
 from app.core.logging import logger
+from app.contracts.rf import RfScan
 from app.database.models import CaseAssignmentModel, OfficerModel
 from app.database.repository import TelecomRepository
 from app.database.session import get_db_session
 from app.localization.engine import LocalizationEngine
+from app.localization.rf_verifier import verify_scans
 from app.services.audit_service import record_audit_event
 from app.services.supabase_storage import storage_service
 from app.utils.datetime_utils import parse_iso_datetime_naive
@@ -370,6 +372,7 @@ async def run_case_localization(
         "case_id": case_id,
         "fix_count": len(fixes),
         "geojson": geojson,
+        "rogue_cgis": sorted(getattr(engine, "rogue_cgis", set())),
     }
     if skipped_frame_count > 0:
         response["skipped_frame_count"] = skipped_frame_count
@@ -1091,4 +1094,75 @@ async def get_dashboard_stats(
 ) -> dict[str, Any]:
     repo = TelecomRepository(db)
     return await repo.get_dashboard_stats()
+
+
+@router.post(
+    "/api/case/{case_id}/verify-rf",
+    status_code=status.HTTP_200_OK,
+    summary="Ground-verify a suspect position with officer-carried RF/SDR scans",
+)
+async def verify_rf_ground_truth(
+    case_id: str,
+    scans: list[RfScan],
+    officer: OfficerModel = Depends(get_current_officer),
+    db: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    """
+    Accepts a list of SDR scans (timestamp, lat, lon, frequency, RSSI, bearing)
+    and produces a last-50-metre micro-fix via log-distance path loss.
+
+    Returns a GeoJSON Feature (properties.type == 'rf_verified_fix') so the
+    frontend can reuse existing map rendering. Nothing is persisted — this is a
+    live ground-truth check, not evidence.
+    """
+    await check_case_access(case_id, officer, db)
+
+    if not scans:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="No RF scans supplied.",
+        )
+
+    result = verify_scans(scans)
+
+    if result.micro_fix_latitude is None or result.micro_fix_longitude is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                "Could not resolve an RF micro-fix: "
+                + (f"{result.skipped_scan_count} scan(s) skipped "
+                   "(missing bearing or RSSI at/below noise floor)."
+                   if result.skipped_scan_count else
+                   "micro-fix fell outside the India geofence.")
+            ),
+        )
+
+    geojson: dict[str, Any] = {
+        "type": "Feature",
+        "id": str(uuid4()),
+        "geometry": {
+            "type": "Point",
+            "coordinates": [result.micro_fix_longitude, result.micro_fix_latitude],
+        },
+        "properties": {
+            "type": "rf_verified_fix",
+            "case_id": case_id,
+            "timestamp": scans[-1].timestamp.isoformat(),
+            "estimated_distance_meters": result.estimated_distance_meters,
+            "confidence_radius_meters": result.confidence_radius_meters,
+            "method": result.method,
+            "skipped_scan_count": result.skipped_scan_count,
+            "scan_count": len(scans),
+        },
+    }
+
+    return {
+        "case_id": case_id,
+        "geojson": geojson,
+        "micro_fix": {
+            "latitude": result.micro_fix_latitude,
+            "longitude": result.micro_fix_longitude,
+            "confidence_radius_meters": result.confidence_radius_meters,
+        },
+    }
 

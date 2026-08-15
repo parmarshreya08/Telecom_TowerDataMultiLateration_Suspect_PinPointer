@@ -98,11 +98,23 @@ class LocalizationEngine:
         """
         Runs Stage 1 (trilateration) on a single frame.
         Returns solver output dict, or None when the frame is incomplete.
+
+        Rogue-BTS whitelist: towers not present in the authoritative tower_records
+        catalog (``is_catalog=False``) are excluded from the solve and reported in
+        ``rogue_cgis`` — an IMSI-catcher must never contribute to a fix.
         """
+        rogue_cgis = [t.cgi for t in frame.towers if not t.is_catalog]
+        if rogue_cgis:
+            logger.warning(
+                "localization_rogue_tower_excluded",
+                frame_id=str(frame.frame_id),
+                rogue_cgis=rogue_cgis,
+            )
+
         usable = [
             (t, _tower_pseudorange(t))
             for t in frame.towers
-            if _tower_pseudorange(t) is not None
+            if _tower_pseudorange(t) is not None and t.is_catalog
         ]
 
         if len(usable) < 3:
@@ -157,6 +169,7 @@ class LocalizationEngine:
             "zone": zone,
             "towers": towers,
             "rss_i_values": rss_i_values,
+            "rogue_cgis": rogue_cgis,
         }
 
     def compute_fixes(
@@ -177,6 +190,9 @@ class LocalizationEngine:
         for frame in ready_frames:
             by_subscriber.setdefault(frame.subscriber_identifier, []).append(frame)
 
+        # Case-level rogue CGI accumulation (whitelist + kinematic rejection)
+        self.rogue_cgis: set[str] = set()
+
         for subscriber, sub_frames in by_subscriber.items():
             sub_frames.sort(key=lambda f: f.timestamp)
 
@@ -185,6 +201,7 @@ class LocalizationEngine:
                 outcome = self._frame_solve(frame)
                 if outcome is not None:
                     solved.append((frame, outcome))
+                    self.rogue_cgis.update(outcome.get("rogue_cgis", []))
 
             if not solved:
                 continue
@@ -210,6 +227,17 @@ class LocalizationEngine:
                     measurement_uncertainty=mean_uncertainty,
                 )
                 if not kf_result["initialized"]:
+                    continue
+
+                if kf_result.get("rejected"):
+                    logger.warning(
+                        "localization_kalman_gate_rejected",
+                        frame_id=str(frame.frame_id),
+                        subscriber=subscriber,
+                    )
+                    # Kinematic rejection: the frame's CGIs are physically implausible
+                    # (e.g. >500km/h jump) — flag them as rogue-BTS candidates.
+                    self.rogue_cgis.update(t.cgi for t in frame.towers)
                     continue
 
                 smoothed_pos = kf_result["position"]
@@ -260,6 +288,7 @@ class LocalizationEngine:
                         ta_outer_m=ta_outer,
                         rss_i_dbm=rss_i,
                         covariance_json={"matrix": cov_list} if cov_list else None,
+                        rogue_cgis=outcome.get("rogue_cgis", []),
                     )
                 )
 
@@ -336,6 +365,7 @@ class LocalizationEngine:
                     "geocoded_address": fix.geocoded_address,
                     "localization_method": "3-Tower Multilateration + Kalman" if fix.velocity_east is not None else "3-Tower Multilateration",
                     "kalman_applied": fix.velocity_east is not None,
+                    "rogue_cgis": fix.rogue_cgis or [],
                     "towers_used": towers_info,
                     "measurement_constraints": constraints_info,
                 },
