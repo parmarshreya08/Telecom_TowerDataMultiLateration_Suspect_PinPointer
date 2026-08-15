@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'motion/react'
 import { X, Bell, CheckCheck, MapPin, Radio, WifiOff, AlertCircle, FileText, Upload } from 'lucide-react'
 import type { Notification } from '@/types'
@@ -67,13 +68,15 @@ export function NotificationDrawer({
     return () => { document.body.style.overflow = prev }
   }, [open])
 
-  return (
+  if (typeof document === 'undefined') return null
+
+  return createPortal(
     <AnimatePresence>
       {open && (
-        <>
+        <div className="fixed inset-0 z-[10000]">
           {/* Backdrop */}
           <motion.div
-            className="fixed inset-0 z-40 bg-black/30 backdrop-blur-sm"
+            className="fixed inset-0 z-[10000] bg-black/40 backdrop-blur-xs"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -86,7 +89,7 @@ export function NotificationDrawer({
             role="dialog"
             aria-modal="true"
             aria-label="Notifications"
-            className="fixed right-0 top-0 z-50 flex h-full w-full max-w-sm flex-col
+            className="fixed right-0 top-0 z-[10001] flex h-full w-full max-w-[min(100vw,24rem)] flex-col
                        bg-white shadow-2xl dark:bg-surface-900"
             initial={{ x: '100%' }}
             animate={{ x: 0 }}
@@ -185,8 +188,9 @@ export function NotificationDrawer({
               )}
             </div>
           </motion.aside>
-        </>
+        </div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   )
 }

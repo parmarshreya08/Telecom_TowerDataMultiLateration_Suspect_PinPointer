@@ -67,6 +67,33 @@ function CenterControl({ lat, lon, trigger }: CenterControlProps) {
   return null
 }
 
+function MapResizeHandler() {
+  const map = useMap()
+  useEffect(() => {
+    const handleResize = () => {
+      map.invalidateSize()
+    }
+    window.addEventListener('resize', handleResize)
+    const container = map.getContainer()
+    let ro: ResizeObserver | null = null
+    if (typeof ResizeObserver !== 'undefined' && container) {
+      ro = new ResizeObserver(() => {
+        map.invalidateSize()
+      })
+      ro.observe(container)
+    }
+    const timer = setTimeout(() => {
+      map.invalidateSize()
+    }, 250)
+    return () => {
+      window.removeEventListener('resize', handleResize)
+      if (ro) ro.disconnect()
+      clearTimeout(timer)
+    }
+  }, [map])
+  return null
+}
+
 // ── Parse sector wedge GeoJSON polygons ──────────────────────
 function parseSectorWedges(geojson?: GeoJSONFeatureCollection) {
   if (!geojson?.features) return []
@@ -271,6 +298,9 @@ export function InvestigationMap({
           url={tileUrl}
           attribution={tileAttribution}
         />
+
+        {/* Map resize invalidate handler */}
+        <MapResizeHandler />
 
         {/* Auto-follow live location */}
         {currentLocation && autoFollow && (
@@ -480,12 +510,12 @@ export function InvestigationMap({
 
       {/* ── Bottom-left coordinate overlay ── */}
       {currentLocation && (
-        <div className="absolute bottom-4 left-4 z-[1000] rounded-lg bg-black/60 px-3 py-2 backdrop-blur-sm">
-          <p className="text-xs font-mono text-white">
+        <div className="absolute bottom-28 lg:bottom-4 left-3 sm:left-4 z-[970] max-w-[200px] sm:max-w-none rounded-lg bg-black/70 px-2.5 py-1.5 sm:px-3 sm:py-2 backdrop-blur-sm">
+          <p className="text-2xs sm:text-xs font-mono text-white truncate">
             {formatCoordinate(currentLocation.latitude)}°N &nbsp;
             {formatCoordinate(currentLocation.longitude)}°E
           </p>
-          <p className="text-2xs text-white/60 mt-0.5">
+          <p className="text-[10px] sm:text-2xs text-white/70 mt-0.5 truncate">
             ±{currentLocation.accuracy_meters.toFixed(0)}m · {currentLocation.algorithm_used} · {currentLocation.confidence != null ? (currentLocation.confidence * 100).toFixed(0) : 'N/A'}% conf.
           </p>
         </div>
@@ -493,13 +523,13 @@ export function InvestigationMap({
 
       {/* ── Geocode narrative banner ── */}
       {currentLocation?.geocode && String(currentLocation.geocode) !== 'Unknown area' && (
-        <div className="absolute left-4 top-4 z-[1000] max-w-xs rounded-lg border border-blue-200 bg-white/95 px-3 py-2 shadow-lg backdrop-blur-sm dark:border-blue-800/60 dark:bg-surface-900/95">
-          <p className="text-2xs text-surface-500 dark:text-surface-400">
+        <div className="absolute left-3 sm:left-4 top-14 sm:top-4 z-[990] max-w-[220px] sm:max-w-xs rounded-lg border border-blue-200 bg-white/95 px-2.5 py-1.5 sm:px-3 sm:py-2 shadow-lg backdrop-blur-sm dark:border-blue-800/60 dark:bg-surface-900/95">
+          <p className="text-[10px] sm:text-2xs text-surface-500 dark:text-surface-400">
             At <span className="font-semibold text-surface-800 dark:text-surface-100">
               {currentLocation.timestamp ? formatDateTime(currentLocation.timestamp) : 'this time'}
             </span>, the suspect was around
           </p>
-          <p className="mt-0.5 text-sm font-semibold text-blue-700 dark:text-blue-300">
+          <p className="mt-0.5 text-xs sm:text-sm font-semibold text-blue-700 dark:text-blue-300 truncate">
             {String(currentLocation.geocode)}
           </p>
         </div>

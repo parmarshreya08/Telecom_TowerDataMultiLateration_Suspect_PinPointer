@@ -1,10 +1,14 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { createPortal } from 'react-dom'
+import { motion, AnimatePresence } from 'motion/react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   Share2, Download, FileText, Map, Globe,
   Navigation, Radio, Wifi, WifiOff, Clock,
   ArrowLeft, Crosshair, PlayCircle, RefreshCw, AlertCircle,
   Copy, Check, Play, Pause, Trash2,
+  FolderOpen, SlidersHorizontal, MoreVertical, X,
+  ChevronUp, ChevronDown,
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
@@ -90,6 +94,54 @@ export default function LiveInvestigationPage() {
   const [files, setFiles] = useState<CaseFile[]>([])
   const [selectedItem, setSelectedItem] = useState<SelectedItem>({ type: 'overview', id: null })
   const [isDeletingFile, setIsDeletingFile] = useState(false)
+
+  // Mobile drawer states
+  const [mobileExplorerOpen, setMobileExplorerOpen] = useState(false)
+  const [mobileDetailsOpen, setMobileDetailsOpen] = useState(false)
+  const [mobileActionsOpen, setMobileActionsOpen] = useState(false)
+  const mobileActionsRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (mobileActionsRef.current && !mobileActionsRef.current.contains(e.target as Node)) {
+        setMobileActionsOpen(false)
+      }
+    }
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        setMobileExplorerOpen(false)
+        setMobileDetailsOpen(false)
+        setMobileActionsOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [])
+
+  // Trigger resize event for Leaflet map when mobile drawers or bottom sheets toggle
+  useEffect(() => {
+    const t1 = setTimeout(() => window.dispatchEvent(new Event('resize')), 50)
+    const t2 = setTimeout(() => window.dispatchEvent(new Event('resize')), 250)
+    return () => {
+      clearTimeout(t1)
+      clearTimeout(t2)
+    }
+  }, [mobileExplorerOpen, mobileDetailsOpen])
+
+  // Body scroll lock on mobile when drawer or bottom sheet is open
+  useEffect(() => {
+    if (mobileExplorerOpen || mobileDetailsOpen) {
+      const prev = document.body.style.overflow
+      document.body.style.overflow = 'hidden'
+      return () => {
+        document.body.style.overflow = prev
+      }
+    }
+  }, [mobileExplorerOpen, mobileDetailsOpen])
 
   const [explorerWidth, setExplorerWidth] = useState(() => {
     const saved = localStorage.getItem('investigationExplorerWidth')
@@ -416,41 +468,258 @@ export default function LiveInvestigationPage() {
   const caseNumber = investigation?.case_number || id
   const suspectName = investigation?.suspect_name || 'Target'
 
+  const renderDetailsContent = () => (
+    <>
+      {error && (
+        <div className="border-b border-danger/20 bg-danger-light px-4 py-3 text-xs text-danger dark:bg-danger/10 flex items-start gap-2">
+          <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-danger" />
+          <div>
+            <p className="font-semibold">Localization Status</p>
+            <p className="mt-0.5">{error}</p>
+          </div>
+        </div>
+      )}
+
+      {/* ── Investigation Details ── */}
+      <Section icon={<Radio className="h-4 w-4 text-primary-600" />} label="Investigation Details">
+        <div className="space-y-2">
+          <DataRow label="Case Name" value={investigation?.case_name || caseName} highlight />
+          <DataRow label="Case Number" value={caseNumber} />
+          <DataRow label="Target Suspect" value={suspectName} />
+          <DataRow label="Primary Mobile" value={investigation?.mobile_number || (investigation?.mobile_numbers && investigation.mobile_numbers[0]) || 'N/A'} />
+          <DataRow label="Lead Officer" value={investigation?.created_by || 'Officer'} />
+          <DataRow label="Status" value={investigation?.status || (fixes.length > 0 ? 'Active' : 'Draft')} />
+          <Button
+            size="sm"
+            variant="secondary"
+            className="w-full mt-2 justify-center text-xs"
+            onClick={() => navigate(`/investigations/${id}`)}
+          >
+            Open Full Case Record
+          </Button>
+        </div>
+      </Section>
+
+      {selectedItem.type === 'cdr' && selectedItem.id && (
+        <Section icon={<FileText className="h-4 w-4 text-primary-600" />} label="CDR Details">
+          {(() => {
+            const f = files.find(x => x.upload_id === selectedItem.id)
+            if (!f) return <div className="text-xs text-surface-400">File not found.</div>
+            return (
+              <div className="space-y-3">
+                <DataRow label="Filename" value={f.original_filename} highlight />
+                <DataRow label="Status" value={f.upload_status} />
+                <DataRow label="Uploaded" value={new Date(f.uploaded_at).toLocaleString()} />
+                <Button
+                  size="sm" variant="danger" className="w-full mt-2"
+                  icon={isDeletingFile ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                  onClick={() => handleDeleteFile(f.upload_id)}
+                  disabled={isDeletingFile}
+                >
+                  Delete CDR
+                </Button>
+              </div>
+            )
+          })()}
+        </Section>
+      )}
+
+      {/* ── Time Range Filter ── */}
+      <Section icon={<Clock className="h-4 w-4 text-primary-600" />} label="Time Range Filter">
+        <div className="space-y-2">
+          <div>
+            <label className="text-2xs text-surface-400 block mb-1">Start</label>
+            <input
+              type="datetime-local"
+              value={timeStart}
+              onChange={(e) => setTimeStart(e.target.value)}
+              className="w-full rounded-lg border border-surface-300 bg-white px-2.5 py-1.5 text-xs
+                         dark:border-surface-600 dark:bg-surface-800 dark:text-surface-200"
+            />
+          </div>
+          <div>
+            <label className="text-2xs text-surface-400 block mb-1">End</label>
+            <input
+              type="datetime-local"
+              value={timeEnd}
+              onChange={(e) => setTimeEnd(e.target.value)}
+              className="w-full rounded-lg border border-surface-300 bg-white px-2.5 py-1.5 text-xs
+                         dark:border-surface-600 dark:bg-surface-800 dark:text-surface-200"
+            />
+          </div>
+          <div className="flex gap-2">
+            <Button size="sm" variant="primary" className="flex-1" onClick={applyTimeFilter}>
+              Apply
+            </Button>
+            <Button size="sm" variant="secondary" className="flex-1" onClick={clearTimeFilter}>
+              Clear
+            </Button>
+          </div>
+          <p className="text-2xs text-surface-400">
+            {fixes.length} fixes{timeStart || timeEnd ? ' in range' : ' total'}
+          </p>
+        </div>
+      </Section>
+
+      {/* ── Suspect Pin Pointer ── */}
+      <Section icon={<Navigation className="h-4 w-4 text-primary-600" />} label="Suspect Pin Pointer">
+        {activeFix ? (
+          <div className="space-y-2">
+            <DataRow label="Latitude" value={formatCoordinate(activeFix.latitude)} highlight />
+            <DataRow label="Longitude" value={formatCoordinate(activeFix.longitude)} highlight />
+            <DataRow label="Accuracy" value={formatAccuracy(activeFix.confidence_radius_meters)} />
+            <DataRow label="GDOP" value={(activeFix.gdop ?? 0).toFixed(2)} />
+            <DataRow label="RMS Residual" value={(activeFix.residual_rms ?? 0).toFixed(4)} />
+            <DataRow label="Timestamp" value={formatDateTime(activeFix.timestamp)} />
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center text-center py-6 text-xs text-surface-400">
+            <WifiOff className="h-6 w-6 mb-2 text-surface-400" />
+            <p className="font-medium text-surface-600 dark:text-surface-300">No localization fixes yet</p>
+            <p className="text-2xs text-surface-400 mt-1 mb-3">Click "Run Multilateration Engine" to execute JPL trilateration + Kalman filtering over ingested frames.</p>
+            <Button size="sm" variant="primary" icon={<PlayCircle className="h-3.5 w-3.5" />} onClick={handleRunLocalization} disabled={loading}>
+              Run Engine
+            </Button>
+          </div>
+        )}
+      </Section>
+
+      {/* ── Signal Parameters ── */}
+      {activeFix && (activeFix.ta_inner_m != null || activeFix.rss_i_dbm != null) && (
+        <Section icon={<Wifi className="h-4 w-4 text-primary-600" />} label="Signal Parameters">
+          <div className="space-y-2">
+            {activeFix.ta_inner_m != null && (
+              <DataRow label="TA Inner" value={`${activeFix.ta_inner_m.toFixed(0)} m`} />
+            )}
+            {activeFix.ta_outer_m != null && (
+              <DataRow label="TA Outer" value={`${activeFix.ta_outer_m.toFixed(0)} m`} />
+            )}
+            {activeFix.rss_i_dbm != null && (
+              <DataRow label="RSSI" value={`${activeFix.rss_i_dbm.toFixed(1)} dBm`} />
+            )}
+          </div>
+        </Section>
+      )}
+
+      {/* ── Location Evidence ── */}
+      {activeFix && (
+        <Section icon={<Share2 className="h-4 w-4 text-primary-600" />} label="Location Evidence">
+          <div className="space-y-2">
+            <DataRow label="Method" value={activeFix.localization_method || '3-Tower Multilateration'} />
+            <DataRow label="Kalman Filtered" value={activeFix.kalman_applied ? 'Yes' : 'No'} />
+            {activeFix.geocode && (
+              <DataRow label="Resolved Area" value={activeFix.geocode} />
+            )}
+            {activeFix.measurement_constraints && activeFix.measurement_constraints.length > 0 && (
+              <div className="mt-2 text-2xs text-surface-500 bg-surface-100 p-2 rounded-lg border border-surface-200 dark:bg-surface-800 dark:border-surface-700">
+                <p className="font-semibold mb-1 text-surface-600 dark:text-surface-300">Constraints Applied:</p>
+                <ul className="list-disc pl-3 space-y-1">
+                  {activeFix.measurement_constraints.map((c, i) => (
+                    <li key={i} className="break-all">{c}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        </Section>
+      )}
+
+      {/* ── Investigation Metadata ── */}
+      <Section icon={<Radio className="h-4 w-4 text-primary-600" />} label="Investigation Metadata">
+        <div className="space-y-2">
+          <DataRow label="Case ID" value={caseNumber} />
+          <DataRow label="Officer" value={investigation?.created_by || 'Officer'} />
+          <DataRow label="Computed Fixes" value={`${fixes.length} points`} highlight />
+          <DataRow label="GeoJSON Features" value={geojson ? `${geojson.features.length} layers` : 'None'} />
+        </div>
+      </Section>
+
+      {/* ── Export & Share ── */}
+      <Section icon={<Download className="h-4 w-4 text-primary-600" />} label="Export & Share">
+        <div className="space-y-2">
+          <Button
+            size="sm" variant="primary" className="w-full justify-start"
+            icon={exporting === 'pdf' ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}
+            onClick={handleExportPDF}
+            disabled={exporting !== null || fixes.length === 0}
+          >
+            Export PDF Report
+          </Button>
+          <Button
+            size="sm" variant="secondary" className="w-full justify-start"
+            icon={exporting === 'csv' ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+            onClick={handleExportCSV}
+            disabled={exporting !== null || fixes.length === 0}
+          >
+            Export CSV
+          </Button>
+          <Button
+            size="sm" variant="secondary" className="w-full justify-start"
+            icon={exporting === 'kml' ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Map className="h-3.5 w-3.5" />}
+            onClick={handleExportKML}
+            disabled={exporting !== null || fixes.length === 0}
+          >
+            Export KML (Google Earth)
+          </Button>
+          <div className="border-t border-surface-200 dark:border-surface-700 pt-2 mt-2">
+            <Button
+              size="sm" variant="secondary" className="w-full justify-start"
+              icon={copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+              onClick={handleGoogleMapsLink}
+              disabled={fixes.length === 0}
+            >
+              {copied ? 'Link Copied!' : 'Copy Google Maps Link'}
+            </Button>
+            <Button
+              size="sm" variant="secondary" className="w-full justify-start mt-1"
+              icon={<Globe className="h-3.5 w-3.5" />}
+              onClick={openGoogleMaps}
+              disabled={fixes.length === 0}
+            >
+              Open in Google Maps
+            </Button>
+          </div>
+        </div>
+      </Section>
+    </>
+  )
+
   return (
-    <div className="flex h-[calc(100vh-4rem)] flex-col -m-6">
+    <div className="flex h-[calc(100vh-4rem)] flex-col -m-6 max-w-none overflow-hidden relative">
 
       {/* ── Topbar ── */}
-      <div className="flex shrink-0 items-center justify-between border-b border-surface-200
-                      bg-white px-5 py-3 dark:border-surface-700 dark:bg-surface-900">
-        <div className="flex items-center gap-3">
+      <div className="flex shrink-0 items-center justify-between border-b border-surface-200 bg-white px-3 sm:px-5 py-2.5 sm:py-3 dark:border-surface-700 dark:bg-surface-900 z-20">
+        
+        {/* Left: Back + Case Identity */}
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1 mr-2">
           <button
             onClick={() => navigate(`/investigations/${id}`)}
-            className="rounded-lg p-1.5 text-surface-400 hover:bg-surface-100
-                       hover:text-surface-700 dark:hover:bg-surface-700 dark:hover:text-surface-300 transition-colors"
+            className="flex h-10 w-10 items-center justify-center rounded-lg text-surface-500 hover:bg-surface-100 hover:text-surface-700 dark:hover:bg-surface-700 dark:hover:text-surface-300 transition-colors shrink-0 cursor-pointer"
             aria-label="Back to investigation"
           >
-            <ArrowLeft className="h-4 w-4" />
+            <ArrowLeft className="h-5 w-5" />
           </button>
 
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-semibold text-surface-900 dark:text-surface-100">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-xs sm:text-sm font-bold text-surface-900 dark:text-surface-100 truncate">
                 {caseName}
               </span>
-              <span className={cn('flex items-center gap-1.5 text-xs font-medium', TRACKING_STATUS_COLORS[fixes.length > 0 ? 'Live' : 'Idle'])}>
+              <span className={cn('flex items-center gap-1 text-2xs sm:text-xs font-semibold shrink-0', TRACKING_STATUS_COLORS[fixes.length > 0 ? 'Live' : 'Idle'])}>
                 {fixes.length > 0 && (
-                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-green-400 animate-ping-slow" />
+                  <span className="inline-block h-2 w-2 rounded-full bg-green-400 animate-ping-slow" />
                 )}
-                {fixes.length > 0 ? 'Multilateration Active' : 'Idle / Ingested'}
+                <span className="hidden xs:inline">{fixes.length > 0 ? 'Live Tracking' : 'Idle / Ingested'}</span>
               </span>
             </div>
-            <p className="text-xs text-surface-400">
+            <p className="text-2xs sm:text-xs text-surface-500 dark:text-surface-400 truncate">
               {caseNumber} · {suspectName}
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        {/* Desktop Action Toolbar (hidden on mobile/tablet, visible on lg:) */}
+        <div className="hidden lg:flex items-center gap-2 shrink-0">
           <button
             onClick={() => setAutoFollow((v) => !v)}
             className={cn(
@@ -504,13 +773,95 @@ export default function LiveInvestigationPage() {
             Share
           </Button>
         </div>
+
+        {/* Mobile / Tablet Action Toolbar (visible below lg:) */}
+        <div className="flex lg:hidden items-center gap-1.5 shrink-0" ref={mobileActionsRef}>
+          <button
+            onClick={() => setAutoFollow((v) => !v)}
+            className={cn(
+              'flex h-10 items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold transition-colors cursor-pointer',
+              autoFollow
+                ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300'
+                : 'border border-surface-200 bg-white text-surface-600 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-300'
+            )}
+            title="Toggle auto-follow"
+            aria-label="Toggle auto-follow"
+          >
+            <Crosshair className="h-4 w-4" />
+            <span className="hidden sm:inline">{autoFollow ? 'Following' : 'Follow'}</span>
+          </button>
+
+          <Button
+            size="sm"
+            variant="primary"
+            className="h-10 px-3 text-xs font-semibold"
+            icon={loading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <PlayCircle className="h-4 w-4" />}
+            onClick={handleRunLocalization}
+            disabled={loading}
+          >
+            <span>{loading ? 'Running…' : 'Run Engine'}</span>
+          </Button>
+
+          <div className="relative">
+            <button
+              onClick={() => setMobileActionsOpen(!mobileActionsOpen)}
+              className="flex h-10 w-10 items-center justify-center rounded-lg border border-surface-200 bg-white text-surface-600 hover:bg-surface-100 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-300 dark:hover:bg-surface-700 transition-colors cursor-pointer"
+              title="More actions"
+              aria-label="More actions"
+            >
+              <MoreVertical className="h-5 w-5" />
+            </button>
+
+            {mobileActionsOpen && (
+              <div className="absolute right-0 top-full mt-1.5 z-50 w-56 rounded-xl border border-surface-200 bg-white p-2 shadow-xl dark:border-surface-700 dark:bg-surface-800 animate-fade-in">
+                <div className="px-2.5 py-1 text-2xs font-semibold uppercase tracking-wider text-surface-400">
+                  Tracking Mode
+                </div>
+                <button
+                  onClick={() => { setMode('multilateration'); setMobileActionsOpen(false) }}
+                  className={cn(
+                    'flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-xs font-medium transition-colors cursor-pointer',
+                    mode === 'multilateration'
+                      ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300 font-semibold'
+                      : 'text-surface-700 hover:bg-surface-100 dark:text-surface-200 dark:hover:bg-surface-700'
+                  )}
+                >
+                  <span>Multilateration</span>
+                  {mode === 'multilateration' && <Check className="h-4 w-4 text-primary-600" />}
+                </button>
+                <button
+                  onClick={() => { setMode('rtt'); loadRttObservations(); setMobileActionsOpen(false) }}
+                  className={cn(
+                    'flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-xs font-medium transition-colors cursor-pointer',
+                    mode === 'rtt'
+                      ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300 font-semibold'
+                      : 'text-surface-700 hover:bg-surface-100 dark:text-surface-200 dark:hover:bg-surface-700'
+                  )}
+                >
+                  <span>RTT / TA Rings</span>
+                  {mode === 'rtt' && <Check className="h-4 w-4 text-primary-600" />}
+                </button>
+
+                <div className="my-1.5 border-t border-surface-100 dark:border-surface-700/60" />
+
+                <button
+                  onClick={() => { setShareOpen(true); setMobileActionsOpen(false) }}
+                  className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs font-medium text-surface-700 hover:bg-surface-100 dark:text-surface-200 dark:hover:bg-surface-700 transition-colors cursor-pointer"
+                >
+                  <Share2 className="h-4 w-4 text-primary-500" />
+                  <span>Share Location</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
-      {/* ── Main split ── */}
-      <div ref={workspaceRef} className="flex flex-1 overflow-hidden">
+      {/* ── Main Workspace ── */}
+      <div ref={workspaceRef} className="flex flex-1 overflow-hidden relative w-full h-full">
 
-        {/* LEFT: Explorer */}
-        <div className="flex-shrink-0" style={{ width: explorerWidth, flexBasis: explorerWidth }}>
+        {/* LEFT: Explorer (Desktop only) */}
+        <div className="hidden lg:block flex-shrink-0" style={{ width: explorerWidth, flexBasis: explorerWidth }}>
           <InvestigationExplorer 
             width={explorerWidth}
             currentCaseId={id}
@@ -521,7 +872,7 @@ export default function LiveInvestigationPage() {
             usableFramesCount={geojson?.features?.filter(f => f.geometry.type === 'Point' && f.properties?.type === 'measurement').length || 0}
             fixesCount={fixes.length}
             selectedItem={selectedItem}
-            onSelectItem={(type, id) => setSelectedItem({ type, id })}
+            onSelectItem={(type, itemId) => setSelectedItem({ type, id: itemId })}
             onRunMultilateration={handleRunLocalization}
             isLocalizationRunning={loading}
             onExportClick={(type) => {
@@ -533,14 +884,51 @@ export default function LiveInvestigationPage() {
           />
         </div>
 
-        {/* LEFT RESIZE HANDLE */}
+        {/* LEFT RESIZE HANDLE (Desktop only) */}
         <div
           onPointerDown={startExplorerResize}
-          className="w-2 bg-surface-200/50 hover:bg-primary-500/50 active:bg-primary-500 cursor-col-resize transition-colors z-30 flex-shrink-0"
+          className="hidden lg:block w-2 bg-surface-200/50 hover:bg-primary-500/50 active:bg-primary-500 cursor-col-resize transition-colors z-30 flex-shrink-0"
         />
 
-        {/* CENTER: Map */}
-        <div className="relative flex-1 min-w-0" style={{ minWidth: 400 }}>
+        {/* CENTER: Map (Takes full space on mobile, flex-1 on desktop) */}
+        <div className="relative flex-1 min-w-0 h-full w-full">
+          
+          {/* Mobile floating toggle buttons for Explorer & Details */}
+          <div className="absolute top-3 left-3 z-[990] flex lg:hidden items-center gap-2">
+            <button
+              onClick={() => setMobileExplorerOpen(true)}
+              className="flex items-center gap-2 rounded-xl border border-surface-200 bg-white/95 px-3.5 py-2 text-xs font-semibold text-surface-800 shadow-md backdrop-blur-sm hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800/95 dark:text-surface-100 dark:hover:bg-surface-700 transition-all active:scale-95 cursor-pointer min-h-[40px]"
+              title="Open Workspace Explorer"
+              aria-label="Open Workspace Explorer"
+            >
+              <FolderOpen className="h-4 w-4 text-primary-600 dark:text-primary-400 shrink-0" />
+              <span>Explorer</span>
+              {files.length > 0 && (
+                <span className="rounded-full bg-primary-100 px-2 py-0.5 text-[10px] font-bold text-primary-700 dark:bg-primary-900/40 dark:text-primary-300">
+                  {files.length}
+                </span>
+              )}
+            </button>
+
+            <button
+              onClick={() => {
+                setSelectedItem({ type: 'overview', id: null })
+                setMobileDetailsOpen(true)
+              }}
+              className="flex items-center gap-2 rounded-xl border border-surface-200 bg-white/95 px-3.5 py-2 text-xs font-semibold text-surface-800 shadow-md backdrop-blur-sm hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800/95 dark:text-surface-100 dark:hover:bg-surface-700 transition-all active:scale-95 cursor-pointer min-h-[40px]"
+              title="Open Investigation Details & Results"
+              aria-label="Open Investigation Details & Results"
+            >
+              <SlidersHorizontal className="h-4 w-4 text-primary-600 dark:text-primary-400 shrink-0" />
+              <span>Details</span>
+              {fixes.length > 0 && (
+                <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-bold text-green-700 dark:bg-green-900/40 dark:text-green-300">
+                  {fixes.length}
+                </span>
+              )}
+            </button>
+          </div>
+
           {initialLoading ? (
             <div className="flex h-full flex-col items-center justify-center bg-surface-100 dark:bg-surface-950">
               <RefreshCw className="h-8 w-8 text-primary-500 animate-spin mb-2" />
@@ -580,15 +968,17 @@ export default function LiveInvestigationPage() {
               />
             </ErrorBoundary>
           )}
+
+          {/* Timeline / Playback bar */}
           {fixes.length > 0 && (
-            <div className="absolute bottom-4 left-1/2 z-[1000] w-[min(520px,90%)] -translate-x-1/2 rounded-xl border border-surface-200 bg-white/95 px-4 py-3 shadow-lg backdrop-blur-sm dark:border-surface-700 dark:bg-surface-900/95">
-              <div className="flex items-center gap-3">
+            <div className="absolute bottom-16 lg:bottom-4 left-1/2 z-[980] w-[min(520px,calc(100%-1.5rem))] -translate-x-1/2 rounded-xl border border-surface-200 bg-white/95 px-3 py-2 sm:px-4 sm:py-3 shadow-lg backdrop-blur-sm dark:border-surface-700 dark:bg-surface-900/95">
+              <div className="flex items-center gap-2 sm:gap-3">
                 <button
                   onClick={() => { setPlaying((v) => !v); setScrubIdx((i) => i ?? 0) }}
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-600 text-white hover:bg-primary-700 transition-colors"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary-600 text-white hover:bg-primary-700 transition-colors cursor-pointer"
                   aria-label={playing ? 'Pause playback' : 'Play playback'}
                 >
-                  {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                  {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 ml-0.5" />}
                 </button>
                 <input
                   type="range"
@@ -597,233 +987,216 @@ export default function LiveInvestigationPage() {
                   value={scrubValue}
                   disabled={fixes.length < 2}
                   onChange={(e) => { setScrubIdx(Number(e.target.value)); setPlaying(false) }}
-                  className="flex-1 accent-primary-600"
+                  className="flex-1 accent-primary-600 min-w-0 h-2 cursor-pointer"
                   aria-label="Timeline playback position"
                 />
-                <span className="shrink-0 text-2xs text-surface-500 dark:text-surface-400">
+                <span className="shrink-0 text-xs text-surface-600 dark:text-surface-300 font-mono font-medium">
                   {scrubIdx != null ? scrubIdx + 1 : fixes.length}/{fixes.length}
                 </span>
               </div>
               {activeFix && (
-                <div className="mt-2 flex items-center justify-between gap-3 text-2xs text-surface-500 dark:text-surface-400">
+                <div className="mt-1 sm:mt-2 flex items-center justify-between gap-2 text-2xs text-surface-500 dark:text-surface-400">
                   <span className="truncate">
                     {formatDateTime(activeFix.timestamp)}
                     {activeFix.geocode && activeFix.geocode !== 'Unknown area' && (
-                      <span className="text-blue-600 dark:text-blue-300 font-medium"> · around {activeFix.geocode}</span>
+                      <span className="text-blue-600 dark:text-blue-300 font-medium"> · {activeFix.geocode}</span>
                     )}
                   </span>
-                  <span className="shrink-0 font-mono">±{activeFix.confidence_radius_meters.toFixed(0)}m</span>
+                  <span className="shrink-0 font-mono font-semibold">±{activeFix.confidence_radius_meters.toFixed(0)}m</span>
                 </div>
               )}
             </div>
           )}
         </div>
 
+        {/* RIGHT RESIZE HANDLE (Desktop only) */}
         <div
           onPointerDown={startRightPanelResize}
-          className="w-1 cursor-col-resize hover:bg-primary-500 active:bg-primary-500 z-30"
+          className="hidden lg:block w-1 cursor-col-resize hover:bg-primary-500 active:bg-primary-500 z-30"
         />
 
-        {/* RIGHT: Detail panel */}
+        {/* RIGHT: Detail panel (Desktop only) */}
         <div 
-          className="flex shrink-0 flex-col overflow-y-auto border-l border-surface-200 bg-surface-50 dark:border-surface-700 dark:bg-surface-900"
+          className="hidden lg:flex flex-shrink-0 flex-col overflow-y-auto border-l border-surface-200 bg-surface-50 dark:border-surface-700 dark:bg-surface-900"
           style={{ width: rightPanelWidth, flexBasis: rightPanelWidth }}
         >
-
-          {error && (
-            <div className="border-b border-danger/20 bg-danger-light px-4 py-3 text-xs text-danger dark:bg-danger/10 flex items-start gap-2">
-              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-danger" />
-              <div>
-                <p className="font-semibold">Localization Status</p>
-                <p className="mt-0.5">{error}</p>
-              </div>
-            </div>
-          )}
-
-          {selectedItem.type === 'cdr' && selectedItem.id && (
-            <Section icon={<FileText className="h-4 w-4 text-primary-600" />} label="CDR Details">
-              {(() => {
-                const f = files.find(x => x.upload_id === selectedItem.id)
-                if (!f) return <div className="text-xs text-surface-400">File not found.</div>
-                return (
-                  <div className="space-y-3">
-                    <DataRow label="Filename" value={f.original_filename} highlight />
-                    <DataRow label="Status" value={f.upload_status} />
-                    <DataRow label="Uploaded" value={new Date(f.uploaded_at).toLocaleString()} />
-                    <Button
-                      size="sm" variant="danger" className="w-full mt-2"
-                      icon={isDeletingFile ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-                      onClick={() => handleDeleteFile(f.upload_id)}
-                      disabled={isDeletingFile}
-                    >
-                      Delete CDR
-                    </Button>
-                  </div>
-                )
-              })()}
-            </Section>
-          )}
-
-          {/* ── Time Range Filter ── */}
-          <Section icon={<Clock className="h-4 w-4 text-primary-600" />} label="Time Range Filter">
-            <div className="space-y-2">
-              <div>
-                <label className="text-2xs text-surface-400 block mb-1">Start</label>
-                <input
-                  type="datetime-local"
-                  value={timeStart}
-                  onChange={(e) => setTimeStart(e.target.value)}
-                  className="w-full rounded-lg border border-surface-300 bg-white px-2.5 py-1.5 text-xs
-                             dark:border-surface-600 dark:bg-surface-800 dark:text-surface-200"
-                />
-              </div>
-              <div>
-                <label className="text-2xs text-surface-400 block mb-1">End</label>
-                <input
-                  type="datetime-local"
-                  value={timeEnd}
-                  onChange={(e) => setTimeEnd(e.target.value)}
-                  className="w-full rounded-lg border border-surface-300 bg-white px-2.5 py-1.5 text-xs
-                             dark:border-surface-600 dark:bg-surface-800 dark:text-surface-200"
-                />
-              </div>
-              <div className="flex gap-2">
-                <Button size="sm" variant="primary" className="flex-1" onClick={applyTimeFilter}>
-                  Apply
-                </Button>
-                <Button size="sm" variant="secondary" className="flex-1" onClick={clearTimeFilter}>
-                  Clear
-                </Button>
-              </div>
-              <p className="text-2xs text-surface-400">
-                {fixes.length} fixes{timeStart || timeEnd ? ' in range' : ' total'}
-              </p>
-            </div>
-          </Section>
-
-          {/* ── Suspect Pin Pointer ── */}
-          <Section icon={<Navigation className="h-4 w-4 text-primary-600" />} label="Suspect Pin Pointer">
-            {activeFix ? (
-              <div className="space-y-2">
-                <DataRow label="Latitude" value={formatCoordinate(activeFix.latitude)} highlight />
-                <DataRow label="Longitude" value={formatCoordinate(activeFix.longitude)} highlight />
-                <DataRow label="Accuracy" value={formatAccuracy(activeFix.confidence_radius_meters)} />
-                <DataRow label="GDOP" value={(activeFix.gdop ?? 0).toFixed(2)} />
-                <DataRow label="RMS Residual" value={(activeFix.residual_rms ?? 0).toFixed(4)} />
-                <DataRow label="Timestamp" value={formatDateTime(activeFix.timestamp)} />
-              </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center text-center py-6 text-xs text-surface-400">
-                <WifiOff className="h-6 w-6 mb-2 text-surface-400" />
-                <p className="font-medium text-surface-600 dark:text-surface-300">No localization fixes yet</p>
-                <p className="text-2xs text-surface-400 mt-1 mb-3">Click "Run Multilateration Engine" to execute JPL trilateration + Kalman filtering over ingested frames.</p>
-                <Button size="sm" variant="primary" icon={<PlayCircle className="h-3.5 w-3.5" />} onClick={handleRunLocalization} disabled={loading}>
-                  Run Engine
-                </Button>
-              </div>
-            )}
-          </Section>
-
-          {/* ── Signal Parameters ── */}
-          {activeFix && (activeFix.ta_inner_m != null || activeFix.rss_i_dbm != null) && (
-            <Section icon={<Wifi className="h-4 w-4 text-primary-600" />} label="Signal Parameters">
-              <div className="space-y-2">
-                {activeFix.ta_inner_m != null && (
-                  <DataRow label="TA Inner" value={`${activeFix.ta_inner_m.toFixed(0)} m`} />
-                )}
-                {activeFix.ta_outer_m != null && (
-                  <DataRow label="TA Outer" value={`${activeFix.ta_outer_m.toFixed(0)} m`} />
-                )}
-                {activeFix.rss_i_dbm != null && (
-                  <DataRow label="RSSI" value={`${activeFix.rss_i_dbm.toFixed(1)} dBm`} />
-                )}
-              </div>
-            </Section>
-          )}
-
-          {/* ── Location Evidence ── */}
-          {activeFix && (
-            <Section icon={<Share2 className="h-4 w-4 text-primary-600" />} label="Location Evidence">
-              <div className="space-y-2">
-                <DataRow label="Method" value={activeFix.localization_method || '3-Tower Multilateration'} />
-                <DataRow label="Kalman Filtered" value={activeFix.kalman_applied ? 'Yes' : 'No'} />
-                {activeFix.geocode && (
-                  <DataRow label="Resolved Area" value={activeFix.geocode} />
-                )}
-                {activeFix.measurement_constraints && activeFix.measurement_constraints.length > 0 && (
-                  <div className="mt-2 text-2xs text-surface-500 bg-surface-100 p-2 rounded-lg border border-surface-200 dark:bg-surface-800 dark:border-surface-700">
-                    <p className="font-semibold mb-1 text-surface-600 dark:text-surface-300">Constraints Applied:</p>
-                    <ul className="list-disc pl-3 space-y-1">
-                      {activeFix.measurement_constraints.map((c, i) => (
-                        <li key={i} className="break-all">{c}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            </Section>
-          )}
-
-          {/* ── Investigation Metadata ── */}
-          <Section icon={<Radio className="h-4 w-4 text-primary-600" />} label="Investigation Metadata">
-            <div className="space-y-2">
-              <DataRow label="Case ID" value={caseNumber} />
-              <DataRow label="Officer" value={investigation?.created_by || 'Officer'} />
-              <DataRow label="Computed Fixes" value={`${fixes.length} points`} highlight />
-              <DataRow label="GeoJSON Features" value={geojson ? `${geojson.features.length} layers` : 'None'} />
-            </div>
-          </Section>
-
-          {/* ── Export & Share ── */}
-          <Section icon={<Download className="h-4 w-4 text-primary-600" />} label="Export & Share">
-            <div className="space-y-2">
-              <Button
-                size="sm" variant="primary" className="w-full justify-start"
-                icon={exporting === 'pdf' ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}
-                onClick={handleExportPDF}
-                disabled={exporting !== null || fixes.length === 0}
-              >
-                Export PDF Report
-              </Button>
-              <Button
-                size="sm" variant="secondary" className="w-full justify-start"
-                icon={exporting === 'csv' ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-                onClick={handleExportCSV}
-                disabled={exporting !== null || fixes.length === 0}
-              >
-                Export CSV
-              </Button>
-              <Button
-                size="sm" variant="secondary" className="w-full justify-start"
-                icon={exporting === 'kml' ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Map className="h-3.5 w-3.5" />}
-                onClick={handleExportKML}
-                disabled={exporting !== null || fixes.length === 0}
-              >
-                Export KML (Google Earth)
-              </Button>
-              <div className="border-t border-surface-200 dark:border-surface-700 pt-2 mt-2">
-                <Button
-                  size="sm" variant="secondary" className="w-full justify-start"
-                  icon={copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
-                  onClick={handleGoogleMapsLink}
-                  disabled={fixes.length === 0}
-                >
-                  {copied ? 'Link Copied!' : 'Copy Google Maps Link'}
-                </Button>
-                <Button
-                  size="sm" variant="secondary" className="w-full justify-start mt-1"
-                  icon={<Globe className="h-3.5 w-3.5" />}
-                  onClick={openGoogleMaps}
-                  disabled={fixes.length === 0}
-                >
-                  Open in Google Maps
-                </Button>
-              </div>
-            </div>
-          </Section>
-
+          {renderDetailsContent()}
         </div>
       </div>
+
+      {/* ── Mobile Collapsed Bottom Sheet Bar ── */}
+      <div
+        onClick={() => setMobileDetailsOpen(true)}
+        className="fixed inset-x-0 bottom-0 z-30 flex items-center justify-between border-t border-surface-200 bg-white/95 px-4 py-3 shadow-lg backdrop-blur-md dark:border-surface-700 dark:bg-surface-900/95 cursor-pointer active:bg-surface-100 dark:active:bg-surface-800 transition-colors lg:hidden min-h-[48px]"
+        role="button"
+        tabIndex={0}
+        aria-label="Expand Results and Details"
+      >
+        <div className="flex items-center gap-2">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary-50 text-primary-600 dark:bg-primary-900/30 dark:text-primary-400">
+            <SlidersHorizontal className="h-4 w-4" />
+          </div>
+          <span className="text-xs font-bold uppercase tracking-wider text-surface-800 dark:text-surface-200">
+            Results & Details
+          </span>
+          {fixes.length > 0 ? (
+            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+              {fixes.length} Fixes
+            </span>
+          ) : (
+            <span className="rounded-full bg-surface-100 px-2 py-0.5 text-[10px] font-medium text-surface-500 dark:bg-surface-800 dark:text-surface-400">
+              Idle
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-1.5 text-xs font-semibold text-primary-600 dark:text-primary-400">
+          <span>Expand</span>
+          <ChevronUp className="h-4 w-4 animate-bounce" />
+        </div>
+      </div>
+
+      {/* Mobile Explorer Drawer Portal (Mounted to document.body to guarantee stacking above Leaflet map) */}
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {mobileExplorerOpen && (
+            <div className="fixed inset-0 z-[9999] lg:hidden">
+              {/* Backdrop */}
+              <motion.div
+                className="fixed inset-0 bg-black/60 backdrop-blur-xs"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                onClick={() => setMobileExplorerOpen(false)}
+                aria-hidden="true"
+              />
+
+              {/* Drawer Panel */}
+              <motion.div
+                role="dialog"
+                aria-modal="true"
+                aria-label="Workspace Explorer"
+                className="fixed inset-y-0 left-0 z-[10000] flex h-full w-[88vw] max-w-[340px] flex-col bg-surface-50 shadow-2xl dark:bg-surface-900 border-r border-surface-200 dark:border-surface-700"
+                initial={{ x: '-100%' }}
+                animate={{ x: 0 }}
+                exit={{ x: '-100%' }}
+                transition={{ type: 'tween', duration: 0.25, ease: 'easeOut' }}
+              >
+                {/* Header */}
+                <div className="flex shrink-0 items-center justify-between border-b border-surface-200 px-4 py-3 bg-white dark:border-surface-700 dark:bg-surface-800">
+                  <span className="text-xs font-bold uppercase tracking-wider text-surface-700 dark:text-surface-200">
+                    Workspace Explorer
+                  </span>
+                  <button
+                    onClick={() => setMobileExplorerOpen(false)}
+                    className="flex h-10 w-10 items-center justify-center rounded-lg text-surface-500 hover:bg-surface-100 hover:text-surface-700 dark:hover:bg-surface-700 dark:hover:text-surface-300 transition-colors cursor-pointer"
+                    aria-label="Close explorer"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+
+                {/* Tree Body */}
+                <div className="flex-1 overflow-hidden">
+                  <InvestigationExplorer
+                    currentCaseId={id}
+                    currentCaseName={caseName}
+                    files={files}
+                    towersCount={towers.length}
+                    framesCount={geojson?.features?.filter(f => f.geometry.type === 'Point' && f.properties?.type === 'measurement').length || 0}
+                    usableFramesCount={geojson?.features?.filter(f => f.geometry.type === 'Point' && f.properties?.type === 'measurement').length || 0}
+                    fixesCount={fixes.length}
+                    selectedItem={selectedItem}
+                    onSelectItem={(type, itemId) => {
+                      setSelectedItem({ type, id: itemId })
+                      setMobileExplorerOpen(false)
+                      setMobileDetailsOpen(true)
+                    }}
+                    onRunMultilateration={() => {
+                      handleRunLocalization()
+                      setMobileExplorerOpen(false)
+                    }}
+                    isLocalizationRunning={loading}
+                    onExportClick={(type) => {
+                      if (type === 'pdf') handleExportPDF()
+                      if (type === 'csv') handleExportCSV()
+                      if (type === 'kml') handleExportKML()
+                    }}
+                    onUploadClick={() => {
+                      navigate(`/investigations/${id}/upload`)
+                      setMobileExplorerOpen(false)
+                    }}
+                  />
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
+
+      {/* Mobile Details Bottom Sheet Portal (Mounted to document.body) */}
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {mobileDetailsOpen && (
+            <div className="fixed inset-0 z-[9999] flex flex-col justify-end lg:hidden">
+              {/* Backdrop */}
+              <motion.div
+                className="fixed inset-0 bg-black/60 backdrop-blur-xs"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                onClick={() => setMobileDetailsOpen(false)}
+                aria-hidden="true"
+              />
+
+              {/* Bottom Sheet Container */}
+              <motion.div
+                role="dialog"
+                aria-modal="true"
+                aria-label="Investigation Details and Results"
+                className="relative z-[10000] flex max-h-[82vh] w-full flex-col rounded-t-2xl border-t border-surface-200 bg-surface-50 shadow-2xl dark:border-surface-700 dark:bg-surface-900"
+                initial={{ y: '100%' }}
+                animate={{ y: 0 }}
+                exit={{ y: '100%' }}
+                transition={{ type: 'tween', duration: 0.25, ease: 'easeOut' }}
+              >
+                {/* Header */}
+                <div className="flex shrink-0 items-center justify-between border-b border-surface-200 px-4 py-3 bg-white dark:border-surface-700 dark:bg-surface-800 rounded-t-2xl">
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-50 text-primary-600 dark:bg-primary-900/30 dark:text-primary-400">
+                      <SlidersHorizontal className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <span className="text-xs font-bold uppercase tracking-wider text-surface-900 dark:text-surface-100">
+                        Results & Details
+                      </span>
+                      <p className="text-[10px] text-surface-400">
+                        {fixes.length} fixes generated · {caseNumber}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setMobileDetailsOpen(false)}
+                    className="flex h-10 w-10 items-center justify-center rounded-lg text-surface-500 hover:bg-surface-100 hover:text-surface-700 dark:hover:bg-surface-700 dark:hover:text-surface-300 transition-colors cursor-pointer"
+                    aria-label="Collapse details"
+                  >
+                    <ChevronDown className="h-5 w-5" />
+                  </button>
+                </div>
+
+                {/* Content */}
+                <div className="flex-1 overflow-y-auto pb-8">
+                  {renderDetailsContent()}
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
 
       <ShareLocationModal
         open={shareOpen}

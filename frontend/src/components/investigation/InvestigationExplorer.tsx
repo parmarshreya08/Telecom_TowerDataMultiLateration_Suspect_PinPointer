@@ -166,7 +166,7 @@ export function InvestigationExplorer({
         </button>
 
         {switcherOpen && (
-          <div className="absolute left-2 right-2 top-full mt-1 z-[9999] rounded-md border border-surface-200 bg-white shadow-xl dark:border-surface-600 dark:bg-surface-800 w-[280px]">
+          <div className="absolute left-2 right-2 top-full mt-1 z-[9999] rounded-md border border-surface-200 bg-white shadow-xl dark:border-surface-600 dark:bg-surface-800 w-full max-w-[280px]">
             <div className="p-2 border-b border-surface-100 dark:border-surface-700">
               <div className="relative">
                 <Search className="absolute left-2 top-2 h-3.5 w-3.5 text-surface-400" />

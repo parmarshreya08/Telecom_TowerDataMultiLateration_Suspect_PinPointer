@@ -32,11 +32,29 @@ export function Sidebar({ open, onToggle }: SidebarProps) {
   const isAdmin = officer?.role === 'ADMIN'
 
   return (
-    <motion.aside
-      className="relative z-30 flex h-full flex-col border-r border-surface-200 bg-white text-surface-900 transition-colors duration-200 dark:border-surface-700 dark:bg-surface-900 dark:text-white"
-      animate={{ width: open ? 240 : 64 }}
-      transition={{ duration: 0.25, ease: 'easeInOut' }}
-    >
+    <>
+      {/* Mobile backdrop */}
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[9990] bg-black/60 md:hidden backdrop-blur-xs"
+            onClick={onToggle}
+          />
+        )}
+      </AnimatePresence>
+
+      <motion.aside
+        className={cn(
+          "relative z-40 md:z-30 flex h-full flex-col border-r border-surface-200 bg-white text-surface-900 transition-colors duration-200 dark:border-surface-700 dark:bg-surface-900 dark:text-white shrink-0",
+          "max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-[9995] max-md:shadow-2xl",
+          !open && "max-md:hidden"
+        )}
+        animate={{ width: open ? 240 : 64 }}
+        transition={{ duration: 0.25, ease: 'easeInOut' }}
+      >
       {/* Logo */}
       <div className={cn('flex h-16 items-center border-b border-surface-200 px-4 dark:border-surface-700', open ? 'gap-3' : 'justify-center')}>
         <Logo size={32} />
@@ -170,12 +188,13 @@ export function Sidebar({ open, onToggle }: SidebarProps) {
       {/* Toggle button */}
       <button
         onClick={onToggle}
-        className="absolute -right-3 top-20 flex h-6 w-6 items-center justify-center rounded-full border border-surface-200 bg-white text-surface-500 shadow-xs hover:border-primary-600 hover:bg-primary-600 hover:text-white dark:border-surface-700 dark:bg-surface-800 dark:text-surface-300 dark:hover:border-primary-600 dark:hover:bg-primary-600 dark:hover:text-white transition-colors"
+        className="absolute -right-3 top-20 z-50 flex h-6 w-6 items-center justify-center rounded-full border border-surface-200 bg-white text-surface-500 shadow-xs hover:border-primary-600 hover:bg-primary-600 hover:text-white dark:border-surface-700 dark:bg-surface-800 dark:text-surface-300 dark:hover:border-primary-600 dark:hover:bg-primary-600 dark:hover:text-white transition-colors cursor-pointer"
         aria-label={open ? 'Collapse sidebar' : 'Expand sidebar'}
       >
         {open ? <ChevronLeft className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
       </button>
     </motion.aside>
+    </>
   )
 }
 

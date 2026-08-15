@@ -6,7 +6,7 @@ import { NotificationDrawer } from '@/components/notifications/NotificationDrawe
 import { useNotifications } from '@/hooks/useNotifications'
 
 export function AppLayout() {
-  const [sidebarOpen, setSidebarOpen]   = useState(true)
+  const [sidebarOpen, setSidebarOpen]   = useState(() => typeof window !== 'undefined' ? window.innerWidth >= 768 : true)
   const [notifOpen, setNotifOpen]       = useState(false)
   const { notifications, unreadCount, markRead, markAllRead } = useNotifications()
 
@@ -16,7 +16,7 @@ export function AppLayout() {
       <Sidebar open={sidebarOpen} onToggle={() => setSidebarOpen((v) => !v)} />
 
       {/* Main content */}
-      <div className="flex flex-1 flex-col overflow-hidden">
+      <div className="flex flex-1 flex-col overflow-hidden min-w-0 relative z-0">
         <Topbar
           sidebarOpen={sidebarOpen}
           onToggleSidebar={() => setSidebarOpen((v) => !v)}
