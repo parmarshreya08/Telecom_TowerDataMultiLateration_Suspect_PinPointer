@@ -28,6 +28,19 @@ from app.utils.datetime_utils import parse_iso_datetime_naive
 router = APIRouter()
 
 
+def _parse_bound(value: str | None, name: str):
+    """Parse a start/end query bound, raising 400 for malformed ISO datetimes."""
+    if not value:
+        return None
+    try:
+        return parse_iso_datetime_naive(value)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid {name} datetime: '{value}'. Use ISO-8601 format.",
+        )
+
+
 class CreateCaseRequest(BaseModel):
     case_name: str = Field(..., min_length=1, max_length=255)
     case_number: str = Field(
@@ -438,8 +451,8 @@ async def get_case_localization_geojson(
     """
     await check_case_access(case_id, officer, db)
     repo = TelecomRepository(db)
-    start_dt = parse_iso_datetime_naive(start) if start else None
-    end_dt = parse_iso_datetime_naive(end) if end else None
+    start_dt = _parse_bound(start, "start")
+    end_dt = _parse_bound(end, "end")
     fixes = await repo.get_localization_fixes(case_id, start_time=start_dt, end_time=end_dt)
 
     if not fixes:
@@ -531,12 +544,11 @@ async def get_case_heatmap(
     point FeatureCollection for leaflet.heat.
     """
     await check_case_access(case_id, officer, db)
-    from datetime import datetime as _dt
     from app.localization.heatmap import compute_heatmap
 
     repo = TelecomRepository(db)
-    start_dt = _dt.fromisoformat(start) if start else None
-    end_dt = _dt.fromisoformat(end) if end else None
+    start_dt = _parse_bound(start, "start")
+    end_dt = _parse_bound(end, "end")
     fixes = await repo.get_localization_fixes(case_id, start_time=start_dt, end_time=end_dt)
 
     if not fixes:
