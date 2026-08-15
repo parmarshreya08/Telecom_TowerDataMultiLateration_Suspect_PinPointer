@@ -6,10 +6,13 @@ import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Card } from '@/components/ui/Card'
+import { Pagination } from '@/components/ui/Pagination'
 import { investigationApi } from '@/services/api'
 import { formatTimeAgo, cn } from '@/utils'
 import { TRACKING_STATUS_COLORS } from '@/constants'
 import type { CaseStatus, Investigation } from '@/types'
+
+const ITEMS_PER_PAGE = 10
 
 const STATUS_TABS: { label: string; value: CaseStatus | 'All' }[] = [
   { label: 'All',       value: 'All'       },
@@ -24,6 +27,7 @@ export default function InvestigationsPage() {
   const location = useLocation()
   const [activeTab, setActiveTab] = useState<CaseStatus | 'All'>('All')
   const [search, setSearch] = useState('')
+  const [currentPage, setCurrentPage] = useState(1)
   const [cases, setCases] = useState<Investigation[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -43,6 +47,11 @@ export default function InvestigationsPage() {
     const t = setTimeout(() => setSuccessMessage(null), 4000)
     return () => clearTimeout(t)
   }, [successMessage])
+
+  // Reset pagination to page 1 on filter or search query change
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [activeTab, search])
 
   const fetchCases = useCallback(async () => {
     const res = await investigationApi.list()
@@ -86,6 +95,19 @@ export default function InvestigationsPage() {
       (inv.mobile_number && inv.mobile_number.includes(search))
     return matchesTab && matchesSearch
   })
+
+  // Pagination calculations: applied strictly after filtering
+  const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE))
+  const safePage = Math.min(Math.max(1, currentPage), totalPages)
+  const startIndex = (safePage - 1) * ITEMS_PER_PAGE
+  const paginated = filtered.slice(startIndex, startIndex + ITEMS_PER_PAGE)
+
+  // Clamp current page if items were deleted and previous page index is now out of bounds
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages)
+    }
+  }, [currentPage, totalPages])
 
   return (
     <div className="space-y-6 max-w-7xl">
@@ -133,7 +155,10 @@ export default function InvestigationsPage() {
           <Input
             placeholder="Search case, suspect, mobile..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value)
+              setCurrentPage(1)
+            }}
             leftIcon={<Search className="h-4 w-4" />}
           />
         </div>
@@ -141,7 +166,10 @@ export default function InvestigationsPage() {
           {STATUS_TABS.map(({ label, value }) => (
             <button
               key={value}
-              onClick={() => setActiveTab(value)}
+              onClick={() => {
+                setActiveTab(value)
+                setCurrentPage(1)
+              }}
               className={cn(
                 'rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
                 activeTab === value
@@ -172,7 +200,7 @@ export default function InvestigationsPage() {
         </Card>
       ) : (
         <div className="space-y-3">
-          {filtered.map((inv, i) => (
+          {paginated.map((inv, i) => (
             <motion.div
               key={inv.id}
               initial={{ opacity: 0, y: 10 }}
@@ -231,6 +259,15 @@ export default function InvestigationsPage() {
               </Card>
             </motion.div>
           ))}
+
+          {/* Pagination Controls */}
+          <Pagination
+            currentPage={safePage}
+            totalPages={totalPages}
+            totalItems={filtered.length}
+            itemsPerPage={ITEMS_PER_PAGE}
+            onPageChange={setCurrentPage}
+          />
         </div>
       )}
     </div>
