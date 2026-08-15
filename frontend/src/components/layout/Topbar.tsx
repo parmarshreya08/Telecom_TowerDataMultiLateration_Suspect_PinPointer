@@ -130,10 +130,25 @@ export function Topbar({ onToggleSidebar, unreadNotifications, onOpenNotificatio
             <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary-600 text-xs font-semibold text-white">
               {(officer?.officer_name ?? '?').charAt(0).toUpperCase()}
             </span>
+            <div className="hidden md:flex flex-col items-start text-left">
+              <span className="text-xs font-semibold text-surface-900 dark:text-surface-100 max-w-[120px] truncate">
+                {officer?.officer_name ?? 'Officer'}
+              </span>
+              <span
+                className={cn(
+                  'text-[10px] font-bold px-1.5 py-0.2 rounded uppercase tracking-wider',
+                  officer?.role === 'ADMIN'
+                    ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20'
+                    : 'bg-primary-500/10 text-primary-600 dark:text-primary-400 border border-primary-500/20'
+                )}
+              >
+                {officer?.role ?? 'INSPECTOR'}
+              </span>
+            </div>
           </button>
 
           {menuOpen && (
-            <div className="absolute right-0 top-full z-50 mt-2 w-60 rounded-xl border border-surface-200 bg-white p-2 shadow-lg dark:border-surface-700 dark:bg-surface-900">
+            <div className="absolute right-0 top-full z-50 mt-2 w-64 rounded-xl border border-surface-200 bg-white p-2 shadow-lg dark:border-surface-700 dark:bg-surface-900">
               <div className="flex items-center gap-3 border-b border-surface-100 px-2 pb-2 dark:border-surface-700">
                 <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary-600 text-sm font-semibold text-white">
                   {(officer?.officer_name ?? '?').charAt(0).toUpperCase()}
@@ -143,8 +158,42 @@ export function Topbar({ onToggleSidebar, unreadNotifications, onOpenNotificatio
                     {officer?.officer_name ?? 'Officer'}
                   </p>
                   <p className="truncate text-xs text-surface-400">{officer?.email ?? ''}</p>
+                  <span
+                    className={cn(
+                      'inline-block mt-1 text-[10px] font-bold px-1.5 py-0.2 rounded uppercase tracking-wider',
+                      officer?.role === 'ADMIN'
+                        ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20'
+                        : 'bg-primary-500/10 text-primary-600 dark:text-primary-400 border border-primary-500/20'
+                    )}
+                  >
+                    {officer?.role ?? 'INSPECTOR'}
+                  </span>
                 </div>
               </div>
+
+              {officer?.role === 'ADMIN' && (
+                <div className="border-b border-surface-100 py-1.5 dark:border-surface-700">
+                  <button
+                    onClick={() => {
+                      setMenuOpen(false)
+                      navigate('/users')
+                    }}
+                    className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-surface-700 hover:bg-surface-100 dark:text-surface-300 dark:hover:bg-surface-800"
+                  >
+                    User Management
+                  </button>
+                  <button
+                    onClick={() => {
+                      setMenuOpen(false)
+                      navigate('/audit-logs')
+                    }}
+                    className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-surface-700 hover:bg-surface-100 dark:text-surface-300 dark:hover:bg-surface-800"
+                  >
+                    Forensic Audit Logs
+                  </button>
+                </div>
+              )}
+
               <button
                 onClick={handleLogout}
                 className="mt-1 flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm text-danger hover:bg-danger/10"

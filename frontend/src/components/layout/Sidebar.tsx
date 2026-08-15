@@ -2,10 +2,11 @@ import { NavLink, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'motion/react'
 import {
   LayoutDashboard, FolderSearch, MapPin, FileBarChart,
-  Settings, ChevronLeft, ChevronRight, Radio,
+  Settings, ChevronLeft, ChevronRight, Radio, Users, ShieldCheck,
 } from 'lucide-react'
 import { cn } from '@/utils'
 import { Logo } from '@/components/ui/Logo'
+import { getStoredOfficer } from '@/services/auth'
 
 interface SidebarProps {
   open: boolean
@@ -20,8 +21,15 @@ const NAV_ITEMS = [
   { path: '/settings', label: 'Settings', icon: Settings },
 ]
 
+const ADMIN_ITEMS = [
+  { path: '/users', label: 'User Management', icon: Users },
+  { path: '/audit-logs', label: 'Audit Logs', icon: ShieldCheck },
+]
+
 export function Sidebar({ open, onToggle }: SidebarProps) {
   const location = useLocation()
+  const officer = getStoredOfficer()
+  const isAdmin = officer?.role === 'ADMIN'
 
   return (
     <motion.aside
@@ -93,6 +101,55 @@ export function Sidebar({ open, onToggle }: SidebarProps) {
             )
           })}
         </ul>
+
+        {/* Administration Section (Admin only) */}
+        {isAdmin && (
+          <div className="mt-4 pt-4 border-t border-surface-200 dark:border-surface-700/60 px-2">
+            {open && (
+              <p className="px-3 pb-2 text-[10px] font-bold uppercase tracking-wider text-surface-400 dark:text-surface-500">
+                Administration
+              </p>
+            )}
+            <ul className="space-y-1">
+              {ADMIN_ITEMS.map(({ path, label, icon: Icon }) => {
+                const isActive = location.pathname.startsWith(path)
+                return (
+                  <li key={path}>
+                    <NavLink
+                      to={path}
+                      className={cn(
+                        'group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors duration-150',
+                        isActive
+                          ? 'bg-amber-600 text-white shadow-xs'
+                          : 'text-surface-600 hover:bg-surface-100 hover:text-surface-900 dark:text-surface-300 dark:hover:bg-surface-800 dark:hover:text-white'
+                      )}
+                      aria-current={isActive ? 'page' : undefined}
+                    >
+                      <Icon className={cn(
+                        'h-4 w-4 shrink-0 transition-colors',
+                        isActive
+                          ? 'text-white'
+                          : 'text-surface-500 group-hover:text-surface-900 dark:text-surface-400 dark:group-hover:text-white'
+                      )} />
+                      <AnimatePresence>
+                        {open && (
+                          <motion.span
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="whitespace-nowrap"
+                          >
+                            {label}
+                          </motion.span>
+                        )}
+                      </AnimatePresence>
+                    </NavLink>
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+        )}
 
         {/* System status */}
         {open && (

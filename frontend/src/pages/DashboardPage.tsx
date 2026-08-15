@@ -4,14 +4,17 @@ import { motion } from 'motion/react'
 import {
   FolderOpen, CheckCircle, Upload, Radio, FileText,
   Plus, ArrowRight, Activity, AlertCircle, RefreshCw,
+  Shield,
 } from 'lucide-react'
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { investigationApi } from '@/services/api'
+import { getStoredOfficer } from '@/services/auth'
 import { formatTimeAgo, cn, getCaseLifecycleStatus, getCaseStatusBadgeVariant } from '@/utils'
 import type { CaseStatus, DashboardStats, Investigation } from '@/types'
 import { TRACKING_STATUS_COLORS } from '@/constants'
+import AdminDashboardPage from './AdminDashboardPage'
 
 const StatCard = ({
   icon: Icon, label, value, sub, color,
@@ -45,6 +48,12 @@ const DEFAULT_STATS: DashboardStats = {
 
 export default function DashboardPage() {
   const navigate = useNavigate()
+  const officer = getStoredOfficer()
+
+  // If user is Admin, render the administrative control center
+  if (officer?.role === 'ADMIN') {
+    return <AdminDashboardPage />
+  }
 
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [cases, setCases] = useState<Investigation[]>([])

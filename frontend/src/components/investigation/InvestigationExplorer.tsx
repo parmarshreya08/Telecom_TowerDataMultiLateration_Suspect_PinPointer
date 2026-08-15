@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  ChevronRight, ChevronDown, FileText, Database, Radio, CheckCircle, Clock, XCircle, Navigation, Map, MapPin, Download, FileJson, Layers, Search, Loader2
+  ChevronRight, ChevronDown, FileText, Database, Radio, CheckCircle, Clock, XCircle, Navigation, Map, MapPin, Download, FileJson, Layers, Search, Loader2, Plus
 } from 'lucide-react'
 import { cn } from '@/utils'
 import type { CaseFile, Investigation } from '@/types'
@@ -24,18 +24,39 @@ interface InvestigationExplorerProps {
   onRunMultilateration: () => void
   isLocalizationRunning: boolean
   onExportClick: (type: 'pdf' | 'csv' | 'kml') => void
+  onUploadClick?: () => void
 }
 
-function Section({ title, defaultOpen = true, children }: { title: string; defaultOpen?: boolean; children: React.ReactNode }) {
+function Section({ 
+  title, 
+  defaultOpen = true, 
+  children,
+  action 
+}: { 
+  title: string; 
+  defaultOpen?: boolean; 
+  children: React.ReactNode;
+  action?: React.ReactNode;
+}) {
   const [open, setOpen] = useState(defaultOpen)
   return (
     <div className="flex flex-col mt-1">
       <div 
         onClick={() => setOpen(!open)}
-        className="flex cursor-pointer items-center px-1 py-1 text-xs font-semibold uppercase tracking-wider text-surface-500 hover:bg-surface-200/50 dark:hover:bg-surface-800 transition-colors"
+        className="group flex cursor-pointer items-center justify-between px-2 py-1 text-xs font-semibold uppercase tracking-wider text-surface-500 hover:bg-surface-200/50 dark:hover:bg-surface-800 transition-colors select-none"
       >
-        {open ? <ChevronDown className="mr-1 h-3.5 w-3.5" /> : <ChevronRight className="mr-1 h-3.5 w-3.5" />}
-        {title}
+        <div className="flex items-center min-w-0">
+          {open ? <ChevronDown className="mr-1 h-3.5 w-3.5 shrink-0" /> : <ChevronRight className="mr-1 h-3.5 w-3.5 shrink-0" />}
+          <span className="truncate">{title}</span>
+        </div>
+        {action && (
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            className="flex items-center"
+          >
+            {action}
+          </div>
+        )}
       </div>
       {open && <div className="flex flex-col pb-1">{children}</div>}
     </div>
@@ -75,7 +96,7 @@ function Item({
 }
 
 export function InvestigationExplorer({
-  width, currentCaseId, currentCaseName, files, towersCount, framesCount, usableFramesCount, fixesCount, selectedItem, onSelectItem, onRunMultilateration, isLocalizationRunning, onExportClick
+  width, currentCaseId, currentCaseName, files, towersCount, framesCount, usableFramesCount, fixesCount, selectedItem, onSelectItem, onRunMultilateration, isLocalizationRunning, onExportClick, onUploadClick
 }: InvestigationExplorerProps) {
 
   const navigate = useNavigate()
@@ -212,7 +233,27 @@ export function InvestigationExplorer({
         </Section>
 
         {/* CDR DATA */}
-        <Section title="CDR Data">
+        <Section 
+          title="CDR Data"
+          action={
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                if (onUploadClick) {
+                  onUploadClick()
+                } else if (currentCaseId) {
+                  navigate(`/investigations/${currentCaseId}/upload`)
+                }
+              }}
+              title="Upload CDR file"
+              aria-label="Upload CDR file"
+              className="flex h-5 w-5 items-center justify-center rounded text-surface-500 hover:bg-surface-300/50 hover:text-surface-900 dark:text-surface-400 dark:hover:bg-surface-700 dark:hover:text-surface-100 transition-colors cursor-pointer"
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </button>
+          }
+        >
           {files.length === 0 ? (
             <div className="pl-8 py-1 text-xs text-surface-400 italic">No files uploaded.</div>
           ) : (
@@ -302,6 +343,19 @@ export function InvestigationExplorer({
           />
         </Section>
 
+      </div>
+
+      {/* New Investigation Action */}
+      <div className="shrink-0 border-t border-surface-200 p-2 dark:border-surface-700 bg-surface-50 dark:bg-surface-900">
+        <button
+          type="button"
+          onClick={() => navigate('/investigations/new')}
+          className="flex w-full items-center justify-center gap-1.5 rounded-md border border-dashed border-surface-300 py-1.5 px-3 text-xs font-medium text-surface-600 hover:border-primary-500 hover:bg-primary-50/50 hover:text-primary-700 dark:border-surface-700 dark:text-surface-400 dark:hover:border-primary-500 dark:hover:bg-primary-900/20 dark:hover:text-primary-300 transition-colors cursor-pointer"
+          title="Create New Investigation"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          <span>New Investigation</span>
+        </button>
       </div>
     </div>
   )

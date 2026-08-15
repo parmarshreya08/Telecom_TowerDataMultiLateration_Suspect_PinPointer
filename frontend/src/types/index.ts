@@ -170,11 +170,17 @@ export interface ApiError {
   error?: string
 }
 
-// ── Auth ───────────────────────────────────────────────────
+// ── Auth & RBAC ────────────────────────────────────────────
+export type UserRole = 'ADMIN' | 'INSPECTOR'
+
 export interface Officer {
+  id?: string
   officer_id: string
   officer_name: string
+  name?: string
   email: string
+  role: UserRole
+  is_active: boolean
   created_at: string
 }
 
@@ -183,6 +189,66 @@ export interface AuthResponse {
   token_type: string
   expires_in: number
   officer: Officer
+}
+
+export interface AdminUser {
+  officer_id: string
+  officer_name: string
+  email: string
+  role: UserRole
+  is_active: boolean
+  assigned_cases_count?: number
+  created_at: string
+  updated_at?: string
+}
+
+export interface CreateUserPayload {
+  officer_name: string
+  email: string
+  password: string
+  role: UserRole
+  is_active?: boolean
+}
+
+export interface AuditLogEntry {
+  log_id: string
+  timestamp: string
+  actor_id?: string | null
+  actor_name: string
+  actor_email?: string | null
+  actor_role: string
+  action: string
+  case_id?: string | null
+  target_resource?: string | null
+  status: string
+  details?: Record<string, any> | null
+  ip_address?: string | null
+}
+
+export interface CaseAssignment {
+  assignment_id: string
+  officer_id: string
+  officer_name: string
+  email: string
+  role: UserRole
+  assigned_by: string
+  assigned_at: string
+}
+
+export interface SystemStatusData {
+  database_connected: boolean
+  metrics: {
+    total_users: number
+    active_users: number
+    admin_users: number
+    inspector_users: number
+    total_cases: number
+    active_cases: number
+    total_uploads: number
+    total_fixes: number
+    total_audit_logs: number
+  }
+  server_time: string
 }
 
 export interface HealthStatus {

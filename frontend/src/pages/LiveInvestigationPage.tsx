@@ -529,6 +529,7 @@ export default function LiveInvestigationPage() {
               if (type === 'csv') handleExportCSV()
               if (type === 'kml') handleExportKML()
             }}
+            onUploadClick={() => navigate(`/investigations/${id}/upload`)}
           />
         </div>
 

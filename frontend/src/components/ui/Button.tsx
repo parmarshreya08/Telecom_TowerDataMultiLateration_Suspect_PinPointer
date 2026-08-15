@@ -2,7 +2,7 @@ import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from 'react'
 import { cn } from '@/utils'
 
 type Variant = 'primary' | 'secondary' | 'danger' | 'ghost' | 'outline'
-type Size    = 'sm' | 'md' | 'lg'
+type Size    = 'xs' | 'sm' | 'md' | 'lg'
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: Variant
@@ -21,6 +21,7 @@ const variantClass: Record<Variant, string> = {
 }
 
 const sizeClass: Record<Size, string> = {
+  xs: 'btn-xs px-2 py-1 text-2xs',
   sm: 'btn-sm',
   md: 'btn-md',
   lg: 'btn-lg',

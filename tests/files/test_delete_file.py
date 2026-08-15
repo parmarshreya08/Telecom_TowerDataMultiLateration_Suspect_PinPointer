@@ -17,7 +17,11 @@ from app.main import app
 @pytest.fixture
 def mock_officer() -> MagicMock:
     officer = MagicMock()
+    officer.officer_id = uuid4()
     officer.officer_name = "Test Officer"
+    officer.email = "test@erakshak.gov.in"
+    officer.role = "ADMIN"
+    officer.is_active = True
     return officer
 
 

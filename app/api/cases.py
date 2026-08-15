@@ -5,17 +5,21 @@ localization fixes (GeoJSON) for an investigation case.
 """
 
 from typing import Any
+from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.deps import get_current_officer
+from app.core.deps import check_case_access, get_current_officer, require_admin
 from app.core.logging import logger
+from app.database.models import CaseAssignmentModel, OfficerModel
 from app.database.repository import TelecomRepository
 from app.database.session import get_db_session
 from app.localization.engine import LocalizationEngine
+from app.services.audit_service import record_audit_event
 from app.services.supabase_storage import storage_service
 from app.utils.datetime_utils import parse_iso_datetime_naive
 
@@ -82,15 +86,16 @@ def _fixes_to_geojson(fixes: list[Any]) -> dict[str, Any]:
 )
 async def create_case(
     body: CreateCaseRequest,
-    officer: "OfficerModel" = Depends(get_current_officer),
+    req: Request,
+    officer: OfficerModel = Depends(get_current_officer),
     db: AsyncSession = Depends(get_db_session),
 ) -> dict[str, Any]:
     """
     Registers a new investigation case. Cases are lightweight identifiers;
     actual data is associated when files are uploaded with this case_id.
+    Auto-assigns the newly created case to the creator officer.
     """
     from sqlalchemy.exc import IntegrityError
-
     from app.utils.datetime_utils import now_ist
     from app.database.models.telecom import CaseModel
 
@@ -113,6 +118,29 @@ async def create_case(
     repo = TelecomRepository(db)
     try:
         await repo.create_case(case)
+
+        # Auto-assign to creator
+        assignment = CaseAssignmentModel(
+            assignment_id=uuid4(),
+            case_id=body.case_number,
+            officer_id=officer.officer_id,
+            assigned_by=officer.officer_name,
+            assigned_at=now,
+        )
+        db.add(assignment)
+
+        await record_audit_event(
+            db=db,
+            action="CASE_CREATED",
+            actor_id=officer.officer_id,
+            actor_name=officer.officer_name,
+            actor_email=officer.email,
+            actor_role=officer.role,
+            case_id=body.case_number,
+            details={"case_name": body.case_name, "case_number": body.case_number},
+            ip_address=req.client.host if req.client else None,
+        )
+
         await db.commit()
     except IntegrityError:
         await db.rollback()
@@ -185,11 +213,13 @@ async def list_towers(
 )
 async def get_case_uploads(
     case_id: str,
+    officer: OfficerModel = Depends(get_current_officer),
     db: AsyncSession = Depends(get_db_session),
 ) -> dict[str, Any]:
     """
     Returns all file uploads belonging to the case (1:N relationship).
     """
+    await check_case_access(case_id, officer, db)
     repo = TelecomRepository(db)
     uploads = await repo.get_uploads_by_case(case_id)
 
@@ -221,6 +251,8 @@ async def run_case_localization(
     case_id: str,
     geocode: bool = False,
     upload_ids: list[str] = Query(default=[]),
+    req: Request = None,
+    officer: OfficerModel = Depends(get_current_officer),
     db: AsyncSession = Depends(get_db_session),
 ) -> dict[str, Any]:
     """
@@ -228,6 +260,18 @@ async def run_case_localization(
     persists the resulting fixes, and returns a GeoJSON FeatureCollection.
     Pass ?upload_ids=<uuid> (repeatable) to run over selected files only.
     """
+    await check_case_access(case_id, officer, db)
+    await record_audit_event(
+        db=db,
+        action="LOCALIZATION_STARTED",
+        actor_id=officer.officer_id,
+        actor_name=officer.officer_name,
+        actor_email=officer.email,
+        actor_role=officer.role,
+        case_id=case_id,
+        ip_address=req.client.host if req and req.client else None,
+    )
+
     repo = TelecomRepository(db)
     raw_frame_count = await repo.count_measurement_frames_by_case(
         case_id, upload_ids=upload_ids or None
@@ -304,6 +348,19 @@ async def run_case_localization(
 
     await repo.delete_localization_fixes(case_id, [f.frame_id for f in frames])
     await repo.save_localization_fixes(fixes)
+
+    await record_audit_event(
+        db=db,
+        action="LOCALIZATION_COMPLETED",
+        actor_id=officer.officer_id,
+        actor_name=officer.officer_name,
+        actor_email=officer.email,
+        actor_role=officer.role,
+        case_id=case_id,
+        details={"fix_count": len(fixes)},
+        ip_address=req.client.host if req and req.client else None,
+    )
+
     await db.commit()
 
     geojson = engine.to_geojson(fixes, frames=frames)
@@ -368,6 +425,7 @@ async def get_case_localization_geojson(
     start: str | None = None,
     end: str | None = None,
     geocode: bool = False,
+    officer: OfficerModel = Depends(get_current_officer),
     db: AsyncSession = Depends(get_db_session),
 ) -> dict[str, Any]:
     """
@@ -375,6 +433,7 @@ async def get_case_localization_geojson(
     Optional query params: start (ISO datetime), end (ISO datetime),
     geocode=true resolves each fix to an area label via Nominatim if not cached.
     """
+    await check_case_access(case_id, officer, db)
     repo = TelecomRepository(db)
     start_dt = parse_iso_datetime_naive(start) if start else None
     end_dt = parse_iso_datetime_naive(end) if end else None
@@ -460,6 +519,7 @@ async def get_case_heatmap(
     start: str | None = None,
     end: str | None = None,
     resolution_m: int = 50,
+    officer: OfficerModel = Depends(get_current_officer),
     db: AsyncSession = Depends(get_db_session),
 ) -> dict[str, Any]:
     """
@@ -467,6 +527,7 @@ async def get_case_heatmap(
     start/end time filter as /localize/geojson) and returns a weighted lattice
     point FeatureCollection for leaflet.heat.
     """
+    await check_case_access(case_id, officer, db)
     from datetime import datetime as _dt
     from app.localization.heatmap import compute_heatmap
 
@@ -493,6 +554,7 @@ async def get_case_heatmap(
 )
 async def get_case_rtt_observations(
     case_id: str,
+    officer: OfficerModel = Depends(get_current_officer),
     db: AsyncSession = Depends(get_db_session),
 ) -> dict[str, Any]:
     """
@@ -500,6 +562,7 @@ async def get_case_rtt_observations(
     RTT/TA distance band + sector geometry (original data, no localization math).
     Upload_id is included so the frontend can color per file.
     """
+    await check_case_access(case_id, officer, db)
     repo = TelecomRepository(db)
     frames = await repo.get_frames_by_case(case_id)
 
@@ -542,12 +605,15 @@ async def get_case_rtt_observations(
 )
 async def get_forensic_report(
     case_id: str,
+    req: Request = None,
+    officer: OfficerModel = Depends(get_current_officer),
     db: AsyncSession = Depends(get_db_session),
 ) -> dict[str, Any]:
     """
     Generates a structured forensic report summarizing the localization analysis
     for court-admissible evidence.
     """
+    await check_case_access(case_id, officer, db)
     from app.contracts.localization import LocalizationFix as FixContract
     from app.localization.forensic_report import generate_forensic_report
 
@@ -581,19 +647,47 @@ async def get_forensic_report(
         for f in fixes
     ]
 
+    await record_audit_event(
+        db=db,
+        action="REPORT_GENERATED",
+        actor_id=officer.officer_id,
+        actor_name=officer.officer_name,
+        actor_email=officer.email,
+        actor_role=officer.role,
+        case_id=case_id,
+        ip_address=req.client.host if req and req.client else None,
+    )
+    await db.commit()
+
     return generate_forensic_report(case_id, contract_fixes)
 
 
 @router.get(
     "/api/cases",
     status_code=status.HTTP_200_OK,
-    summary="List all investigation cases",
+    summary="List investigation cases based on role and assignments",
 )
 async def list_cases(
+    officer: OfficerModel = Depends(get_current_officer),
     db: AsyncSession = Depends(get_db_session),
 ) -> dict[str, Any]:
     repo = TelecomRepository(db)
-    cases = await repo.get_all_cases()
+    all_cases = await repo.get_all_cases()
+
+    if officer.role == "ADMIN":
+        cases = all_cases
+    else:
+        # Inspectors see cases assigned to them or created by them
+        stmt_assign = select(CaseAssignmentModel.case_id).where(
+            CaseAssignmentModel.officer_id == officer.officer_id
+        )
+        res_assign = await db.execute(stmt_assign)
+        assigned_case_ids = set(res_assign.scalars().all())
+
+        cases = [
+            c for c in all_cases
+            if c.get("id") in assigned_case_ids or c.get("created_by") in (officer.officer_name, officer.email)
+        ]
 
     return {
         "items": cases,
@@ -611,8 +705,10 @@ async def list_cases(
 )
 async def get_case_detail(
     case_id: str,
+    officer: OfficerModel = Depends(get_current_officer),
     db: AsyncSession = Depends(get_db_session),
 ) -> dict[str, Any]:
+    await check_case_access(case_id, officer, db)
     from sqlalchemy import select as sa_select
     from app.database.models.telecom import CaseModel
 
@@ -686,13 +782,15 @@ class UpdateCaseStatusRequest(BaseModel):
 async def update_case_status(
     case_id: str,
     body: UpdateCaseStatusRequest,
-    officer: "OfficerModel" = Depends(get_current_officer),
+    req: Request = None,
+    officer: OfficerModel = Depends(get_current_officer),
     db: AsyncSession = Depends(get_db_session),
 ) -> dict[str, Any]:
     """
     Updates the lifecycle status of an investigation case (Active, Pending, Completed, Archived).
     Persists the change to the database without altering technical tracking status.
     """
+    await check_case_access(case_id, officer, db)
     from app.utils.datetime_utils import now_ist
 
     raw_status = body.status.strip() if body.status else ""
@@ -716,8 +814,22 @@ async def update_case_status(
             detail=f"Investigation '{case_id}' not found.",
         )
 
+    old_status = case.status
     case.status = matched_status
     case.updated_at = now_ist()
+
+    await record_audit_event(
+        db=db,
+        action="CASE_STATUS_UPDATED",
+        actor_id=officer.officer_id,
+        actor_name=officer.officer_name,
+        actor_email=officer.email,
+        actor_role=officer.role,
+        case_id=case_id,
+        details={"old_status": old_status, "new_status": matched_status},
+        ip_address=req.client.host if req and req.client else None,
+    )
+
     await db.commit()
 
     logger.info("case_status_updated", case_id=case_id, new_status=matched_status, officer=officer.officer_name)
@@ -736,16 +848,17 @@ async def update_case_status(
 @router.delete(
     "/api/case/{case_id}",
     status_code=status.HTTP_200_OK,
-    summary="Delete an investigation case and its associated data",
+    summary="Delete an investigation case and its associated data (ADMIN ONLY)",
 )
 async def delete_investigation_case(
     case_id: str,
-    officer: "OfficerModel" = Depends(get_current_officer),
+    req: Request = None,
+    officer: OfficerModel = Depends(require_admin),
     db: AsyncSession = Depends(get_db_session),
 ) -> dict[str, Any]:
     """
     Deletes a case, its uploads, dependent pipeline records, localization fixes,
-    and Supabase storage objects. Tower reference data is not removed.
+    and Supabase storage objects. Strictly restricted to ADMINISTRATOR role.
     """
     repo = TelecomRepository(db)
     case = await repo.get_case_by_id(case_id)
@@ -766,6 +879,18 @@ async def delete_investigation_case(
                     path=upload.supabase_path,
                     error=str(e),
                 )
+
+    await record_audit_event(
+        db=db,
+        action="CASE_DELETED",
+        actor_id=officer.officer_id,
+        actor_name=officer.officer_name,
+        actor_email=officer.email,
+        actor_role=officer.role,
+        case_id=case_id,
+        details={"case_name": case.case_name, "case_number": case.case_number},
+        ip_address=req.client.host if req and req.client else None,
+    )
 
     try:
         await repo.delete_case(case_id)
@@ -793,8 +918,10 @@ async def delete_investigation_case(
 async def get_case_events(
     case_id: str,
     limit: int = 500,
+    officer: OfficerModel = Depends(get_current_officer),
     db: AsyncSession = Depends(get_db_session),
 ) -> dict[str, Any]:
+    await check_case_access(case_id, officer, db)
     repo = TelecomRepository(db)
     events = await repo.get_subscriber_events_by_case(case_id, limit=limit)
     return {

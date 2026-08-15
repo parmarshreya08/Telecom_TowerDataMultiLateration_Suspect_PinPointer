@@ -1,18 +1,22 @@
 """
 File Management Router.
 Exposes endpoints for file CRUD operations within cases.
+Enforces case authorization and RBAC.
 """
 
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.deps import check_case_access, get_current_officer
 from app.core.logging import logger
+from app.database.models import OfficerModel
 from app.database.repository import TelecomRepository
 from app.database.session import get_db_session
+from app.services.audit_service import record_audit_event
 from app.services.supabase_storage import storage_service
 
 router = APIRouter()
@@ -43,17 +47,19 @@ class BatchDeleteRequest(BaseModel):
 async def upload_from_url(
     case_id: str,
     body: UploadUrlRequest,
+    req: Request = None,
+    officer: OfficerModel = Depends(get_current_officer),
     db: AsyncSession = Depends(get_db_session),
 ) -> dict[str, Any]:
     """
     Downloads a file from a direct URL, uploads to Supabase,
     and queues for background ingestion.
     """
+    await check_case_access(case_id, officer, db)
     from app.services.upload_service import UploadService
 
     service = UploadService(db)
     try:
-        # Validate case exists
         repo = TelecomRepository(db)
         case = await repo.get_case_by_id(case_id)
         if not case:
@@ -66,8 +72,22 @@ async def upload_from_url(
             url=body.url,
             filename=body.filename,
             case_id=case_id,
-            uploaded_by="Officer",
+            uploaded_by=officer.officer_name,
         )
+
+        await record_audit_event(
+            db=db,
+            action="FILE_UPLOADED_FROM_URL",
+            actor_id=officer.officer_id,
+            actor_name=officer.officer_name,
+            actor_email=officer.email,
+            actor_role=officer.role,
+            case_id=case_id,
+            details={"url": body.url, "filename": body.filename},
+            ip_address=req.client.host if req and req.client else None,
+        )
+        await db.commit()
+
         return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -80,11 +100,13 @@ async def upload_from_url(
 )
 async def list_case_files(
     case_id: str,
+    officer: OfficerModel = Depends(get_current_officer),
     db: AsyncSession = Depends(get_db_session),
 ) -> dict[str, Any]:
     """
     Returns all files registered to a case with their processing status.
     """
+    await check_case_access(case_id, officer, db)
     repo = TelecomRepository(db)
     uploads = await repo.get_uploads_by_case(case_id)
 
@@ -116,11 +138,11 @@ async def list_case_files(
 )
 async def get_file_status(
     upload_id: str,
+    officer: OfficerModel = Depends(get_current_officer),
     db: AsyncSession = Depends(get_db_session),
 ) -> dict[str, Any]:
     """
     Returns the current processing status of an upload.
-    Used for polling during background ingestion.
     """
     try:
         uid = UUID(upload_id)
@@ -132,6 +154,8 @@ async def get_file_status(
 
     if not upload:
         raise HTTPException(status_code=404, detail=f"Upload '{upload_id}' not found.")
+
+    await check_case_access(upload.case_id, officer, db)
 
     return {
         "upload_id": str(upload.upload_id),
@@ -148,6 +172,7 @@ async def get_file_status(
 async def rename_file(
     upload_id: str,
     body: RenameFileRequest,
+    officer: OfficerModel = Depends(get_current_officer),
     db: AsyncSession = Depends(get_db_session),
 ) -> dict[str, Any]:
     """
@@ -163,6 +188,8 @@ async def rename_file(
 
     if not upload:
         raise HTTPException(status_code=404, detail=f"Upload '{upload_id}' not found.")
+
+    await check_case_access(upload.case_id, officer, db)
 
     await repo.update_upload_display_name(uid, body.display_name)
     await db.commit()
@@ -181,6 +208,8 @@ async def rename_file(
 )
 async def delete_file(
     upload_id: str,
+    req: Request = None,
+    officer: OfficerModel = Depends(get_current_officer),
     db: AsyncSession = Depends(get_db_session),
 ) -> dict[str, Any]:
     """
@@ -197,12 +226,26 @@ async def delete_file(
     if not upload:
         raise HTTPException(status_code=404, detail=f"Upload '{upload_id}' not found.")
 
+    await check_case_access(upload.case_id, officer, db)
+
     # Delete from Supabase
     if upload.supabase_path:
         try:
             storage_service.delete_file(upload.supabase_path)
         except Exception as e:
             logger.warning("supabase_delete_failed", path=upload.supabase_path, error=str(e))
+
+    await record_audit_event(
+        db=db,
+        action="FILE_DELETED",
+        actor_id=officer.officer_id,
+        actor_name=officer.officer_name,
+        actor_email=officer.email,
+        actor_role=officer.role,
+        case_id=upload.case_id,
+        details={"upload_id": upload_id, "filename": upload.original_filename},
+        ip_address=req.client.host if req and req.client else None,
+    )
 
     # Delete from DB
     await repo.delete_upload(uid)
@@ -222,11 +265,14 @@ async def delete_file(
 async def batch_delete_files(
     case_id: str,
     body: BatchDeleteRequest,
+    req: Request = None,
+    officer: OfficerModel = Depends(get_current_officer),
     db: AsyncSession = Depends(get_db_session),
 ) -> dict[str, Any]:
     """
     Deletes multiple files at once.
     """
+    await check_case_access(case_id, officer, db)
     repo = TelecomRepository(db)
     deleted = 0
     failed = 0
@@ -247,6 +293,18 @@ async def batch_delete_files(
         except Exception:
             failed += 1
 
+    await record_audit_event(
+        db=db,
+        action="FILES_BATCH_DELETED",
+        actor_id=officer.officer_id,
+        actor_name=officer.officer_name,
+        actor_email=officer.email,
+        actor_role=officer.role,
+        case_id=case_id,
+        details={"deleted_count": deleted, "failed_count": failed},
+        ip_address=req.client.host if req and req.client else None,
+    )
+
     await db.commit()
 
     return {
@@ -264,12 +322,15 @@ async def batch_delete_files(
 )
 async def reinitialize_case(
     case_id: str,
+    req: Request = None,
+    officer: OfficerModel = Depends(get_current_officer),
     db: AsyncSession = Depends(get_db_session),
 ) -> dict[str, Any]:
     """
     Deletes ALL files for a case (reinitialize).
     Removes files from Supabase Storage and metadata from database.
     """
+    await check_case_access(case_id, officer, db)
     repo = TelecomRepository(db)
     uploads = await repo.get_uploads_by_case(case_id)
 
@@ -283,6 +344,19 @@ async def reinitialize_case(
 
     # Delete all metadata
     count = await repo.delete_uploads_by_case(case_id)
+
+    await record_audit_event(
+        db=db,
+        action="CASE_REINITIALIZED",
+        actor_id=officer.officer_id,
+        actor_name=officer.officer_name,
+        actor_email=officer.email,
+        actor_role=officer.role,
+        case_id=case_id,
+        details={"deleted_files_count": count},
+        ip_address=req.client.host if req and req.client else None,
+    )
+
     await db.commit()
 
     return {

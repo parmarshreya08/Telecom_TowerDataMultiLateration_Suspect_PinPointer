@@ -7,7 +7,7 @@ from uuid import UUID
 
 from app.utils.datetime_utils import now_ist
 
-from sqlalchemy import DateTime, ForeignKey, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
@@ -15,7 +15,7 @@ from app.database.base import Base
 
 class OfficerModel(Base):
     """
-    Registered law-enforcement officer account.
+    Registered law-enforcement officer account with RBAC support.
     """
     __tablename__ = "officers"
 
@@ -23,10 +23,15 @@ class OfficerModel(Base):
     officer_name: Mapped[str] = mapped_column(String(255), nullable=False)
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[str] = mapped_column(String(50), default="INSPECTOR", nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now_ist, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=now_ist, onupdate=now_ist, nullable=False)
 
     sessions: Mapped[list["AuthSessionModel"]] = relationship(
+        back_populates="officer", cascade="all, delete-orphan", lazy="selectin"
+    )
+    assignments: Mapped[list["CaseAssignmentModel"]] = relationship(
         back_populates="officer", cascade="all, delete-orphan", lazy="selectin"
     )
 

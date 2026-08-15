@@ -19,6 +19,11 @@ import type {
   FileListResponse,
   RttObservation,
   CaseStatus,
+  AdminUser,
+  CreateUserPayload,
+  AuditLogEntry,
+  CaseAssignment,
+  SystemStatusData,
 } from '@/types'
 
 export const apiClient = axios.create({
@@ -297,4 +302,37 @@ export const exportApi = {
         responseType: 'blob',
       })
       .then((r) => r.data as Blob),
+}
+
+// ── Admin API ───────────────────────────────────────────────
+export const adminApi = {
+  listUsers: () =>
+    apiClient.get<{ users: AdminUser[]; total: number }>('/api/admin/users').then((r) => r.data),
+
+  createUser: (data: CreateUserPayload) =>
+    apiClient.post<{ message: string; user: AdminUser }>('/api/admin/users', data).then((r) => r.data),
+
+  updateUserStatus: (userId: string, isActive: boolean) =>
+    apiClient.patch<{ message: string; user: AdminUser }>(`/api/admin/users/${userId}/status`, { is_active: isActive }).then((r) => r.data),
+
+  updateUserRole: (userId: string, role: 'ADMIN' | 'INSPECTOR') =>
+    apiClient.patch<{ message: string; user: AdminUser }>(`/api/admin/users/${userId}/role`, { role }).then((r) => r.data),
+
+  resetUserPassword: (userId: string, newPassword: string) =>
+    apiClient.post<{ message: string }>(`/api/admin/users/${userId}/reset-password`, { new_password: newPassword }).then((r) => r.data),
+
+  getAuditLogs: (params?: { action?: string; status?: string; case_id?: string; search?: string; page?: number; page_size?: number }) =>
+    apiClient.get<PaginatedResponse<AuditLogEntry>>('/api/admin/audit-logs', { params }).then((r) => r.data),
+
+  getSystemStatus: () =>
+    apiClient.get<SystemStatusData>('/api/admin/system-status').then((r) => r.data),
+
+  getCaseAssignments: (caseId: string) =>
+    apiClient.get<{ case_id: string; assignments: CaseAssignment[]; total: number }>(`/api/admin/cases/${caseId}/assignments`).then((r) => r.data),
+
+  assignCase: (caseId: string, officerId: string) =>
+    apiClient.post<{ message: string; assignment: any }>(`/api/admin/cases/${caseId}/assign`, { officer_id: officerId }).then((r) => r.data),
+
+  unassignCase: (caseId: string, officerId: string) =>
+    apiClient.delete<{ message: string }>(`/api/admin/cases/${caseId}/assign/${officerId}`).then((r) => r.data),
 }

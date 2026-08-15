@@ -8,11 +8,13 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
-import { fileApi, investigationApi, trackingApi, formatDeleteError } from '@/services/api'
+import { fileApi, investigationApi, trackingApi, adminApi, formatDeleteError } from '@/services/api'
+import { getStoredOfficer } from '@/services/auth'
 import { CaseStatusSelector } from '@/components/investigation/CaseStatusSelector'
 import { formatDateTime, formatFileSize, cn, getCaseLifecycleStatus, getCaseStatusBadgeVariant } from '@/utils'
 import { TRACKING_STATUS_COLORS, OPERATOR_COLORS } from '@/constants'
-import type { CaseStatus, Investigation, UploadMetadata } from '@/types'
+import type { CaseStatus, Investigation, UploadMetadata, CaseAssignment, AdminUser } from '@/types'
+import { UserCheck, UserPlus, UserMinus, Shield } from 'lucide-react'
 
 export default function InvestigationDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -31,12 +33,71 @@ export default function InvestigationDetailPage() {
   const [actionMessage, setActionMessage] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
 
+  const officer = getStoredOfficer()
+  const isAdmin = officer?.role === 'ADMIN'
+
+  const [assignments, setAssignments] = useState<CaseAssignment[]>([])
+  const [availableInspectors, setAvailableInspectors] = useState<AdminUser[]>([])
+  const [selectedAssignId, setSelectedAssignId] = useState<string>('')
+  const [assignLoading, setAssignLoading] = useState(false)
+
   // Auto-dismiss action success message after 4s
   useEffect(() => {
     if (!actionMessage) return
     const t = setTimeout(() => setActionMessage(null), 4000)
     return () => clearTimeout(t)
   }, [actionMessage])
+
+  const fetchAssignments = useCallback(async () => {
+    if (!id || !isAdmin) return
+    try {
+      const [assignRes, usersRes] = await Promise.allSettled([
+        adminApi.getCaseAssignments(id),
+        adminApi.listUsers(),
+      ])
+      if (assignRes.status === 'fulfilled') {
+        setAssignments(assignRes.value.assignments)
+      }
+      if (usersRes.status === 'fulfilled') {
+        setAvailableInspectors(usersRes.value.users)
+      }
+    } catch {
+      // best-effort
+    }
+  }, [id, isAdmin])
+
+  useEffect(() => {
+    fetchAssignments()
+  }, [fetchAssignments])
+
+  async function handleAssignOfficer() {
+    if (!id || !selectedAssignId || assignLoading) return
+    setAssignLoading(true)
+    try {
+      await adminApi.assignCase(id, selectedAssignId)
+      setActionMessage('Officer assigned to case successfully.')
+      setSelectedAssignId('')
+      await fetchAssignments()
+    } catch (err: any) {
+      setActionError(err.response?.data?.detail || 'Failed to assign officer.')
+    } finally {
+      setAssignLoading(false)
+    }
+  }
+
+  async function handleUnassignOfficer(officerId: string) {
+    if (!id || assignLoading) return
+    setAssignLoading(true)
+    try {
+      await adminApi.unassignCase(id, officerId)
+      setActionMessage('Officer unassigned from case.')
+      await fetchAssignments()
+    } catch (err: any) {
+      setActionError(err.response?.data?.detail || 'Failed to unassign officer.')
+    } finally {
+      setAssignLoading(false)
+    }
+  }
 
   const fetchDetails = useCallback(async () => {
     if (!id) return null
@@ -391,17 +452,84 @@ export default function InvestigationDetailPage() {
               <Button size="md" variant="secondary" className="w-full justify-start" icon={<FileText className="h-4 w-4" />} onClick={() => navigate('/reports')}>
                 View Forensic Report
               </Button>
-              <Button
-                size="md"
-                variant="danger"
-                className="w-full justify-start"
-                icon={<Trash2 className="h-4 w-4" />}
-                onClick={() => setShowDeleteCaseConfirm(true)}
-              >
-                Delete Investigation
-              </Button>
+              {isAdmin && (
+                <Button
+                  size="md"
+                  variant="danger"
+                  className="w-full justify-start"
+                  icon={<Trash2 className="h-4 w-4" />}
+                  onClick={() => setShowDeleteCaseConfirm(true)}
+                >
+                  Delete Investigation
+                </Button>
+              )}
             </div>
           </Card>
+
+          {/* Admin Case Assignment Card */}
+          {isAdmin && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm font-bold flex items-center gap-2">
+                  <UserCheck className="h-4 w-4 text-primary-500" />
+                  Assigned Officers (RBAC)
+                </CardTitle>
+              </CardHeader>
+              <div className="space-y-3 text-xs">
+                {assignments.length === 0 ? (
+                  <p className="text-surface-400">No officers explicitly assigned yet.</p>
+                ) : (
+                  <div className="divide-y divide-surface-100 dark:divide-surface-800">
+                    {assignments.map((a) => (
+                      <div key={a.assignment_id} className="py-2 flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="font-semibold text-surface-800 dark:text-surface-200 truncate">{a.officer_name}</p>
+                          <p className="text-2xs text-surface-400 truncate">{a.email}</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleUnassignOfficer(a.officer_id)}
+                          disabled={assignLoading}
+                          title="Remove assignment"
+                          className="p-1 text-surface-400 hover:text-danger rounded"
+                        >
+                          <UserMinus className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Add assignment dropdown */}
+                <div className="pt-2 border-t border-surface-100 dark:border-surface-800 space-y-2">
+                  <select
+                    value={selectedAssignId}
+                    onChange={(e) => setSelectedAssignId(e.target.value)}
+                    className="w-full rounded-lg border border-surface-200 bg-white px-2.5 py-1.5 text-xs text-surface-700 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-300"
+                  >
+                    <option value="">Select Officer to Assign...</option>
+                    {availableInspectors
+                      .filter((u) => !assignments.some((a) => a.officer_id === u.officer_id))
+                      .map((u) => (
+                        <option key={u.officer_id} value={u.officer_id}>
+                          {u.officer_name} ({u.role})
+                        </option>
+                      ))}
+                  </select>
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    className="w-full gap-1.5"
+                    onClick={handleAssignOfficer}
+                    disabled={!selectedAssignId || assignLoading}
+                  >
+                    <UserPlus className="h-3.5 w-3.5" />
+                    Assign to Case
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          )}
 
           {/* Real Ingested Activity Summary */}
           <Card>

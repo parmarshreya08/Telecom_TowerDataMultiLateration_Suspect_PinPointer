@@ -1,21 +1,24 @@
 """
 Export Router for E-Rakshak.
 Provides CSV, KML, and PDF download endpoints for localization fixes.
-All endpoints accept optional start/end query params for time-range filtering.
+All endpoints enforce case access control and record forensic audit logs.
 """
 
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.contracts.localization import LocalizationFix as FixContract
+from app.core.deps import check_case_access, get_current_officer
 from app.core.logging import logger
+from app.database.models import OfficerModel
 from app.database.repository import TelecomRepository
 from app.database.session import get_db_session
 from app.localization.exports import generate_csv, generate_kml, generate_pdf
 from app.localization.forensic_report import generate_forensic_report
-from app.contracts.localization import LocalizationFix as FixContract
+from app.services.audit_service import record_audit_event
 from app.utils.datetime_utils import parse_iso_datetime_naive
 
 router = APIRouter()
@@ -65,7 +68,6 @@ def _to_contract(fix: Any) -> FixContract:
 
 # ── CSV Export ──────────────────────────────────────────────
 
-
 @router.get(
     "/api/case/{case_id}/export/csv",
     status_code=status.HTTP_200_OK,
@@ -75,10 +77,27 @@ async def export_csv(
     case_id: str,
     start: str | None = Query(None, description="ISO datetime start (e.g. 2026-01-01T00:00:00)"),
     end: str | None = Query(None, description="ISO datetime end"),
+    req: Request = None,
+    officer: OfficerModel = Depends(get_current_officer),
     db: AsyncSession = Depends(get_db_session),
 ) -> Response:
+    await check_case_access(case_id, officer, db)
     fixes = await _get_filtered_fixes(case_id, start, end, db)
     csv_content = generate_csv(fixes, case_id)
+
+    await record_audit_event(
+        db=db,
+        action="EXPORT_CSV",
+        actor_id=officer.officer_id,
+        actor_name=officer.officer_name,
+        actor_email=officer.email,
+        actor_role=officer.role,
+        case_id=case_id,
+        details={"format": "CSV", "fix_count": len(fixes)},
+        ip_address=req.client.host if req and req.client else None,
+    )
+    await db.commit()
+
     logger.info("export_csv", case_id=case_id, fix_count=len(fixes))
     return Response(
         content=csv_content,
@@ -89,7 +108,6 @@ async def export_csv(
 
 # ── KML Export ──────────────────────────────────────────────
 
-
 @router.get(
     "/api/case/{case_id}/export/kml",
     status_code=status.HTTP_200_OK,
@@ -99,10 +117,27 @@ async def export_kml(
     case_id: str,
     start: str | None = Query(None, description="ISO datetime start"),
     end: str | None = Query(None, description="ISO datetime end"),
+    req: Request = None,
+    officer: OfficerModel = Depends(get_current_officer),
     db: AsyncSession = Depends(get_db_session),
 ) -> Response:
+    await check_case_access(case_id, officer, db)
     fixes = await _get_filtered_fixes(case_id, start, end, db)
     kml_content = generate_kml(fixes, case_id)
+
+    await record_audit_event(
+        db=db,
+        action="EXPORT_KML",
+        actor_id=officer.officer_id,
+        actor_name=officer.officer_name,
+        actor_email=officer.email,
+        actor_role=officer.role,
+        case_id=case_id,
+        details={"format": "KML", "fix_count": len(fixes)},
+        ip_address=req.client.host if req and req.client else None,
+    )
+    await db.commit()
+
     logger.info("export_kml", case_id=case_id, fix_count=len(fixes))
     return Response(
         content=kml_content,
@@ -113,7 +148,6 @@ async def export_kml(
 
 # ── PDF Export ──────────────────────────────────────────────
 
-
 @router.get(
     "/api/case/{case_id}/export/pdf",
     status_code=status.HTTP_200_OK,
@@ -123,8 +157,11 @@ async def export_pdf(
     case_id: str,
     start: str | None = Query(None, description="ISO datetime start"),
     end: str | None = Query(None, description="ISO datetime end"),
+    req: Request = None,
+    officer: OfficerModel = Depends(get_current_officer),
     db: AsyncSession = Depends(get_db_session),
 ) -> Response:
+    await check_case_access(case_id, officer, db)
     fixes = await _get_filtered_fixes(case_id, start, end, db)
 
     # Fetch CaseModel details
@@ -156,7 +193,6 @@ async def export_pdf(
             "created_by": "Officer",
         }
 
-    # Fetch data quality statistics via the co-located endpoint helper
     from app.api.cases import get_case_quality_report
     try:
         quality_data = await get_case_quality_report(case_id, db=db)
@@ -169,13 +205,10 @@ async def export_pdf(
             "files": [],
         }
 
-    # Load frames to map tower evidence
     repo = TelecomRepository(db)
     frames = await repo.get_frames_by_case(case_id)
 
-    # Load all tower records for the case to get their site addresses in memory
     from app.database.models.telecom import TowerRecordModel
-    from sqlalchemy import select
     tower_ids = set()
     for fr in frames:
         for t in getattr(fr, "towers", []):
@@ -185,7 +218,6 @@ async def export_pdf(
         res_towers = await db.execute(select(TowerRecordModel).where(TowerRecordModel.tower_id.in_(list(tower_ids))))
         tower_site_map = {tm.tower_id: tm.site_address for tm in res_towers.scalars().all()}
 
-    # Generate forensic report data for metadata/methodology sections
     contract_fixes = [_to_contract(f) for f in fixes]
     report_data = generate_forensic_report(case_id, contract_fixes)
 
@@ -198,6 +230,20 @@ async def export_pdf(
         frames=frames,
         tower_site_map=tower_site_map,
     )
+
+    await record_audit_event(
+        db=db,
+        action="EXPORT_PDF",
+        actor_id=officer.officer_id,
+        actor_name=officer.officer_name,
+        actor_email=officer.email,
+        actor_role=officer.role,
+        case_id=case_id,
+        details={"format": "PDF", "fix_count": len(fixes)},
+        ip_address=req.client.host if req and req.client else None,
+    )
+    await db.commit()
+
     logger.info("export_pdf", case_id=case_id, fix_count=len(fixes))
     return Response(
         content=pdf_bytes,
