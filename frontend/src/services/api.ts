@@ -18,6 +18,7 @@ import type {
   BatchUploadResponse,
   FileListResponse,
   RttObservation,
+  CaseStatus,
 } from '@/types'
 
 export const apiClient = axios.create({
@@ -178,8 +179,13 @@ export const investigationApi = {
   create: (data: CreateInvestigationData) =>
     apiClient.post<Investigation>('/api/cases', data).then((r) => r.data),
 
-  update: (id: string, data: Partial<CreateInvestigationData>) =>
+  update: (id: string, data: Partial<CreateInvestigationData> & { status?: string }) =>
     apiClient.patch<Investigation>(`/api/case/${id}`, data).then((r) => r.data),
+
+  updateStatus: (id: string, status: CaseStatus) =>
+    apiClient
+      .patch<{ id: string; status: CaseStatus; message: string }>(`/api/case/${id}/status`, { status })
+      .then((r) => r.data),
 
   delete: (id: string) =>
     apiClient.delete(`/api/case/${id}`).then((r) => r.data),

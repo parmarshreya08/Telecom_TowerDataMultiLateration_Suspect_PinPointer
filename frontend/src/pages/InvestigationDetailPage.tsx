@@ -9,9 +9,10 @@ import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { fileApi, investigationApi, trackingApi, formatDeleteError } from '@/services/api'
-import type { Investigation, UploadMetadata } from '@/types'
-import { formatDateTime, formatFileSize, cn } from '@/utils'
+import { CaseStatusSelector } from '@/components/investigation/CaseStatusSelector'
+import { formatDateTime, formatFileSize, cn, getCaseLifecycleStatus, getCaseStatusBadgeVariant } from '@/utils'
 import { TRACKING_STATUS_COLORS, OPERATOR_COLORS } from '@/constants'
+import type { CaseStatus, Investigation, UploadMetadata } from '@/types'
 
 export default function InvestigationDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -29,6 +30,13 @@ export default function InvestigationDetailPage() {
   const [isDeletingCase, setIsDeletingCase] = useState(false)
   const [actionMessage, setActionMessage] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+
+  // Auto-dismiss action success message after 4s
+  useEffect(() => {
+    if (!actionMessage) return
+    const t = setTimeout(() => setActionMessage(null), 4000)
+    return () => clearTimeout(t)
+  }, [actionMessage])
 
   const fetchDetails = useCallback(async () => {
     if (!id) return null
@@ -172,22 +180,41 @@ export default function InvestigationDetailPage() {
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
       >
-        <div className="flex items-start gap-3">
+        <div className="flex items-start gap-3 flex-1">
           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400">
             <FolderOpen className="h-6 w-6" />
           </div>
-          <div>
-            <div className="flex flex-wrap items-center gap-2 mb-1">
+          <div className="flex-1 min-w-0">
+            <div className="flex flex-wrap items-center gap-3 mb-1">
               <h1 className="text-xl font-bold text-surface-900 dark:text-surface-100">
                 {currentInv.case_name || currentInv.id}
               </h1>
-              <Badge variant={
-                currentInv.status === 'Active' ? 'success' :
-                currentInv.status === 'Pending' ? 'warning' :
-                currentInv.status === 'Completed' ? 'primary' : 'neutral'
-              }>{currentInv.status}</Badge>
+              <div className="flex items-center gap-1.5">
+                <span className="text-2xs font-bold uppercase tracking-wider text-surface-400">
+                  Case Status
+                </span>
+                <CaseStatusSelector
+                  caseId={currentInv.id}
+                  currentStatus={currentInv.status}
+                  variant="header"
+                  onStatusChange={(newStatus) => {
+                    setInv((prev) => (prev ? { ...prev, status: newStatus } : prev))
+                  }}
+                  onMessage={(msg) => {
+                    if (msg.type === 'success') {
+                      setActionMessage(msg.text)
+                      setActionError(null)
+                    } else {
+                      setActionError(msg.text)
+                      setActionMessage(null)
+                    }
+                  }}
+                />
+              </div>
             </div>
-            <p className="text-sm text-surface-500 dark:text-surface-400">Case ID: {currentInv.case_number || currentInv.id} · Created by {currentInv.created_by || 'Officer'}</p>
+            <p className="text-sm text-surface-500 dark:text-surface-400">
+              Case ID: <span className="font-mono text-surface-700 dark:text-surface-300">{currentInv.case_number || currentInv.id}</span> · Created by {currentInv.created_by || 'Officer'}
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -202,12 +229,22 @@ export default function InvestigationDetailPage() {
 
       {(actionMessage || actionError) && (
         <div className={cn(
-          'rounded-md border p-3 text-sm',
+          'rounded-md border p-3 text-sm flex items-center justify-between',
           actionMessage
             ? 'border-green-200 bg-green-50 text-green-700 dark:border-green-800 dark:bg-green-900/20 dark:text-green-300'
             : 'border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300'
         )}>
-          {actionMessage || actionError}
+          <span>{actionMessage || actionError}</span>
+          <button
+            type="button"
+            onClick={() => {
+              setActionMessage(null)
+              setActionError(null)
+            }}
+            className="text-xs opacity-70 hover:opacity-100 ml-4 underline cursor-pointer"
+          >
+            Dismiss
+          </button>
         </div>
       )}
 
@@ -218,21 +255,61 @@ export default function InvestigationDetailPage() {
           <Card>
             <CardHeader><CardTitle>Case Overview</CardTitle></CardHeader>
             <div className="grid gap-4 sm:grid-cols-2">
-              {[
-                { label: 'Case Number', value: currentInv.case_number || currentInv.id },
-                { label: 'Suspect / Target', value: currentInv.suspect_name || 'Target' },
-                { label: 'Mobile Number', value: currentInv.mobile_number || 'N/A' },
-                { label: 'Ingested Uploads', value: uploads.length.toString() },
-                { label: 'Subscriber Records', value: events.length.toString() },
-                { label: 'Tracking Status', value: currentInv.tracking_status || 'Idle', highlight: true },
-              ].map(({ label, value, highlight }) => (
-                <div key={label}>
-                  <p className="text-2xs text-surface-400 mb-0.5">{label}</p>
-                  <p className={cn('text-sm font-medium', highlight ? (TRACKING_STATUS_COLORS[currentInv.tracking_status] || 'text-surface-700') : 'text-surface-800 dark:text-surface-200')}>
-                    {value}
-                  </p>
+              <div>
+                <p className="text-2xs text-surface-400 mb-0.5">Case Number</p>
+                <p className="text-sm font-medium text-surface-800 dark:text-surface-200">
+                  {currentInv.case_number || currentInv.id}
+                </p>
+              </div>
+              <div>
+                <p className="text-2xs text-surface-400 mb-0.5">Suspect / Target</p>
+                <p className="text-sm font-medium text-surface-800 dark:text-surface-200">
+                  {currentInv.suspect_name || 'Target'}
+                </p>
+              </div>
+              <div>
+                <p className="text-2xs text-surface-400 mb-0.5">Mobile Number</p>
+                <p className="text-sm font-medium text-surface-800 dark:text-surface-200">
+                  {currentInv.mobile_number || 'N/A'}
+                </p>
+              </div>
+              <div>
+                <p className="text-2xs text-surface-400 mb-0.5">Ingested Uploads</p>
+                <p className="text-sm font-medium text-surface-800 dark:text-surface-200">
+                  {uploads.length} files
+                </p>
+              </div>
+              <div>
+                <p className="text-2xs text-surface-400 mb-0.5">Case Lifecycle</p>
+                <div className="pt-0.5">
+                  <CaseStatusSelector
+                    caseId={currentInv.id}
+                    currentStatus={currentInv.status}
+                    variant="card"
+                    onStatusChange={(newStatus) => {
+                      setInv((prev) => (prev ? { ...prev, status: newStatus } : prev))
+                    }}
+                    onMessage={(msg) => {
+                      if (msg.type === 'success') {
+                        setActionMessage(msg.text)
+                        setActionError(null)
+                      } else {
+                        setActionError(msg.text)
+                        setActionMessage(null)
+                      }
+                    }}
+                  />
                 </div>
-              ))}
+              </div>
+              <div>
+                <p className="text-2xs text-surface-400 mb-0.5">Tracking Status</p>
+                <p className={cn('text-sm font-medium pt-1', TRACKING_STATUS_COLORS[currentInv.tracking_status || 'Idle'] || 'text-surface-700')}>
+                  {currentInv.tracking_status === 'Live' && (
+                    <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-green-400 animate-ping-slow" />
+                  )}
+                  {currentInv.tracking_status || 'Idle'}
+                </p>
+              </div>
             </div>
             {currentInv.description && (
               <div className="mt-4 pt-4 border-t border-surface-100 dark:border-surface-700">

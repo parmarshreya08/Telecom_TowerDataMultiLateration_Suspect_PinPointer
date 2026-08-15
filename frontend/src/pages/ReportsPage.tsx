@@ -8,8 +8,8 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { investigationApi, reportApi, trackingApi, exportApi } from '@/services/api'
-import { downloadBlob, formatDateTime } from '@/utils'
-import type { ForensicReport, Investigation } from '@/types'
+import { downloadBlob, formatDateTime, getCaseLifecycleStatus, getCaseStatusBadgeVariant } from '@/utils'
+import type { ForensicReport, Investigation, CaseStatus } from '@/types'
 
 const EXPORT_FORMATS = [
   { value: 'pdf',     label: 'PDF Forensic Report', icon: FileText, desc: 'Court-admissible report with fixes, methodology, and confidence analysis' },
@@ -169,8 +169,8 @@ export default function ReportsPage() {
                       <p className="text-sm font-medium text-surface-800 dark:text-surface-200">{inv.case_name || inv.id}</p>
                       <p className="text-xs text-surface-400">{inv.case_number || inv.id}</p>
                     </div>
-                    <Badge variant={inv.status === 'Active' ? 'success' : inv.status === 'Completed' ? 'primary' : 'warning'}>
-                      {inv.status}
+                    <Badge variant={getCaseStatusBadgeVariant(getCaseLifecycleStatus(inv))}>
+                      {getCaseLifecycleStatus(inv)}
                     </Badge>
                   </label>
                 ))}

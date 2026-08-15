@@ -9,8 +9,8 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { investigationApi } from '@/services/api'
-import type { DashboardStats, Investigation } from '@/types'
-import { formatTimeAgo, cn } from '@/utils'
+import { formatTimeAgo, cn, getCaseLifecycleStatus, getCaseStatusBadgeVariant } from '@/utils'
+import type { CaseStatus, DashboardStats, Investigation } from '@/types'
 import { TRACKING_STATUS_COLORS } from '@/constants'
 
 const StatCard = ({
@@ -212,12 +212,8 @@ export default function DashboardPage() {
                           {inv.suspect_name || inv.mobile_number || 'Target'}
                         </td>
                         <td className="py-3 pr-4">
-                          <Badge variant={
-                            inv.status === 'Active' ? 'success' :
-                            inv.status === 'Pending' ? 'warning' :
-                            inv.status === 'Completed' ? 'primary' : 'neutral'
-                          }>
-                            {inv.status}
+                          <Badge variant={getCaseStatusBadgeVariant(getCaseLifecycleStatus(inv))}>
+                            {getCaseLifecycleStatus(inv)}
                           </Badge>
                         </td>
                         <td className="py-3 pr-4">

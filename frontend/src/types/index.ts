@@ -410,7 +410,7 @@ export interface UploadMetadata {
   [key: string]: unknown
 }
 
-export type CaseStatus = 'Active' | 'Pending' | 'Completed' | 'Archived'
+export type CaseStatus = 'Active' | 'Pending' | 'Completed' | 'Archived' | 'Unknown'
 
 export type TrackingStatus = 'Idle' | 'Processing' | 'Live' | 'Paused' | 'Completed' | 'Error'
 
@@ -439,7 +439,7 @@ export interface Investigation {
   assigned_to?: string
 }
 
-export type InvestigationStatus = 'Active' | 'Pending' | 'Completed' | 'Archived'
+export type InvestigationStatus = 'Active' | 'Pending' | 'Completed' | 'Archived' | 'Unknown'
 
 // Fix DashboardStats to match what pages expect
 export interface DashboardStats {

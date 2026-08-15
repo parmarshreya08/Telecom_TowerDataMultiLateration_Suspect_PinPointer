@@ -4,6 +4,7 @@
 
 import { format, formatDistanceToNow, parseISO } from 'date-fns'
 import { type ClassValue, clsx } from 'clsx'
+import type { CaseStatus } from '@/types'
 
 // ── Class merging ──────────────────────────────────────────
 export function cn(...inputs: ClassValue[]): string {
@@ -193,3 +194,63 @@ export function estimateRowCount(fileSizeBytes: number): string {
   if (estimated < 1_000_000) return `~${(estimated / 1000).toFixed(1)}K rows`
   return `~${(estimated / 1_000_000).toFixed(1)}M rows`
 }
+
+// ── Case Lifecycle Status (Single Source of Truth) ────────
+export function normalizeCaseStatus(status?: string | null): CaseStatus {
+  if (!status || typeof status !== 'string' || !status.trim()) {
+    return 'Unknown'
+  }
+  const normalized = status.trim().toLowerCase()
+  switch (normalized) {
+    case 'active':
+      return 'Active'
+    case 'pending':
+      return 'Pending'
+    case 'completed':
+      return 'Completed'
+    case 'archived':
+    case 'archive':
+      return 'Archived'
+    default:
+      return 'Unknown'
+  }
+}
+
+export function getCaseLifecycleStatus(inv?: { status?: string | null } | null): CaseStatus {
+  return normalizeCaseStatus(inv?.status)
+}
+
+export function getCaseStatusBadgeVariant(
+  status: CaseStatus
+): 'primary' | 'warning' | 'success' | 'neutral' {
+  switch (status) {
+    case 'Active':
+      return 'primary'
+    case 'Pending':
+      return 'warning'
+    case 'Completed':
+      return 'success'
+    case 'Archived':
+      return 'neutral'
+    case 'Unknown':
+    default:
+      return 'neutral'
+  }
+}
+
+export function getCaseStatusIconClasses(status: CaseStatus): string {
+  switch (status) {
+    case 'Active':
+      return 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'
+    case 'Pending':
+      return 'bg-yellow-100 text-yellow-600 dark:bg-yellow-900/30 dark:text-yellow-400'
+    case 'Completed':
+      return 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400'
+    case 'Archived':
+      return 'bg-surface-100 text-surface-500 dark:bg-surface-700 dark:text-surface-400'
+    case 'Unknown':
+    default:
+      return 'bg-surface-100 text-surface-500 dark:bg-surface-700 dark:text-surface-400'
+  }
+}
+

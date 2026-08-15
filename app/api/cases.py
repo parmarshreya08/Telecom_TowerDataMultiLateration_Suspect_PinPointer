@@ -641,7 +641,7 @@ async def get_case_detail(
         "mobile_number": case_model.mobile_number if case_model and case_model.mobile_number else phone_number,
         "description": case_model.description if case_model else f"Telecom multi-lateration analysis case {case_id}",
         "officer_notes": case_model.officer_notes if case_model else f"Ingested {len(uploads)} file uploads, {len(fixes)} localization fixes computed.",
-        "status": case_model.status if case_model else ("Completed" if fixes else "Active"),
+        "status": case_model.status if case_model and case_model.status else "Active",
         "created_by": case_model.created_by if case_model else (uploads[0].uploaded_by if uploads else "Officer"),
         "created_at": (case_model.created_at.isoformat() if case_model and case_model.created_at else (uploads[0].uploaded_at.isoformat() if uploads else "")),
         "updated_at": (case_model.updated_at.isoformat() if case_model and case_model.updated_at else (uploads[-1].uploaded_at.isoformat() if uploads else "")),
@@ -663,6 +663,73 @@ async def get_case_detail(
             for u in uploads
         ],
         "fix_count": len(fixes),
+    }
+
+
+VALID_LIFECYCLE_STATUSES = {"Active", "Pending", "Completed", "Archived"}
+
+
+class UpdateCaseStatusRequest(BaseModel):
+    status: str = Field(..., description="Lifecycle status: Active, Pending, Completed, or Archived")
+
+
+@router.patch(
+    "/api/case/{case_id}/status",
+    status_code=status.HTTP_200_OK,
+    summary="Update investigation case lifecycle status",
+)
+@router.patch(
+    "/api/case/{case_id}",
+    status_code=status.HTTP_200_OK,
+    summary="Update investigation case lifecycle status",
+)
+async def update_case_status(
+    case_id: str,
+    body: UpdateCaseStatusRequest,
+    officer: "OfficerModel" = Depends(get_current_officer),
+    db: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    """
+    Updates the lifecycle status of an investigation case (Active, Pending, Completed, Archived).
+    Persists the change to the database without altering technical tracking status.
+    """
+    from app.utils.datetime_utils import now_ist
+
+    raw_status = body.status.strip() if body.status else ""
+    matched_status = None
+    for valid in VALID_LIFECYCLE_STATUSES:
+        if raw_status.lower() == valid.lower():
+            matched_status = valid
+            break
+
+    if not matched_status:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid case status '{body.status}'. Must be one of: {', '.join(sorted(VALID_LIFECYCLE_STATUSES))}",
+        )
+
+    repo = TelecomRepository(db)
+    case = await repo.get_case_by_id(case_id)
+    if not case:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Investigation '{case_id}' not found.",
+        )
+
+    case.status = matched_status
+    case.updated_at = now_ist()
+    await db.commit()
+
+    logger.info("case_status_updated", case_id=case_id, new_status=matched_status, officer=officer.officer_name)
+
+    return {
+        "id": case.case_id,
+        "case_id": case.case_id,
+        "case_name": case.case_name,
+        "case_number": case.case_number,
+        "status": case.status,
+        "updated_at": case.updated_at.isoformat(),
+        "message": f"Case status updated to {matched_status}",
     }
 
 

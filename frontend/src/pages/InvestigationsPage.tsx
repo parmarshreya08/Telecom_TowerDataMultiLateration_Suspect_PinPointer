@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { motion } from 'motion/react'
 import { Plus, Search, FolderOpen, ChevronRight, RefreshCw, AlertCircle } from 'lucide-react'
@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/Input'
 import { Card } from '@/components/ui/Card'
 import { Pagination } from '@/components/ui/Pagination'
 import { investigationApi } from '@/services/api'
-import { formatTimeAgo, cn } from '@/utils'
+import { formatTimeAgo, cn, getCaseLifecycleStatus, getCaseStatusBadgeVariant, getCaseStatusIconClasses } from '@/utils'
 import { TRACKING_STATUS_COLORS } from '@/constants'
 import type { CaseStatus, Investigation } from '@/types'
 
@@ -86,8 +86,30 @@ export default function InvestigationsPage() {
     }
   }, [fetchCases])
 
+  // Dynamic lifecycle status counts computed from the loaded dataset
+  const statusCounts = useMemo(() => {
+    const counts: Record<string, number> = {
+      All: cases.length,
+      Active: 0,
+      Pending: 0,
+      Completed: 0,
+      Archived: 0,
+      Unknown: 0,
+    }
+    for (const inv of cases) {
+      const status = getCaseLifecycleStatus(inv)
+      if (status in counts) {
+        counts[status]++
+      } else {
+        counts.Unknown++
+      }
+    }
+    return counts
+  }, [cases])
+
   const filtered = cases.filter((inv) => {
-    const matchesTab = activeTab === 'All' || inv.status === activeTab
+    const lifecycleStatus = getCaseLifecycleStatus(inv)
+    const matchesTab = activeTab === 'All' || lifecycleStatus === activeTab
     const matchesSearch = !search ||
       (inv.case_name && inv.case_name.toLowerCase().includes(search.toLowerCase())) ||
       (inv.case_number && inv.case_number.toLowerCase().includes(search.toLowerCase())) ||
@@ -114,8 +136,14 @@ export default function InvestigationsPage() {
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-xl font-bold text-surface-900 dark:text-surface-100">Investigations</h1>
-          <p className="text-sm text-surface-500 dark:text-surface-400">{cases.length} total cases</p>
+          <h1 className="text-xl font-bold text-surface-900 dark:text-surface-100">
+            {activeTab === 'All' ? 'All Investigations' : `${activeTab} Investigations`}
+          </h1>
+          <p className="text-sm text-surface-500 dark:text-surface-400">
+            {cases.length} total {cases.length === 1 ? 'case' : 'cases'}
+            {activeTab !== 'All' && ` · ${statusCounts[activeTab] ?? 0} ${activeTab.toLowerCase()}`}
+            {search && ` · ${filtered.length} matching search`}
+          </p>
         </div>
         <div className="flex items-center gap-3">
           <Button variant="secondary" size="md" icon={<RefreshCw className="h-4 w-4" />} onClick={refresh}>
@@ -162,24 +190,38 @@ export default function InvestigationsPage() {
             leftIcon={<Search className="h-4 w-4" />}
           />
         </div>
-        <div className="flex items-center gap-1 rounded-lg border border-surface-200 bg-surface-50 p-1 dark:border-surface-700 dark:bg-surface-800">
-          {STATUS_TABS.map(({ label, value }) => (
-            <button
-              key={value}
-              onClick={() => {
-                setActiveTab(value)
-                setCurrentPage(1)
-              }}
-              className={cn(
-                'rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
-                activeTab === value
-                  ? 'bg-white text-surface-900 shadow-sm dark:bg-surface-700 dark:text-surface-100'
-                  : 'text-surface-500 hover:text-surface-700 dark:hover:text-surface-300'
-              )}
-            >
-              {label}
-            </button>
-          ))}
+        <div className="flex items-center gap-1 rounded-lg border border-surface-200 bg-surface-50 p-1 dark:border-surface-700 dark:bg-surface-800 flex-wrap">
+          {STATUS_TABS.map(({ label, value }) => {
+            const isSelected = activeTab === value
+            const count = statusCounts[value] ?? 0
+            return (
+              <button
+                key={value}
+                onClick={() => {
+                  setActiveTab(value)
+                  setCurrentPage(1)
+                }}
+                className={cn(
+                  'rounded-md px-3 py-1.5 text-xs font-medium transition-all duration-150 cursor-pointer flex items-center gap-1.5',
+                  isSelected
+                    ? 'bg-white text-surface-900 shadow-sm dark:bg-surface-700 dark:text-surface-100 font-semibold ring-1 ring-black/5 dark:ring-white/10'
+                    : 'text-surface-500 hover:text-surface-700 dark:hover:text-surface-300'
+                )}
+              >
+                <span>{label}</span>
+                <span
+                  className={cn(
+                    'rounded-full px-1.5 py-0.2 text-2xs font-semibold tabular-nums',
+                    isSelected
+                      ? 'bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-300'
+                      : 'bg-surface-200/80 text-surface-600 dark:bg-surface-700 dark:text-surface-400'
+                  )}
+                >
+                  {count}
+                </span>
+              </button>
+            )
+          })}
         </div>
       </div>
 
@@ -192,7 +234,9 @@ export default function InvestigationsPage() {
       ) : filtered.length === 0 ? (
         <Card className="flex flex-col items-center justify-center py-16 text-center">
           <FolderOpen className="mb-3 h-10 w-10 text-surface-300 dark:text-surface-600" />
-          <p className="text-sm font-medium text-surface-600 dark:text-surface-300">No investigations found</p>
+          <p className="text-sm font-medium text-surface-600 dark:text-surface-300">
+            {activeTab !== 'All' ? `No ${activeTab.toLowerCase()} investigations found` : 'No investigations found'}
+          </p>
           <p className="mt-1 text-xs text-surface-400 mb-4">Try adjusting your search or upload data to register a new case.</p>
           <Button variant="primary" size="sm" icon={<Plus className="h-4 w-4" />} onClick={() => navigate('/upload')}>
             Upload Telecom Data
@@ -200,65 +244,67 @@ export default function InvestigationsPage() {
         </Card>
       ) : (
         <div className="space-y-3">
-          {paginated.map((inv, i) => (
-            <motion.div
-              key={inv.id}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.05 }}
-            >
-              <Card hover className="cursor-pointer group" onClick={() => navigate(`/investigations/${inv.id}`)}>
-                <div className="flex items-center gap-4">
-                  {/* Icon */}
-                  <div className={cn(
-                    'flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition-colors',
-                    inv.status === 'Active'    ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400' :
-                    inv.status === 'Pending'   ? 'bg-yellow-100 text-yellow-600 dark:bg-yellow-900/30 dark:text-yellow-400' :
-                    inv.status === 'Completed' ? 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400' :
-                    'bg-surface-100 text-surface-500 dark:bg-surface-700'
-                  )}>
-                    <FolderOpen className="h-5 w-5" />
-                  </div>
-
-                  {/* Main info */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex flex-wrap items-center gap-2 mb-1">
-                      <p className="font-semibold text-sm text-surface-900 dark:text-surface-100 truncate group-hover:text-primary-600 transition-colors">
-                        {inv.case_name || inv.id}
-                      </p>
-                      <Badge variant={
-                        inv.status === 'Active' ? 'success' :
-                        inv.status === 'Pending' ? 'warning' :
-                        inv.status === 'Completed' ? 'primary' : 'neutral'
-                      }>
-                        {inv.status}
-                      </Badge>
+          {paginated.map((inv, i) => {
+            const lifecycleStatus = getCaseLifecycleStatus(inv)
+            return (
+              <motion.div
+                key={inv.id}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.05 }}
+              >
+                <Card hover className="cursor-pointer group" onClick={() => navigate(`/investigations/${inv.id}`)}>
+                  <div className="flex items-center gap-4">
+                    {/* Icon */}
+                    <div className={cn(
+                      'flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition-colors',
+                      getCaseStatusIconClasses(lifecycleStatus)
+                    )}>
+                      <FolderOpen className="h-5 w-5" />
                     </div>
-                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-surface-500 dark:text-surface-400">
-                      <span>Case Ref: {inv.case_number || inv.id}</span>
-                      <span>Target: {inv.suspect_name || 'N/A'}</span>
-                      <span>By: {inv.created_by || 'Officer'}</span>
+
+                    {/* Main info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2 mb-1">
+                        <p className="font-semibold text-sm text-surface-900 dark:text-surface-100 truncate group-hover:text-primary-600 transition-colors">
+                          {inv.case_name || inv.id}
+                        </p>
+                        <Badge
+                          variant={getCaseStatusBadgeVariant(lifecycleStatus)}
+                          className="font-bold text-2xs uppercase tracking-wider px-2 py-0.5"
+                        >
+                          {lifecycleStatus}
+                        </Badge>
+                      </div>
+                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-surface-500 dark:text-surface-400">
+                        <span>Case Ref: {inv.case_number || inv.id}</span>
+                        <span>Target: {inv.suspect_name || 'N/A'}</span>
+                        <span>By: {inv.created_by || 'Officer'}</span>
+                      </div>
                     </div>
-                  </div>
 
-                  {/* Tracking status + timestamp */}
-                  <div className="hidden sm:flex flex-col items-end gap-1.5 shrink-0">
-                    <span className={cn('text-xs font-medium', TRACKING_STATUS_COLORS[inv.tracking_status] || 'text-surface-500 dark:text-surface-400')}>
-                      {inv.tracking_status === 'Live' && (
-                        <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-green-400 animate-ping-slow" />
-                      )}
-                      {inv.tracking_status}
-                    </span>
-                    <span className="text-2xs text-surface-400">
-                      {inv.updated_at ? formatTimeAgo(inv.updated_at) : 'Recent'}
-                    </span>
-                  </div>
+                    {/* Tracking status + timestamp */}
+                    <div className="hidden sm:flex flex-col items-end gap-0.5 shrink-0 text-right">
+                      <span className="text-2xs font-semibold uppercase tracking-wider text-surface-400">
+                        Tracking
+                      </span>
+                      <span className={cn('text-xs font-medium', TRACKING_STATUS_COLORS[inv.tracking_status || 'Idle'] || 'text-surface-500 dark:text-surface-400')}>
+                        {inv.tracking_status === 'Live' && (
+                          <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-green-400 animate-ping-slow" />
+                        )}
+                        {inv.tracking_status || 'Idle'}
+                      </span>
+                      <span className="text-2xs text-surface-400">
+                        {inv.updated_at ? formatTimeAgo(inv.updated_at) : 'Recent'}
+                      </span>
+                    </div>
 
-                  <ChevronRight className="h-4 w-4 text-surface-400 group-hover:text-primary-500 transition-colors shrink-0" />
-                </div>
-              </Card>
-            </motion.div>
-          ))}
+                    <ChevronRight className="h-4 w-4 text-surface-400 group-hover:text-primary-500 transition-colors shrink-0" />
+                  </div>
+                </Card>
+              </motion.div>
+            )
+          })}
 
           {/* Pagination Controls */}
           <Pagination
