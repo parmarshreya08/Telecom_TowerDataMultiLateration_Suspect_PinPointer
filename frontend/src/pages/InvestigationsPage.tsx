@@ -37,6 +37,13 @@ export default function InvestigationsPage() {
     }
   }, [location.pathname, location.state, navigate])
 
+  // Auto-dismiss success banner after 4 seconds
+  useEffect(() => {
+    if (!successMessage) return
+    const t = setTimeout(() => setSuccessMessage(null), 4000)
+    return () => clearTimeout(t)
+  }, [successMessage])
+
   const fetchCases = useCallback(async () => {
     const res = await investigationApi.list()
     return Array.isArray(res) ? res : res?.items ?? []

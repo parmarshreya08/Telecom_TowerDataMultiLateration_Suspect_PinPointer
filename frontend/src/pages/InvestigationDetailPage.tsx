@@ -275,11 +275,12 @@ export default function InvestigationDetailPage() {
                     </span>
                     <Button
                       size="sm"
-                      variant="secondary"
+                      variant="danger"
+                      loading={deletingCdrId === up.upload_id}
                       disabled={deletingCdrId === up.upload_id}
                       onClick={() => setDeleteCdrTarget({ id: up.upload_id, name: up.original_filename })}
                     >
-                      {deletingCdrId === up.upload_id ? 'Deleting...' : 'Delete'}
+                      Delete
                     </Button>
                   </div>
                 ))}

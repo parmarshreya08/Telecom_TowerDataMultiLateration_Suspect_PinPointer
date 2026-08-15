@@ -58,12 +58,16 @@ export function ShareLocationModal({ open, onClose, latitude, longitude }: Share
         </Button>
 
         <div className="rounded-lg border border-surface-200 dark:border-surface-700 p-3 text-center">
-          <p className="text-xs text-surface-400 mb-2">QR Code</p>
-          <div className="flex items-center justify-center h-32 bg-surface-50 dark:bg-surface-800 rounded">
-            <p className="text-xs text-surface-400">
-              {/* TODO: Integrate qrcode.react once backend is connected */}
-              QR Code placeholder
-            </p>
+          <p className="text-xs text-surface-400 mb-2">QR Code — Open in Google Maps</p>
+          <div className="flex items-center justify-center rounded bg-white p-2">
+            <img
+              src={`https://api.qrserver.com/v1/create-qr-code/?size=128x128&data=${encodeURIComponent(mapsUrl)}`}
+              alt={`QR code linking to suspect location at ${coords}`}
+              width={128}
+              height={128}
+              loading="lazy"
+              className="rounded"
+            />
           </div>
           <p className="text-2xs text-surface-400 mt-2">Scan to open suspect location on Google Maps</p>
         </div>

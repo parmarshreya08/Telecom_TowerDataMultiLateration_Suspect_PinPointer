@@ -525,7 +525,7 @@ export default function LiveInvestigationPage() {
         {/* LEFT RESIZE HANDLE */}
         <div
           onPointerDown={startExplorerResize}
-          className="w-2 bg-surface-200/50 hover:bg-primary-500/50 active:bg-primary-500 cursor-col-resize transition-colors z-[9999] flex-shrink-0"
+          className="w-2 bg-surface-200/50 hover:bg-primary-500/50 active:bg-primary-500 cursor-col-resize transition-colors z-30 flex-shrink-0"
         />
 
         {/* CENTER: Map */}
@@ -610,7 +610,7 @@ export default function LiveInvestigationPage() {
 
         <div
           onPointerDown={startRightPanelResize}
-          className="w-1 cursor-col-resize hover:bg-primary-500 active:bg-primary-500 z-[9999]"
+          className="w-1 cursor-col-resize hover:bg-primary-500 active:bg-primary-500 z-30"
         />
 
         {/* RIGHT: Detail panel */}

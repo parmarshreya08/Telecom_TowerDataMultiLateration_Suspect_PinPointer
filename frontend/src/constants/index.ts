@@ -59,10 +59,14 @@ export const UPLOAD_STATES = {
 export const POLL_INTERVAL = import.meta.env.VITE_POLL_INTERVAL || 2000
 
 export const TRACKING_STATUS_COLORS: Record<string, string> = {
-  Live:    'text-green-600 dark:text-green-400',
-  Active:  'text-blue-600 dark:text-blue-400',
-  Idle:    'text-yellow-600 dark:text-yellow-400',
-  Stopped: 'text-red-600 dark:text-red-400',
+  Live:       'text-green-600 dark:text-green-400',
+  Active:     'text-blue-600 dark:text-blue-400',
+  Idle:       'text-yellow-600 dark:text-yellow-400',
+  Processing: 'text-blue-600 dark:text-blue-400',
+  Paused:     'text-orange-600 dark:text-orange-400',
+  Completed:  'text-green-700 dark:text-green-300',
+  Stopped:    'text-red-600 dark:text-red-400',
+  Error:      'text-red-600 dark:text-red-400',
 } as const
 
 export const TRACKING_DURATION_OPTIONS = [

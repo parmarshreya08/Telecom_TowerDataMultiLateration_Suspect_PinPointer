@@ -51,7 +51,7 @@ export default function UploadCDRPage() {
           <p className="text-xs text-red-600 dark:text-red-400 mt-1">Create an investigation case first, then upload files to it.</p>
           <button
             onClick={() => navigate('/investigations/new')}
-            className="mt-4 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700"
+            className="mt-4 btn btn-md btn-primary"
           >
             Create New Case
           </button>
@@ -92,7 +92,7 @@ export default function UploadCDRPage() {
           <p className="text-xs text-red-600 dark:text-red-400 mt-1">{caseError || 'This case does not exist in the database.'}</p>
           <button
             onClick={() => navigate('/investigations/new')}
-            className="mt-4 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700"
+            className="mt-4 btn btn-md btn-primary"
           >
             Create New Case
           </button>

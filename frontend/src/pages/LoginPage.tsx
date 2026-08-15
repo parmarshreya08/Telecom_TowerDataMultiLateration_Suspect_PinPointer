@@ -9,7 +9,7 @@
  */
 
 import { lazy, Suspense, useState, type FormEvent } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate, useLocation, Link } from 'react-router-dom'
 import { LogIn, Eye, EyeOff, ShieldCheck } from 'lucide-react'
 import { Logo }   from '@/components/ui/Logo'
 import { Button } from '@/components/ui/Button'
@@ -27,7 +27,8 @@ function errorMessage(err: unknown): string {
 }
 
 export default function LoginPage() {
-  const navigate = useNavigate()
+  const navigate  = useNavigate()
+  const location  = useLocation()
   const [email,    setEmail]    = useState('')
   const [password, setPassword] = useState('')
   const [showPw,   setShowPw]   = useState(false)
@@ -42,7 +43,9 @@ export default function LoginPage() {
       const res = await authApi.login({ email, password })
       setToken(res.access_token)
       setStoredOfficer(res.officer)
-      navigate('/dashboard', { replace: true })
+      // Redirect back to the page the user was trying to reach, or fall back to /dashboard
+      const from = (location.state as { from?: string } | null)?.from
+      navigate(from && from !== '/login' ? from : '/dashboard', { replace: true })
     } catch (err) {
       setError(errorMessage(err))
     } finally {
