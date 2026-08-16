@@ -823,7 +823,7 @@ export default function LiveInvestigationPage() {
                   "p-2.5 rounded-lg border text-xs cursor-pointer transition-all",
                   scrubValue === evt.fix_index
                     ? "border-amber-400 bg-amber-50 dark:bg-amber-950/40 ring-1 ring-amber-400/50"
-                    : "border-surface-200 bg-white hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:hover:bg-surface-750"
+                     : "border-surface-200 bg-white hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:hover:bg-surface-700"
                 )}
               >
                 <div className="flex items-center justify-between gap-1 mb-1">

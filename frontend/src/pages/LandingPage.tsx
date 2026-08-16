@@ -102,14 +102,14 @@ export default function LandingPage() {
             </button>
 
             {/* Sign In — uses existing /login route */}
-            <button
-              onClick={() => navigate('/login')}
-              className="hidden sm:inline-flex items-center gap-2 rounded-lg border border-surface-200 bg-surface-50 px-3.5 py-1.5 text-xs font-semibold text-surface-700 hover:bg-surface-100 hover:text-surface-900 hover:border-surface-300 dark:border-surface-700/80 dark:bg-surface-800/80 dark:text-surface-200 dark:hover:bg-surface-750 dark:hover:text-white dark:hover:border-surface-600 transition-all shadow-xs cursor-pointer"
-              aria-label="Sign in to E-RAKSHAK"
-            >
-              <LogIn className="h-3.5 w-3.5" />
-              Sign In
-            </button>
+             <button
+               onClick={() => navigate('/login')}
+               className="hidden sm:inline-flex btn items-center gap-2 rounded-lg border border-surface-200 bg-white px-3.5 py-1.5 text-xs font-semibold text-surface-700 hover:border-primary-400 hover:text-primary-700 hover:bg-primary-50 hover:shadow-md hover:-translate-y-0.5 dark:border-surface-700/80 dark:bg-surface-800/80 dark:text-surface-200 dark:hover:border-primary-500/60 dark:hover:text-primary-300 dark:hover:bg-primary-900/30 dark:hover:shadow-lg dark:hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.97] active:shadow-sm select-none"
+               aria-label="Sign in to E-RAKSHAK"
+             >
+               <LogIn className="h-3.5 w-3.5" />
+               Sign In
+             </button>
           </div>
         </div>
 
@@ -117,7 +117,7 @@ export default function LandingPage() {
         <div className="sm:hidden flex items-center justify-end gap-2 px-6 pb-2">
           <button
             onClick={() => navigate('/login')}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-surface-200 bg-surface-50 px-3 py-1 text-xs font-semibold text-surface-700 hover:bg-surface-100 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200 cursor-pointer"
+            className="inline-flex btn items-center gap-1.5 rounded-lg border border-surface-200 bg-white px-3 py-1 text-xs font-semibold text-surface-700 hover:border-primary-400 hover:text-primary-700 hover:bg-primary-50 hover:shadow-md hover:-translate-y-0.5 dark:border-surface-700/80 dark:bg-surface-800/80 dark:text-surface-200 dark:hover:border-primary-500/60 dark:hover:text-primary-300 dark:hover:bg-primary-900/30 dark:hover:shadow-lg dark:hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.97] active:shadow-sm select-none"
             aria-label="Sign in to E-RAKSHAK"
           >
             <LogIn className="h-3.5 w-3.5" />
@@ -231,11 +231,11 @@ export default function LandingPage() {
 
               {/* Primary CTA — Sign In */}
               <div className="flex flex-wrap items-center gap-4 mt-6">
-                <button
-                  onClick={() => navigate('/login')}
-                  className="w-full sm:w-60 px-6 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 shadow-lg shadow-blue-600/30 flex items-center justify-center gap-2.5 text-sm sm:text-base transition-all duration-200 cursor-pointer"
-                  aria-label="Sign in to E-RAKSHAK"
-                >
+                 <button
+                   onClick={() => navigate('/login')}
+                   className="w-full sm:w-60 px-6 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 hover:shadow-xl hover:shadow-blue-600/40 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.97] active:shadow-lg shadow-lg shadow-blue-600/30 flex items-center justify-center gap-2.5 text-sm sm:text-base select-none"
+                   aria-label="Sign in to E-RAKSHAK"
+                 >
                   <LogIn className="h-4.5 w-4.5" aria-hidden="true" />
                   Sign In
                 </button>

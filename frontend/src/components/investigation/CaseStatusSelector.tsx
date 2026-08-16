@@ -204,7 +204,7 @@ export function CaseStatusSelector({
                     className={cn(
                       'w-full flex items-start gap-2.5 rounded-lg px-3 py-2 text-left text-xs transition-all cursor-pointer',
                       isSelected
-                        ? 'bg-surface-100 dark:bg-surface-750 font-semibold text-surface-900 dark:text-surface-100 ring-1 ring-surface-300 dark:ring-surface-600'
+                         ? 'bg-surface-100 dark:bg-surface-700 font-semibold text-surface-900 dark:text-surface-100 ring-1 ring-surface-300 dark:ring-surface-600'
                         : 'text-surface-600 hover:bg-surface-50 dark:text-surface-300 dark:hover:bg-surface-800'
                     )}
                   >
