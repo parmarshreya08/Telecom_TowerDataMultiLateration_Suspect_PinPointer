@@ -12,8 +12,8 @@ import { useNavigate } from 'react-router-dom'
 import { motion } from 'motion/react'
 import {
   MapPin, Radio, FileSearch, ChevronRight,
-  Cpu, Database, BarChart3, ArrowRight,
-  CheckCircle, Zap, LogIn, PlayCircle,
+  Cpu, Database, BarChart3,
+  CheckCircle, Zap, LogIn,
   Sun, Moon,
 } from 'lucide-react'
 import { useThemeContext } from '@/hooks/useThemeContext'

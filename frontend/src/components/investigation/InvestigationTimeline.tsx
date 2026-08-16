@@ -2,7 +2,7 @@ import {
   MapPin, Radio, Zap, WifiOff, Play, FileText, Upload, FolderPlus, CheckCircle, Mail,
   Smartphone,
 } from 'lucide-react'
-import type { TimelineEvent, TimelineEventType } from '@/types'
+import type { TimelineEvent } from '@/types'
 import { formatDateTime, formatTimeAgo, cn } from '@/utils'
 
 const typeIcon: Record<string, React.ReactNode> = {

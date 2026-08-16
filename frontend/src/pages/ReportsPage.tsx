@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { investigationApi, reportApi, trackingApi, exportApi } from '@/services/api'
 import { downloadBlob, formatDateTime, getCaseLifecycleStatus, getCaseStatusBadgeVariant } from '@/utils'
-import type { ForensicReport, Investigation, CaseStatus } from '@/types'
+import type { ForensicReport, Investigation } from '@/types'
 
 const EXPORT_FORMATS = [
   { value: 'pdf',     label: 'PDF Forensic Report', icon: FileText, desc: 'Court-admissible report with fixes, methodology, and confidence analysis' },

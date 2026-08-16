@@ -1,20 +1,18 @@
 import { useEffect, useState, useCallback } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { motion } from 'motion/react'
 import {
-  Users, ShieldCheck, FolderOpen, Database, Activity,
-  UserPlus, FileText, ArrowRight, RefreshCw, AlertCircle,
-  Clock, CheckCircle, XCircle
+  Users, ShieldCheck, FolderOpen, Activity,
+  UserPlus, ArrowRight, RefreshCw, AlertCircle,
+  CheckCircle, XCircle
 } from 'lucide-react'
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
-import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { adminApi, investigationApi } from '@/services/api'
 import { formatTimeAgo, cn } from '@/utils'
 import type { SystemStatusData, AuditLogEntry, AdminUser, Investigation } from '@/types'
 
 export default function AdminDashboardPage() {
-  const navigate = useNavigate()
   const [statusData, setStatusData] = useState<SystemStatusData | null>(null)
   const [recentLogs, setRecentLogs] = useState<AuditLogEntry[]>([])
   const [recentUsers, setRecentUsers] = useState<AdminUser[]>([])

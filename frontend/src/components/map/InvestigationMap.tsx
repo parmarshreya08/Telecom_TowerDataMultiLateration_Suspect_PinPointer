@@ -250,7 +250,7 @@ function RttLayer({ observations, uploadId, color }: {
   const obs = useMemo(() => observations.filter((o) => o.upload_id === uploadId), [observations, uploadId])
   return (
     <>
-      {obs.map((o) => o.towers.map((t, i) => {
+      {obs.map((o) => o.towers.map((t, _i) => {
         if (!(t.radius_meters > 0)) return null
         return (
           <Fragment key={`${o.frame_id}-${t.cgi}`}>

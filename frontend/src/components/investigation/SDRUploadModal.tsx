@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import { Radio, Upload, CheckCircle2, Loader2, FileText, AlertCircle, Sparkles, Check } from 'lucide-react'
+import { Radio, Upload, CheckCircle2, Loader2, Sparkles, Check } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import type { RFVerifiedFix } from '@/types'

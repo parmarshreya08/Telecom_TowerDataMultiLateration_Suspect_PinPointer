@@ -99,7 +99,7 @@ function Item({
 }
 
 export function InvestigationExplorer({
-  width, currentCaseId, currentCaseName, files, towersCount, framesCount, usableFramesCount, fixesCount, selectedItem, onSelectItem, onRunMultilateration, isLocalizationRunning, onExportClick, onUploadClick, rfVerifiedFix, onUploadSDRClick, onSelectVerifiedTarget
+  width, currentCaseId, files, towersCount, framesCount, usableFramesCount, fixesCount, selectedItem, onSelectItem, onRunMultilateration, isLocalizationRunning, onExportClick, onUploadClick, rfVerifiedFix, onUploadSDRClick, onSelectVerifiedTarget
 }: InvestigationExplorerProps) {
 
   const navigate = useNavigate()

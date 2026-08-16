@@ -1,43 +1,53 @@
 // ============================================================
-// E-Rakshak — Socket.io Client Service
-// TODO: Connect to backend WebSocket server once implemented
-// All methods are frontend-only stubs.
+// E-Rakshak — Native WebSocket Client Service
+// Talks to the backend at /api/ws/tracking/{case_id}?token=<jwt>.
+// Incoming frames are {"type": <event>, "payload": <data>} and are
+// dispatched to listeners keyed by event name.
 // ============================================================
 
-import { io, Socket } from 'socket.io-client'
 import { WS_BASE_URL } from '@/constants'
 import type { SocketEventType } from '@/types'
 
 type EventCallback<T = unknown> = (data: T) => void
 type ListenerMap = Map<string, Set<EventCallback>>
 
+const TOKEN_KEY = 'erakshak_access_token'
+
 class ErakshakSocketService {
-  private socket: Socket | null = null
+  private ws: WebSocket | null = null
   private listeners: ListenerMap = new Map()
+  private investigationId?: string
   private reconnectAttempts = 0
+  private reconnectTimer: number | null = null
   private readonly maxReconnectAttempts = 5
 
   connect(investigationId?: string): void {
-    if (this.socket?.connected) return
+    if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
+      return
+    }
 
-    this.socket = io(WS_BASE_URL, {
-      query: investigationId ? { investigation_id: investigationId } : undefined,
-      transports: ['websocket'],
-      reconnection: true,
-      reconnectionAttempts: this.maxReconnectAttempts,
-      reconnectionDelay: 2000,
-      autoConnect: false,
-    })
+    this.investigationId = investigationId
 
+    const token = localStorage.getItem(TOKEN_KEY)
+    if (!token) return // not signed in — stay disconnected
+
+    const base =
+      WS_BASE_URL ||
+      (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host
+    const path = investigationId ? `/api/ws/tracking/${encodeURIComponent(investigationId)}` : ''
+    const url = `${base}${path}?token=${encodeURIComponent(token)}`
+
+    this.ws = new WebSocket(url)
     this.registerCoreHandlers()
-    this.socket.connect()
   }
 
   disconnect(): void {
-    if (this.socket) {
-      this.socket.disconnect()
-      this.socket = null
+    if (this.reconnectTimer !== null) {
+      window.clearTimeout(this.reconnectTimer)
+      this.reconnectTimer = null
     }
+    this.ws?.close()
+    this.ws = null
     this.listeners.clear()
     this.reconnectAttempts = 0
   }
@@ -47,59 +57,66 @@ class ErakshakSocketService {
       this.listeners.set(event, new Set())
     }
     this.listeners.get(event)!.add(callback as EventCallback)
-
-    if (this.socket) {
-      this.socket.on(event, callback as EventCallback)
-    }
-
     return () => this.off(event, callback as EventCallback)
   }
 
   off(event: SocketEventType, callback: EventCallback): void {
     this.listeners.get(event)?.delete(callback)
-    this.socket?.off(event, callback)
   }
 
   emit<T = unknown>(event: string, data?: T): void {
-    if (this.socket?.connected) {
-      this.socket.emit(event, data)
-    } else {
-      // ponytail: silent fail for offline emit, add queue if needed
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: event, payload: data ?? null }))
     }
+    // ponytail: silent drop offline, add queue if needed
   }
 
   get isConnected(): boolean {
-    return this.socket?.connected ?? false
+    return this.ws?.readyState === WebSocket.OPEN
   }
 
   get socketId(): string | undefined {
-    return this.socket?.id
+    return undefined
   }
 
   private registerCoreHandlers(): void {
-    if (!this.socket) return
+    if (!this.ws) return
 
-    this.socket.on('connect', () => {
+    this.ws.onopen = () => {
       this.reconnectAttempts = 0
-      this.reattachListeners()
-    })
+      this.dispatch('connect', undefined)
+    }
 
-    this.socket.on('disconnect', () => {
-      // ponytail: reconnect logic handles this
-    })
+    this.ws.onmessage = (evt) => {
+      try {
+        const msg = JSON.parse(evt.data)
+        if (msg && typeof msg.type === 'string') {
+          this.dispatch(msg.type, msg.payload)
+        }
+      } catch {
+        // non-JSON frame — ignore
+      }
+    }
 
-    this.socket.on('connect_error', () => {
-      this.reconnectAttempts++
-    })
+    this.ws.onclose = (evt) => {
+      this.ws = null
+      this.dispatch('disconnect', undefined)
+      // 4401 = unauthorised (expired/revoked token) — do not retry.
+      if (evt.code !== 4401 && this.investigationId && this.reconnectAttempts < this.maxReconnectAttempts) {
+        this.reconnectAttempts++
+        this.reconnectTimer = window.setTimeout(() => {
+          this.connect(this.investigationId)
+        }, 2000)
+      }
+    }
+
+    this.ws.onerror = () => {
+      // handled by onclose
+    }
   }
 
-  private reattachListeners(): void {
-    if (!this.socket) return
-    this.listeners.forEach((callbacks, event) => {
-      callbacks.forEach((cb) => {
-        this.socket!.on(event, cb)
-      })
-    })
+  private dispatch(event: string, payload: unknown): void {
+    this.listeners.get(event)?.forEach((cb) => cb(payload))
   }
 }
 

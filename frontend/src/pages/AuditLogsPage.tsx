@@ -1,14 +1,14 @@
 import { useEffect, useState, useCallback } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import {
-  ShieldCheck, Search, Filter, RefreshCw, ChevronLeft, ChevronRight,
+  ShieldCheck, Search, RefreshCw, ChevronLeft, ChevronRight,
   CheckCircle, XCircle, AlertCircle, FileCode, X, Eye
 } from 'lucide-react'
-import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
+import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { adminApi } from '@/services/api'
-import { formatTimeAgo, cn } from '@/utils'
+import { cn } from '@/utils'
 import type { AuditLogEntry } from '@/types'
 
 const COMMON_ACTIONS = [
@@ -136,7 +136,7 @@ export default function AuditLogsPage() {
           <select
             value={statusFilter}
             onChange={(e) => {
-              setStatusFilter(e.target.value as any)
+              setStatusFilter(e.target.value as 'ALL' | 'SUCCESS' | 'FAILURE' | 'DENIED')
               setPage(1)
             }}
             className="rounded-lg border border-surface-200 bg-white px-3 py-1.5 text-xs text-surface-700 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-300"

@@ -1,20 +1,20 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import type { AxiosError } from 'axios'
 import { motion } from 'motion/react'
 import {
   ArrowLeft, Upload, MapPin, FileText, Plus, RefreshCw, AlertCircle, Clock, CheckCircle2, FolderOpen, Trash2,
 } from 'lucide-react'
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
-import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { fileApi, investigationApi, trackingApi, adminApi, formatDeleteError } from '@/services/api'
 import { getStoredOfficer } from '@/services/auth'
 import { CaseStatusSelector } from '@/components/investigation/CaseStatusSelector'
-import { formatDateTime, formatFileSize, cn, getCaseLifecycleStatus, getCaseStatusBadgeVariant } from '@/utils'
+import { formatDateTime, formatFileSize, cn } from '@/utils'
 import { TRACKING_STATUS_COLORS, OPERATOR_COLORS } from '@/constants'
-import type { CaseStatus, Investigation, UploadMetadata, CaseAssignment, AdminUser } from '@/types'
-import { UserCheck, UserPlus, UserMinus, Shield } from 'lucide-react'
+import type { Investigation, UploadMetadata, CaseAssignment, AdminUser, QualityReport } from '@/types'
+import { UserCheck, UserPlus, UserMinus } from 'lucide-react'
 
 export default function InvestigationDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -23,7 +23,7 @@ export default function InvestigationDetailPage() {
   const [inv, setInv] = useState<Investigation | null>(null)
   const [uploads, setUploads] = useState<UploadMetadata[]>([])
   const [events, setEvents] = useState<unknown[]>([])
-  const [qualityReport, setQualityReport] = useState<any | null>(null)
+  const [qualityReport, setQualityReport] = useState<QualityReport | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [deleteCdrTarget, setDeleteCdrTarget] = useState<{ id: string; name: string } | null>(null)
@@ -78,8 +78,9 @@ export default function InvestigationDetailPage() {
       setActionMessage('Officer assigned to case successfully.')
       setSelectedAssignId('')
       await fetchAssignments()
-    } catch (err: any) {
-      setActionError(err.response?.data?.detail || 'Failed to assign officer.')
+    } catch (err: unknown) {
+      const e = err as AxiosError<{ detail?: string }>
+      setActionError(e.response?.data?.detail || 'Failed to assign officer.')
     } finally {
       setAssignLoading(false)
     }
@@ -92,8 +93,9 @@ export default function InvestigationDetailPage() {
       await adminApi.unassignCase(id, officerId)
       setActionMessage('Officer unassigned from case.')
       await fetchAssignments()
-    } catch (err: any) {
-      setActionError(err.response?.data?.detail || 'Failed to unassign officer.')
+    } catch (err: unknown) {
+      const e = err as AxiosError<{ detail?: string }>
+      setActionError(e.response?.data?.detail || 'Failed to unassign officer.')
     } finally {
       setAssignLoading(false)
     }

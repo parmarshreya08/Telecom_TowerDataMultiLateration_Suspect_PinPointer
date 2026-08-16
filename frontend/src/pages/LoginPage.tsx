@@ -12,8 +12,6 @@ import { lazy, Suspense, useState, type FormEvent } from 'react'
 import { useNavigate, useLocation, Link } from 'react-router-dom'
 import { LogIn, Eye, EyeOff, ShieldCheck } from 'lucide-react'
 import { Logo }   from '@/components/ui/Logo'
-import { Button } from '@/components/ui/Button'
-import { Input }  from '@/components/ui/Input'
 import { authApi, setToken, setStoredOfficer } from '@/services/auth'
 import type { AxiosError } from 'axios'
 

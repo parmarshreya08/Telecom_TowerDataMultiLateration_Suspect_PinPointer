@@ -68,15 +68,15 @@ function parseFixes(geo: GeoJSONFeatureCollection, caseId: string): LocalFix[] {
       geocode: f.properties?.geocode ? String(f.properties.geocode) : undefined,
       localization_method: f.properties?.localization_method ? String(f.properties.localization_method) : undefined,
       kalman_applied: f.properties?.kalman_applied != null ? Boolean(f.properties.kalman_applied) : undefined,
-      towers_used: (f.properties?.towers_used as any) || [],
-      measurement_constraints: (f.properties?.measurement_constraints as any) || [],
+      towers_used: (f.properties?.towers_used as LocalFix['towers_used']) || [],
+      measurement_constraints: (f.properties?.measurement_constraints as LocalFix['measurement_constraints']) || [],
     }))
 }
 
 // TEMPORARY FRONTEND MOCK — replace with backend event stream later
-export const ENABLE_SWAP_EVENT_MOCKS = true
+const ENABLE_SWAP_EVENT_MOCKS = true
 
-export const MOCK_SWAP_TEMPLATES = [
+const MOCK_SWAP_TEMPLATES = [
   {
     id: 'mock-sim-swap-1',
     event_type: 'sim_swap' as const,
@@ -96,9 +96,9 @@ export const MOCK_SWAP_TEMPLATES = [
 ]
 
 // TEMPORARY FRONTEND MOCK — replace with backend is_rogue data
-export const ENABLE_ROGUE_BTS_MOCK = true
+const ENABLE_ROGUE_BTS_MOCK = true
 
-export function createMockRogueTower(referenceLat?: number, referenceLon?: number): TowerRecord {
+function createMockRogueTower(referenceLat?: number, referenceLon?: number): TowerRecord {
   const lat = referenceLat ?? 28.6139
   const lon = referenceLon ?? 77.2090
   return {
@@ -336,7 +336,7 @@ export default function LiveInvestigationPage() {
       beamwidth: t.beamwidth,
       range_meters: t.range_meters,
       site_address: t.site_address,
-      is_rogue: (t as any).is_rogue ?? false,
+      is_rogue: t.is_rogue ?? false,
     }))
 
     let allTowers = parsedTowers

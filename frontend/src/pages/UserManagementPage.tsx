@@ -1,10 +1,11 @@
 import { useEffect, useState, useCallback, type FormEvent } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
+import type { AxiosError } from 'axios'
 import {
   Users, UserPlus, Shield, ShieldCheck, Search, Key,
-  CheckCircle, XCircle, AlertCircle, RefreshCw, X, UserX, UserCheck
+  CheckCircle, AlertCircle, RefreshCw, X, UserX, UserCheck
 } from 'lucide-react'
-import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
+import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { adminApi } from '@/services/api'
@@ -69,8 +70,9 @@ export default function UserManagementPage() {
       setCreateModalOpen(false)
       setCreateForm({ officer_name: '', email: '', password: '', role: 'INSPECTOR', is_active: true })
       await loadUsers()
-    } catch (err: any) {
-      setCreateError(err.response?.data?.detail || err.message || 'Failed to create user.')
+    } catch (err: unknown) {
+      const e = err as AxiosError<{ detail?: string }>
+      setCreateError(e.response?.data?.detail || e.message || 'Failed to create user.')
     } finally {
       setCreateLoading(false)
     }
@@ -82,8 +84,9 @@ export default function UserManagementPage() {
       await adminApi.updateUserStatus(user.officer_id, nextStatus)
       showSuccess(`Officer '${user.officer_name}' is now ${nextStatus ? 'Active' : 'Deactivated'}.`)
       await loadUsers()
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to update user status.')
+    } catch (err: unknown) {
+      const e = err as AxiosError<{ detail?: string }>
+      setError(e.response?.data?.detail || 'Failed to update user status.')
     }
   }
 
@@ -93,8 +96,9 @@ export default function UserManagementPage() {
       await adminApi.updateUserRole(user.officer_id, nextRole)
       showSuccess(`Role for '${user.officer_name}' changed to ${nextRole}.`)
       await loadUsers()
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to update user role.')
+    } catch (err: unknown) {
+      const e = err as AxiosError<{ detail?: string }>
+      setError(e.response?.data?.detail || 'Failed to update user role.')
     }
   }
 
@@ -108,8 +112,9 @@ export default function UserManagementPage() {
       showSuccess(res.message || 'Password reset successfully.')
       setResetModalUser(null)
       setNewPassword('')
-    } catch (err: any) {
-      setResetError(err.response?.data?.detail || err.message || 'Failed to reset password.')
+    } catch (err: unknown) {
+      const e = err as AxiosError<{ detail?: string }>
+      setResetError(e.response?.data?.detail || e.message || 'Failed to reset password.')
     } finally {
       setResetLoading(false)
     }

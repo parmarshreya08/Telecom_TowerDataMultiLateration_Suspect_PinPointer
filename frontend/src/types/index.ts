@@ -211,6 +211,18 @@ export interface CreateUserPayload {
   is_active?: boolean
 }
 
+export interface QualityReport {
+  total_records: number
+  rejected_records: number
+  unique_towers: number
+  unique_subscribers: number
+  ta_available_pct: number
+  rtt_available_pct: number
+  frames_created: number
+  frames_skipped: number
+  fixes_generated: number
+}
+
 export interface AuditLogEntry {
   log_id: string
   timestamp: string
@@ -222,7 +234,7 @@ export interface AuditLogEntry {
   case_id?: string | null
   target_resource?: string | null
   status: string
-  details?: Record<string, any> | null
+  details?: Record<string, unknown> | null
   ip_address?: string | null
 }
 

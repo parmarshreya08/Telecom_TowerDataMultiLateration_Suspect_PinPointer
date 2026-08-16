@@ -27,6 +27,38 @@ function errorMessage(err: unknown): string {
   return 'Something went wrong. Please try again.'
 }
 
+function Field({
+  label, type = 'text', value, onChange, placeholder, autoComplete, required = false,
+  rightEl,
+}: {
+  label: string; type?: string; value: string
+  onChange: (v: string) => void; placeholder?: string
+  autoComplete?: string; required?: boolean
+  rightEl?: React.ReactNode
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+        {label}
+      </label>
+      <div className="relative">
+        <input
+          type={type}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          autoComplete={autoComplete}
+          required={required}
+          className="w-full rounded-lg border border-white/10 bg-white/5 px-3.5 py-2.5 text-sm text-white placeholder-slate-500 backdrop-blur-sm transition focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 pr-10"
+        />
+        {rightEl && (
+          <div className="absolute right-3 top-1/2 -translate-y-1/2">{rightEl}</div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function RegisterPage() {
   const navigate = useNavigate()
   const [name,     setName]     = useState('')
@@ -57,36 +89,6 @@ export default function RegisterPage() {
   }
 
   // Reusable dark field component
-  const Field = ({
-    label, type = 'text', value, onChange, placeholder, autoComplete, required = false,
-    rightEl,
-  }: {
-    label: string; type?: string; value: string
-    onChange: (v: string) => void; placeholder?: string
-    autoComplete?: string; required?: boolean
-    rightEl?: React.ReactNode
-  }) => (
-    <div className="flex flex-col gap-1.5">
-      <label className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-        {label}
-      </label>
-      <div className="relative">
-        <input
-          type={type}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder}
-          autoComplete={autoComplete}
-          required={required}
-          className="w-full rounded-lg border border-white/10 bg-white/5 px-3.5 py-2.5 text-sm text-white placeholder-slate-500 backdrop-blur-sm transition focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 pr-10"
-        />
-        {rightEl && (
-          <div className="absolute right-3 top-1/2 -translate-y-1/2">{rightEl}</div>
-        )}
-      </div>
-    </div>
-  )
-
   const pwToggle = (
     <button
       type="button"

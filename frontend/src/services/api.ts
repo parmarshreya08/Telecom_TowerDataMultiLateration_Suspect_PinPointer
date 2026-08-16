@@ -24,6 +24,7 @@ import type {
   AuditLogEntry,
   CaseAssignment,
   SystemStatusData,
+  QualityReport,
 } from '@/types'
 
 export const apiClient = axios.create({
@@ -198,7 +199,7 @@ export const investigationApi = {
   getDashboardStats: () =>
     apiClient.get<DashboardStats>('/api/dashboard/stats').then((r) => r.data),
 
-  getQualityReport: (caseId: string): Promise<any> =>
+  getQualityReport: (caseId: string): Promise<QualityReport> =>
     apiClient.get(`/api/case/${caseId}/quality-report`).then((r) => r.data),
 }
 
@@ -331,7 +332,7 @@ export const adminApi = {
     apiClient.get<{ case_id: string; assignments: CaseAssignment[]; total: number }>(`/api/admin/cases/${caseId}/assignments`).then((r) => r.data),
 
   assignCase: (caseId: string, officerId: string) =>
-    apiClient.post<{ message: string; assignment: any }>(`/api/admin/cases/${caseId}/assign`, { officer_id: officerId }).then((r) => r.data),
+    apiClient.post<{ message: string; assignment: CaseAssignment }>(`/api/admin/cases/${caseId}/assign`, { officer_id: officerId }).then((r) => r.data),
 
   unassignCase: (caseId: string, officerId: string) =>
     apiClient.delete<{ message: string }>(`/api/admin/cases/${caseId}/assign/${officerId}`).then((r) => r.data),
