@@ -184,6 +184,9 @@ class TelecomRepository:
             )
             await self.session.execute(upsert_stmt)
 
+        from app.services.tower_lookup import invalidate_catalog_cache
+        invalidate_catalog_cache([t.cgi for t in towers])
+
     async def save_subscriber_events(self, events: list[SubscriberEventRecord]) -> None:
         """
         Bulk inserts normalized subscriber connection records.

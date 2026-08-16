@@ -19,6 +19,15 @@ from app.services.opencellid import OpenCellIDService
 _catalog_cache: dict[str, TowerRecord] = {}
 
 
+def invalidate_catalog_cache(cgis: list[str]) -> None:
+    """
+    Drop cached catalog entries so a tower-dump re-upload never leaves stale
+    tower_ids behind (stale IDs break measurement_towers FK inserts).
+    """
+    for cgi in cgis:
+        _catalog_cache.pop(cgi, None)
+
+
 class TowerLookupService:
     """
     Locates spatial metadata coordinates for cell towers based on Cell Global Identity.
