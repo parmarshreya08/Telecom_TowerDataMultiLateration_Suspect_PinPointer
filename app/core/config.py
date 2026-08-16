@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = Field(default="INFO")
     HOST: str = Field(default="0.0.0.0")
     PORT: int = Field(default=8000)
+    CORS_ORIGINS: str = Field(
+        default="http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000,http://localhost:4173,http://127.0.0.1:4173",
+        description="Comma-separated list of allowed CORS origins",
+    )
     API_KEY_SECRET: str = Field(
         ...,
         description="Secret key for JWT signing and API authentication (must be set in .env)",
