@@ -76,19 +76,19 @@ export default function AdminDashboardPage() {
   const metrics = statusData?.metrics
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5">
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-bold text-surface-900 dark:text-surface-100">
               Administrative Control Center
             </h1>
-            <span className="rounded bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 text-xs font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wide">
+            <span className="rounded bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 text-base font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wide">
               ADMIN
             </span>
           </div>
-          <p className="text-sm text-surface-500 dark:text-surface-400 mt-1">
+          <p className="text-base text-surface-500 dark:text-surface-400 mt-1">
             Global security management, officer authorization, system health, and forensic audit trail.
           </p>
         </div>
@@ -113,62 +113,62 @@ export default function AdminDashboardPage() {
       </div>
 
       {error && (
-        <div className="flex items-center gap-3 p-4 bg-danger/10 border border-danger/20 rounded-xl text-danger text-sm">
+        <div className="flex items-center gap-4 p-5 bg-danger/10 border border-danger/20 rounded-xl text-danger text-base">
           <AlertCircle className="h-5 w-5 shrink-0" />
           <p>{error}</p>
         </div>
       )}
 
       {/* Primary KPI Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <motion.div className="card p-4" whileHover={{ y: -2 }} transition={{ duration: 0.15 }}>
-          <div className="flex items-center gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
+        <motion.div className="card p-6 shadow-md border border-surface-200/60 dark:border-surface-800" whileHover={{ y: -2 }} transition={{ duration: 0.15 }}>
+          <div className="flex items-center gap-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl shrink-0 bg-blue-500/10 text-blue-500">
               <Users className="h-5 w-5" />
             </div>
             <div className="min-w-0">
-              <p className="text-xs text-surface-500 dark:text-surface-400 truncate">Total Officers</p>
+              <p className="text-base text-surface-500 dark:text-surface-400 truncate">Total Officers</p>
               <p className="text-xl font-bold text-surface-900 dark:text-surface-100">{metrics?.total_users ?? 0}</p>
-              <p className="text-xs text-surface-400 mt-0.5">{metrics?.active_users ?? 0} active</p>
+              <p className="text-base text-surface-400 mt-0.5">{metrics?.active_users ?? 0} active</p>
             </div>
           </div>
         </motion.div>
 
-        <motion.div className="card p-4" whileHover={{ y: -2 }} transition={{ duration: 0.15 }}>
-          <div className="flex items-center gap-3">
+        <motion.div className="card p-6 shadow-md border border-surface-200/60 dark:border-surface-800" whileHover={{ y: -2 }} transition={{ duration: 0.15 }}>
+          <div className="flex items-center gap-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl shrink-0 bg-emerald-500/10 text-emerald-500">
               <FolderOpen className="h-5 w-5" />
             </div>
             <div className="min-w-0">
-              <p className="text-xs text-surface-500 dark:text-surface-400 truncate">All Investigations</p>
+              <p className="text-base text-surface-500 dark:text-surface-400 truncate">All Investigations</p>
               <p className="text-xl font-bold text-surface-900 dark:text-surface-100">{metrics?.total_cases ?? 0}</p>
-              <p className="text-xs text-surface-400 mt-0.5">{metrics?.active_cases ?? 0} active cases</p>
+              <p className="text-base text-surface-400 mt-0.5">{metrics?.active_cases ?? 0} active cases</p>
             </div>
           </div>
         </motion.div>
 
-        <motion.div className="card p-4" whileHover={{ y: -2 }} transition={{ duration: 0.15 }}>
-          <div className="flex items-center gap-3">
+        <motion.div className="card p-6 shadow-md border border-surface-200/60 dark:border-surface-800" whileHover={{ y: -2 }} transition={{ duration: 0.15 }}>
+          <div className="flex items-center gap-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl shrink-0 bg-purple-500/10 text-purple-500">
               <Activity className="h-5 w-5" />
             </div>
             <div className="min-w-0">
-              <p className="text-xs text-surface-500 dark:text-surface-400 truncate">Localization Fixes</p>
+              <p className="text-base text-surface-500 dark:text-surface-400 truncate">Localization Fixes</p>
               <p className="text-xl font-bold text-surface-900 dark:text-surface-100">{metrics?.total_fixes ?? 0}</p>
-              <p className="text-xs text-surface-400 mt-0.5">{metrics?.total_uploads ?? 0} files ingested</p>
+              <p className="text-base text-surface-400 mt-0.5">{metrics?.total_uploads ?? 0} files ingested</p>
             </div>
           </div>
         </motion.div>
 
-        <motion.div className="card p-4" whileHover={{ y: -2 }} transition={{ duration: 0.15 }}>
-          <div className="flex items-center gap-3">
+        <motion.div className="card p-6 shadow-md border border-surface-200/60 dark:border-surface-800" whileHover={{ y: -2 }} transition={{ duration: 0.15 }}>
+          <div className="flex items-center gap-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl shrink-0 bg-amber-500/10 text-amber-500">
               <ShieldCheck className="h-5 w-5" />
             </div>
             <div className="min-w-0">
-              <p className="text-xs text-surface-500 dark:text-surface-400 truncate">Forensic Audit Logs</p>
+              <p className="text-base text-surface-500 dark:text-surface-400 truncate">Forensic Audit Logs</p>
               <p className="text-xl font-bold text-surface-900 dark:text-surface-100">{metrics?.total_audit_logs ?? 0}</p>
-              <p className="text-xs text-surface-400 mt-0.5">Immutable records</p>
+              <p className="text-base text-surface-400 mt-0.5">Immutable records</p>
             </div>
           </div>
         </motion.div>
@@ -184,21 +184,21 @@ export default function AdminDashboardPage() {
               Recent Security & Forensic Audit Events
             </CardTitle>
             <Link to="/audit-logs">
-              <Button variant="ghost" size="sm" className="gap-1 text-xs text-primary-600 dark:text-primary-400">
+              <Button variant="ghost" size="sm" className="gap-1 text-base text-primary-600 dark:text-primary-400">
                 View All <ArrowRight className="h-3 w-3" />
               </Button>
             </Link>
           </CardHeader>
           <div className="divide-y divide-surface-100 dark:divide-surface-800">
             {recentLogs.length === 0 ? (
-              <p className="p-4 text-xs text-surface-500 text-center">No audit events recorded yet.</p>
+              <p className="p-5 text-base text-surface-500 text-center">No audit events recorded yet.</p>
             ) : (
               recentLogs.map((log) => (
-                <div key={log.log_id} className="p-3.5 flex items-center justify-between gap-3 text-xs">
-                  <div className="flex items-center gap-3 min-w-0">
+                <div key={log.log_id} className="p-4.5 flex items-center justify-between gap-4 text-base">
+                  <div className="flex items-center gap-4 min-w-0">
                     <div
                       className={cn(
-                        'flex h-7 w-7 items-center justify-center rounded-lg shrink-0 text-2xs font-bold',
+                        'flex h-7 w-7 items-center justify-center rounded-lg shrink-0 text-xs text-surface-500 font-bold',
                         log.status === 'SUCCESS' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-danger/10 text-danger'
                       )}
                     >
@@ -208,13 +208,13 @@ export default function AdminDashboardPage() {
                       <p className="font-semibold text-surface-900 dark:text-surface-100 truncate">
                         {log.action.replace(/_/g, ' ')}
                       </p>
-                      <p className="text-surface-400 text-2xs truncate">
+                      <p className="text-surface-400 text-xs text-surface-500 truncate">
                         By <span className="text-surface-600 dark:text-surface-300 font-medium">{log.actor_name}</span> ({log.actor_role})
                         {log.case_id && <span> • Case #{log.case_id}</span>}
                       </p>
                     </div>
                   </div>
-                  <span className="text-surface-400 shrink-0 text-2xs">{formatTimeAgo(log.timestamp)}</span>
+                  <span className="text-surface-400 shrink-0 text-xs text-surface-500">{formatTimeAgo(log.timestamp)}</span>
                 </div>
               ))
             )}
@@ -229,20 +229,20 @@ export default function AdminDashboardPage() {
               Officer Roster
             </CardTitle>
             <Link to="/users">
-              <Button variant="ghost" size="sm" className="gap-1 text-xs text-primary-600 dark:text-primary-400">
+              <Button variant="ghost" size="sm" className="gap-1 text-base text-primary-600 dark:text-primary-400">
                 Manage <ArrowRight className="h-3 w-3" />
               </Button>
             </Link>
           </CardHeader>
           <div className="divide-y divide-surface-100 dark:divide-surface-800">
             {recentUsers.length === 0 ? (
-              <p className="p-4 text-xs text-surface-500 text-center">No officers found.</p>
+              <p className="p-5 text-base text-surface-500 text-center">No officers found.</p>
             ) : (
               recentUsers.map((user) => (
-                <div key={user.officer_id} className="p-3 flex items-center justify-between gap-2 text-xs">
+                <div key={user.officer_id} className="p-4 flex items-center justify-between gap-2 text-base">
                   <div className="min-w-0">
                     <p className="font-medium text-surface-900 dark:text-surface-100 truncate">{user.officer_name}</p>
-                    <p className="text-surface-400 text-2xs truncate">{user.email}</p>
+                    <p className="text-surface-400 text-xs text-surface-500 truncate">{user.email}</p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <span
@@ -272,14 +272,14 @@ export default function AdminDashboardPage() {
             Global Investigation Overview
           </CardTitle>
           <Link to="/investigations">
-            <Button variant="ghost" size="sm" className="gap-1 text-xs text-primary-600 dark:text-primary-400">
+            <Button variant="ghost" size="sm" className="gap-1 text-base text-primary-600 dark:text-primary-400">
               View All Investigations <ArrowRight className="h-3 w-3" />
             </Button>
           </Link>
         </CardHeader>
         <div className="overflow-x-auto">
-          <table className="w-full text-xs text-left">
-            <thead className="bg-surface-50 dark:bg-surface-800 text-surface-500 uppercase tracking-wider font-semibold border-y border-surface-200 dark:border-surface-700">
+          <table className="w-full text-base text-left">
+            <thead className="bg-surface-50 dark:bg-surface-800 text-surface-500 uppercase tracking-wider font-semibold border-y border-surface-200/60 dark:border-surface-700">
               <tr>
                 <th className="px-4 py-2.5">Case Identifier</th>
                 <th className="px-4 py-2.5">Investigation Name</th>
@@ -291,17 +291,17 @@ export default function AdminDashboardPage() {
             <tbody className="divide-y divide-surface-100 dark:divide-surface-800">
               {cases.slice(0, 5).map((c) => (
                 <tr key={c.id} className="hover:bg-surface-50/50 dark:hover:bg-surface-800/50 transition-colors">
-                  <td className="px-4 py-3 font-mono font-bold text-primary-600 dark:text-primary-400">
+                  <td className="px-4 py-4 font-mono font-bold text-primary-600 dark:text-primary-400">
                     {c.case_number || c.id}
                   </td>
-                  <td className="px-4 py-3 font-medium text-surface-900 dark:text-surface-100">{c.case_name}</td>
-                  <td className="px-4 py-3 text-surface-500">{c.created_by || 'Officer'}</td>
-                  <td className="px-4 py-3">
-                    <span className="rounded bg-surface-100 dark:bg-surface-800 px-2 py-0.5 text-2xs font-semibold">
+                  <td className="px-4 py-4 font-medium text-surface-900 dark:text-surface-100">{c.case_name}</td>
+                  <td className="px-4 py-4 text-surface-500">{c.created_by || 'Officer'}</td>
+                  <td className="px-4 py-4">
+                    <span className="rounded bg-surface-100 dark:bg-surface-800 px-2 py-0.5 text-xs text-surface-500 font-semibold">
                       {c.status || 'Active'}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="px-4 py-4 text-right">
                     <Link to={`/investigations/${c.id}`}>
                       <Button variant="outline" size="xs" className="gap-1">
                         Open Case <ArrowRight className="h-3 w-3" />

@@ -21,6 +21,7 @@ const NotFoundPage            = lazy(() => import('@/pages/NotFoundPage'))
 const LiveRedirectPage        = lazy(() => import('@/pages/LiveRedirectPage'))
 const UserManagementPage      = lazy(() => import('@/pages/UserManagementPage'))
 const AuditLogsPage           = lazy(() => import('@/pages/AuditLogsPage'))
+const FieldTrackerPage        = lazy(() => import('@/pages/FieldTrackerPage'))
 
 export function AppRoutes() {
   return (
@@ -30,6 +31,9 @@ export function AppRoutes() {
 
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
+        
+        {/* Ground Officer Distraction-Free Tracking Link */}
+        <Route path="/t/:token" element={<FieldTrackerPage />} />
 
         <Route element={<RequireAuth><AppLayout /></RequireAuth>}>
           <Route path="/dashboard" element={<DashboardPage />} />

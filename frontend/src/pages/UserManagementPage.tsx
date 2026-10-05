@@ -129,15 +129,15 @@ export default function UserManagementPage() {
   })
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Top Heading */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5">
         <div>
           <h1 className="text-2xl font-bold text-surface-900 dark:text-surface-100 flex items-center gap-2">
             <Users className="h-6 w-6 text-primary-600 dark:text-primary-400" />
             Officer & User Management
           </h1>
-          <p className="text-sm text-surface-500 dark:text-surface-400 mt-1">
+          <p className="text-base text-surface-500 dark:text-surface-400 mt-1">
             Provision law-enforcement personnel, configure administrative roles, and manage active system credentials.
           </p>
         </div>
@@ -169,20 +169,20 @@ export default function UserManagementPage() {
 
       {/* Notifications */}
       {successMessage && (
-        <div className="flex items-center gap-3 p-3.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-600 dark:text-emerald-400 text-sm font-medium">
+        <div className="flex items-center gap-4 p-4.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-600 dark:text-emerald-400 text-base font-medium">
           <CheckCircle className="h-5 w-5 shrink-0" />
           <p>{successMessage}</p>
         </div>
       )}
       {error && (
-        <div className="flex items-center gap-3 p-3.5 bg-danger/10 border border-danger/20 rounded-xl text-danger text-sm font-medium">
+        <div className="flex items-center gap-4 p-4.5 bg-danger/10 border border-danger/20 rounded-xl text-danger text-base font-medium">
           <AlertCircle className="h-5 w-5 shrink-0" />
           <p>{error}</p>
         </div>
       )}
 
       {/* Filter and Search Bar */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-5">
         <div className="relative w-full sm:w-80">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-surface-400" />
           <Input
@@ -199,7 +199,7 @@ export default function UserManagementPage() {
               key={r}
               onClick={() => setRoleFilter(r)}
               className={cn(
-                'px-3 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wider transition-colors',
+                'px-3 py-1.5 rounded-lg text-base font-semibold uppercase tracking-wider transition-colors',
                 roleFilter === r
                   ? 'bg-primary-600 text-white shadow-xs'
                   : 'bg-surface-100 text-surface-600 hover:bg-surface-200 dark:bg-surface-800 dark:text-surface-300 dark:hover:bg-surface-700'
@@ -214,16 +214,16 @@ export default function UserManagementPage() {
       {/* Users Table */}
       <Card>
         <div className="overflow-x-auto">
-          <table className="w-full text-xs text-left">
-            <thead className="bg-surface-50 dark:bg-surface-800 text-surface-500 uppercase tracking-wider font-semibold border-b border-surface-200 dark:border-surface-700">
+          <table className="w-full text-base text-left">
+            <thead className="bg-surface-50 dark:bg-surface-800 text-surface-500 uppercase tracking-wider font-semibold border-b border-surface-200/60 dark:border-surface-700">
               <tr>
-                <th className="px-4 py-3">Officer Name</th>
-                <th className="px-4 py-3">Email Address</th>
-                <th className="px-4 py-3">Role</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Assigned Cases</th>
-                <th className="px-4 py-3">Created</th>
-                <th className="px-4 py-3 text-right">Actions</th>
+                <th className="px-4 py-4">Officer Name</th>
+                <th className="px-4 py-4">Email Address</th>
+                <th className="px-4 py-4">Role</th>
+                <th className="px-4 py-4">Status</th>
+                <th className="px-4 py-4">Assigned Cases</th>
+                <th className="px-4 py-4">Created</th>
+                <th className="px-4 py-4 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-surface-100 dark:divide-surface-800">
@@ -236,13 +236,13 @@ export default function UserManagementPage() {
               ) : (
                 filteredUsers.map((u) => (
                   <tr key={u.officer_id} className="hover:bg-surface-50/50 dark:hover:bg-surface-800/50 transition-colors">
-                    <td className="px-4 py-3.5 font-semibold text-surface-900 dark:text-surface-100">
+                    <td className="px-4 py-4.5 font-semibold text-surface-900 dark:text-surface-100">
                       {u.officer_name}
                     </td>
-                    <td className="px-4 py-3.5 font-mono text-surface-600 dark:text-surface-300">
+                    <td className="px-4 py-4.5 font-mono text-surface-600 dark:text-surface-300">
                       {u.email}
                     </td>
-                    <td className="px-4 py-3.5">
+                    <td className="px-4 py-4.5">
                       <span
                         className={cn(
                           'inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider',
@@ -255,10 +255,10 @@ export default function UserManagementPage() {
                         {u.role}
                       </span>
                     </td>
-                    <td className="px-4 py-3.5">
+                    <td className="px-4 py-4.5">
                       <span
                         className={cn(
-                          'inline-flex items-center gap-1.5 text-xs font-semibold px-2 py-0.5 rounded-full',
+                          'inline-flex items-center gap-1.5 text-base font-semibold px-2 py-0.5 rounded-full',
                           u.is_active
                             ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
                             : 'bg-danger/10 text-danger'
@@ -268,13 +268,13 @@ export default function UserManagementPage() {
                         {u.is_active ? 'Active' : 'Deactivated'}
                       </span>
                     </td>
-                    <td className="px-4 py-3.5 text-surface-600 dark:text-surface-300 font-medium">
+                    <td className="px-4 py-4.5 text-surface-600 dark:text-surface-300 font-medium">
                       {u.assigned_cases_count ?? 0}
                     </td>
-                    <td className="px-4 py-3.5 text-surface-400">
+                    <td className="px-4 py-4.5 text-surface-400">
                       {formatTimeAgo(u.created_at)}
                     </td>
-                    <td className="px-4 py-3.5 text-right">
+                    <td className="px-4 py-4.5 text-right">
                       <div className="flex items-center justify-end gap-1.5">
                         <Button
                           variant="ghost"
@@ -317,12 +317,12 @@ export default function UserManagementPage() {
       {/* Modal: Create User */}
       <AnimatePresence>
         {createModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-5 bg-black/60 backdrop-blur-xs">
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-md bg-white dark:bg-surface-900 rounded-2xl border border-surface-200 dark:border-surface-700 shadow-2xl p-6 overflow-hidden"
+              className="w-full max-w-md bg-white dark:bg-surface-900 rounded-2xl border border-surface-200/60 dark:border-surface-700 shadow-2xl p-6 overflow-hidden"
             >
               <div className="flex items-center justify-between pb-4 border-b border-surface-100 dark:border-surface-800">
                 <div className="flex items-center gap-2">
@@ -340,12 +340,12 @@ export default function UserManagementPage() {
               </div>
 
               {createError && (
-                <div className="mt-4 p-3 bg-danger/10 border border-danger/20 rounded-xl text-danger text-xs">
+                <div className="mt-4 p-4 bg-danger/10 border border-danger/20 rounded-xl text-danger text-base">
                   {createError}
                 </div>
               )}
 
-              <form onSubmit={handleCreateUser} className="mt-4 space-y-4 text-xs">
+              <form onSubmit={handleCreateUser} className="mt-4 space-y-4 text-base">
                 <div>
                   <label className="font-semibold text-surface-700 dark:text-surface-300">
                     Full Name / Designation
@@ -355,7 +355,7 @@ export default function UserManagementPage() {
                     placeholder="e.g. Insp. Vikram Sharma"
                     value={createForm.officer_name}
                     onChange={(e) => setCreateForm({ ...createForm, officer_name: e.target.value })}
-                    className="mt-1 text-xs"
+                    className="mt-1 text-base"
                   />
                 </div>
 
@@ -369,7 +369,7 @@ export default function UserManagementPage() {
                     placeholder="officer@erakshak.gov.in"
                     value={createForm.email}
                     onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })}
-                    className="mt-1 text-xs"
+                    className="mt-1 text-base"
                   />
                 </div>
 
@@ -384,7 +384,7 @@ export default function UserManagementPage() {
                     placeholder="••••••••"
                     value={createForm.password}
                     onChange={(e) => setCreateForm({ ...createForm, password: e.target.value })}
-                    className="mt-1 text-xs"
+                    className="mt-1 text-base"
                   />
                 </div>
 
@@ -397,10 +397,10 @@ export default function UserManagementPage() {
                       type="button"
                       onClick={() => setCreateForm({ ...createForm, role: 'INSPECTOR' })}
                       className={cn(
-                        'p-2.5 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors',
+                        'p-2.5 rounded-xl border text-base font-semibold flex items-center justify-center gap-1.5 transition-colors',
                         createForm.role === 'INSPECTOR'
                           ? 'border-primary-600 bg-primary-50 text-primary-700 dark:bg-primary-950/40 dark:text-primary-300'
-                          : 'border-surface-200 dark:border-surface-700 text-surface-600'
+                          : 'border-surface-200/60 dark:border-surface-700 text-surface-600'
                       )}
                     >
                       <Shield className="h-4 w-4" />
@@ -410,10 +410,10 @@ export default function UserManagementPage() {
                       type="button"
                       onClick={() => setCreateForm({ ...createForm, role: 'ADMIN' })}
                       className={cn(
-                        'p-2.5 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors',
+                        'p-2.5 rounded-xl border text-base font-semibold flex items-center justify-center gap-1.5 transition-colors',
                         createForm.role === 'ADMIN'
                           ? 'border-amber-500 bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'
-                          : 'border-surface-200 dark:border-surface-700 text-surface-600'
+                          : 'border-surface-200/60 dark:border-surface-700 text-surface-600'
                       )}
                     >
                       <ShieldCheck className="h-4 w-4" />
@@ -450,12 +450,12 @@ export default function UserManagementPage() {
       {/* Modal: Reset Password */}
       <AnimatePresence>
         {resetModalUser && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-5 bg-black/60 backdrop-blur-xs">
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-sm bg-white dark:bg-surface-900 rounded-2xl border border-surface-200 dark:border-surface-700 shadow-2xl p-6"
+              className="w-full max-w-sm bg-white dark:bg-surface-900 rounded-2xl border border-surface-200/60 dark:border-surface-700 shadow-2xl p-6"
             >
               <div className="flex items-center justify-between pb-4 border-b border-surface-100 dark:border-surface-800">
                 <div className="flex items-center gap-2">
@@ -472,17 +472,17 @@ export default function UserManagementPage() {
                 </button>
               </div>
 
-              <p className="mt-3 text-xs text-surface-500">
+              <p className="mt-3 text-base text-surface-500">
                 Setting a new password for <span className="font-semibold text-surface-900 dark:text-surface-100">{resetModalUser.email}</span>.
               </p>
 
               {resetError && (
-                <div className="mt-3 p-2.5 bg-danger/10 border border-danger/20 rounded-xl text-danger text-xs">
+                <div className="mt-3 p-2.5 bg-danger/10 border border-danger/20 rounded-xl text-danger text-base">
                   {resetError}
                 </div>
               )}
 
-              <form onSubmit={handleResetPassword} className="mt-4 space-y-4 text-xs">
+              <form onSubmit={handleResetPassword} className="mt-4 space-y-4 text-base">
                 <div>
                   <label className="font-semibold text-surface-700 dark:text-surface-300">
                     New Password (min 8 chars)
@@ -494,7 +494,7 @@ export default function UserManagementPage() {
                     placeholder="••••••••"
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
-                    className="mt-1 text-xs"
+                    className="mt-1 text-base"
                   />
                 </div>
 

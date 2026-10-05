@@ -1144,82 +1144,12 @@ export default function LiveInvestigationPage() {
       </AnimatePresence>
 
       {/* ── Main Workspace ── */}
-      <div ref={workspaceRef} className="flex flex-1 overflow-hidden relative w-full h-full">
+      <div ref={workspaceRef} className="relative flex flex-1 overflow-hidden w-full h-full">
 
-        {/* LEFT: Explorer (Desktop only) */}
-        <div className="hidden lg:block flex-shrink-0" style={{ width: explorerWidth, flexBasis: explorerWidth }}>
-          <InvestigationExplorer 
-            width={explorerWidth}
-            currentCaseId={id}
-            currentCaseName={caseName}
-            files={files}
-            towersCount={towers.length}
-            framesCount={geojson?.features?.filter(f => f.geometry.type === 'Point' && f.properties?.type === 'measurement').length || 0}
-            usableFramesCount={geojson?.features?.filter(f => f.geometry.type === 'Point' && f.properties?.type === 'measurement').length || 0}
-            fixesCount={fixes.length}
-            selectedItem={selectedItem}
-            onSelectItem={(type, itemId) => setSelectedItem({ type, id: itemId })}
-            onRunMultilateration={handleRunLocalization}
-            isLocalizationRunning={loading}
-            onExportClick={(type) => {
-              if (type === 'pdf') handleExportPDF()
-              if (type === 'csv') handleExportCSV()
-              if (type === 'kml') handleExportKML()
-            }}
-            onUploadClick={() => navigate(`/investigations/${id}/upload`)}
-            rfVerifiedFix={rfVerifiedFix}
-            onUploadSDRClick={() => setSdrModalOpen(true)}
-            onSelectVerifiedTarget={() => setSdrFocusTrigger((v) => !v)}
-          />
-        </div>
-
-        {/* LEFT RESIZE HANDLE (Desktop only) */}
-        <div
-          onPointerDown={startExplorerResize}
-          className="hidden lg:block w-2 bg-surface-200/50 hover:bg-primary-500/50 active:bg-primary-500 cursor-col-resize transition-colors z-30 flex-shrink-0"
-        />
-
-        {/* CENTER: Map (Takes full space on mobile, flex-1 on desktop) */}
-        <div className="relative flex-1 min-w-0 h-full w-full">
-          
-          {/* Mobile floating toggle buttons for Explorer & Details */}
-          <div className="absolute top-3 left-3 z-[990] flex lg:hidden items-center gap-2">
-            <button
-              onClick={() => setMobileExplorerOpen(true)}
-              className="flex items-center gap-2 rounded-xl border border-surface-200 bg-white/95 px-3.5 py-2 text-xs font-semibold text-surface-800 shadow-md backdrop-blur-sm hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800/95 dark:text-surface-100 dark:hover:bg-surface-700 transition-all active:scale-95 cursor-pointer min-h-[40px]"
-              title="Open Workspace Explorer"
-              aria-label="Open Workspace Explorer"
-            >
-              <FolderOpen className="h-4 w-4 text-primary-600 dark:text-primary-400 shrink-0" />
-              <span>Explorer</span>
-              {files.length > 0 && (
-                <span className="rounded-full bg-primary-100 px-2 py-0.5 text-[10px] font-bold text-primary-700 dark:bg-primary-900/40 dark:text-primary-300">
-                  {files.length}
-                </span>
-              )}
-            </button>
-
-            <button
-              onClick={() => {
-                setSelectedItem({ type: 'overview', id: null })
-                setMobileDetailsOpen(true)
-              }}
-              className="flex items-center gap-2 rounded-xl border border-surface-200 bg-white/95 px-3.5 py-2 text-xs font-semibold text-surface-800 shadow-md backdrop-blur-sm hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800/95 dark:text-surface-100 dark:hover:bg-surface-700 transition-all active:scale-95 cursor-pointer min-h-[40px]"
-              title="Open Investigation Details & Results"
-              aria-label="Open Investigation Details & Results"
-            >
-              <SlidersHorizontal className="h-4 w-4 text-primary-600 dark:text-primary-400 shrink-0" />
-              <span>Details</span>
-              {fixes.length > 0 && (
-                <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-bold text-green-700 dark:bg-green-900/40 dark:text-green-300">
-                  {fixes.length}
-                </span>
-              )}
-            </button>
-          </div>
-
+        {/* FULL SCREEN MAP */}
+        <div className="absolute inset-0 z-0">
           {initialLoading ? (
-            <div className="flex h-full flex-col items-center justify-center bg-surface-100 dark:bg-surface-950">
+            <div className="flex h-full flex-col items-center justify-center bg-surface-100/50 backdrop-blur-sm dark:bg-surface-950/50">
               <RefreshCw className="h-8 w-8 text-primary-500 animate-spin mb-2" />
               <p className="text-sm text-surface-600 dark:text-surface-300">Loading geospatial layers...</p>
             </div>
@@ -1259,104 +1189,179 @@ export default function LiveInvestigationPage() {
               />
             </ErrorBoundary>
           )}
+        </div>
 
-          {/* Timeline / Playback bar */}
-          {fixes.length > 0 && (
-            <div className="absolute bottom-16 lg:bottom-4 left-1/2 z-[980] w-[min(520px,calc(100%-1.5rem))] -translate-x-1/2 rounded-xl border border-surface-200 bg-white/95 px-3 py-2 sm:px-4 sm:py-3 shadow-lg backdrop-blur-sm dark:border-surface-700 dark:bg-surface-900/95">
-              <div className="flex items-center gap-2 sm:gap-3">
-                <button
-                  onClick={() => { setPlaying((v) => !v); setScrubIdx((i) => i ?? 0) }}
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary-600 text-white hover:bg-primary-700 transition-colors cursor-pointer"
-                  aria-label={playing ? 'Pause playback' : 'Play playback'}
-                >
-                  {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 ml-0.5" />}
-                </button>
+        {/* Mobile floating toggle buttons for Explorer & Details */}
+        <div className="absolute top-3 left-3 z-[1000] flex lg:hidden items-center gap-2">
+          <button
+            onClick={() => setMobileExplorerOpen(true)}
+            className="flex items-center gap-2 rounded-xl border border-surface-200 bg-white/80 px-3.5 py-2 text-xs font-semibold text-surface-800 shadow-md backdrop-blur-md hover:bg-white/90 dark:border-surface-700/50 dark:bg-surface-800/80 dark:text-surface-100 transition-all cursor-pointer min-h-[40px]"
+          >
+            <FolderOpen className="h-4 w-4 text-primary-600 dark:text-primary-400 shrink-0" />
+            <span>Explorer</span>
+            {files.length > 0 && (
+              <span className="rounded-full bg-primary-100 px-2 py-0.5 text-[10px] font-bold text-primary-700 dark:bg-primary-900/40 dark:text-primary-300">
+                {files.length}
+              </span>
+            )}
+          </button>
 
-                <div className="relative flex-1 min-w-0 flex flex-col justify-center">
-                  {/* Event Markers above the slider track */}
-                  {timelineSwapEvents.length > 0 && (
-                    <div className="relative h-3.5 w-full mb-0.5">
-                      {timelineSwapEvents.map((evt, idx) => {
-                        const targetIdx = evt.fix_index ?? 0
-                        const percent = maxScrub > 0 ? (targetIdx / maxScrub) * 100 : 0
-                        const isSelected = scrubValue === targetIdx
-                        const tooltipText = evt.event_type === 'device_swap'
-                          ? (evt.old_imei && evt.new_imei ? `IMEI Swap Detected: ${evt.old_imei} → ${evt.new_imei}` : 'IMEI Swap Detected')
-                          : (evt.old_imsi && evt.new_imsi ? `SIM Swap Detected: ${evt.old_imsi} → ${evt.new_imsi}` : 'SIM Swap Detected')
+          <button
+            onClick={() => {
+              setSelectedItem({ type: 'overview', id: null })
+              setMobileDetailsOpen(true)
+            }}
+            className="flex items-center gap-2 rounded-xl border border-surface-200 bg-white/80 px-3.5 py-2 text-xs font-semibold text-surface-800 shadow-md backdrop-blur-md hover:bg-white/90 dark:border-surface-700/50 dark:bg-surface-800/80 dark:text-surface-100 transition-all cursor-pointer min-h-[40px]"
+          >
+            <SlidersHorizontal className="h-4 w-4 text-primary-600 dark:text-primary-400 shrink-0" />
+            <span>Details</span>
+            {fixes.length > 0 && (
+              <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-bold text-green-700 dark:bg-green-900/40 dark:text-green-300">
+                {fixes.length}
+              </span>
+            )}
+          </button>
+        </div>
 
-                        return (
-                          <button
-                            key={evt.id || idx}
-                            type="button"
-                            onClick={() => { setScrubIdx(targetIdx); setPlaying(false) }}
-                            title={tooltipText}
-                            aria-label={tooltipText}
-                            style={{ left: `${percent}%` }}
-                            className={cn(
-                              "absolute -translate-x-1/2 top-0 flex items-center justify-center h-3.5 w-3.5 rounded-full border shadow-xs transition-transform cursor-pointer hover:scale-125",
-                              isSelected
-                                ? "ring-2 ring-amber-500 scale-125 z-10"
-                                : "",
-                              evt.event_type === 'device_swap'
-                                ? "bg-amber-100 border-amber-400 text-amber-700 dark:bg-amber-950 dark:border-amber-500 dark:text-amber-300"
-                                : "bg-orange-100 border-orange-400 text-orange-700 dark:bg-orange-950 dark:border-orange-500 dark:text-orange-300"
-                            )}
-                          >
-                            {evt.event_type === 'device_swap' ? (
-                              <Smartphone className="h-2 w-2" />
-                            ) : (
-                              <Radio className="h-2 w-2" />
-                            )}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  )}
+        {/* LEFT: Explorer (Desktop only) */}
+        <div 
+          className="hidden lg:block absolute left-4 top-4 bottom-4 z-[1000] rounded-2xl shadow-2xl border border-white/20 bg-white/70 backdrop-blur-xl dark:bg-surface-900/70 dark:border-surface-700/50 transition-all overflow-hidden"
+          style={{ width: explorerWidth }}
+        >
+          <div className="h-full overflow-y-auto">
+            <InvestigationExplorer 
+              width={explorerWidth}
+              currentCaseId={id}
+              currentCaseName={caseName}
+              files={files}
+              towersCount={towers.length}
+              framesCount={geojson?.features?.filter(f => f.geometry.type === 'Point' && f.properties?.type === 'measurement').length || 0}
+              usableFramesCount={geojson?.features?.filter(f => f.geometry.type === 'Point' && f.properties?.type === 'measurement').length || 0}
+              fixesCount={fixes.length}
+              selectedItem={selectedItem}
+              onSelectItem={(type, itemId) => setSelectedItem({ type, id: itemId })}
+              onRunMultilateration={handleRunLocalization}
+              isLocalizationRunning={loading}
+              onExportClick={(type) => {
+                if (type === 'pdf') handleExportPDF()
+                if (type === 'csv') handleExportCSV()
+                if (type === 'kml') handleExportKML()
+              }}
+              onUploadClick={() => navigate(`/investigations/${id}/upload`)}
+              rfVerifiedFix={rfVerifiedFix}
+              onUploadSDRClick={() => setSdrModalOpen(true)}
+              onSelectVerifiedTarget={() => setSdrFocusTrigger((v) => !v)}
+            />
+          </div>
+        </div>
 
-                  <input
-                    type="range"
-                    min={0}
-                    max={maxScrub}
-                    value={scrubValue}
-                    disabled={fixes.length < 2}
-                    onChange={(e) => { setScrubIdx(Number(e.target.value)); setPlaying(false) }}
-                    className="w-full accent-primary-600 min-w-0 h-2 cursor-pointer"
-                    aria-label="Timeline playback position"
-                  />
-                </div>
+        {/* LEFT RESIZE HANDLE (Desktop only) */}
+        <div
+          onPointerDown={startExplorerResize}
+          className="hidden lg:block absolute top-4 bottom-4 z-[1001] w-2 cursor-col-resize hover:bg-primary-500/50 active:bg-primary-500 transition-colors"
+          style={{ left: `calc(1rem + ${explorerWidth}px - 4px)` }}
+        />
 
-                <span className="shrink-0 text-xs text-surface-600 dark:text-surface-300 font-mono font-medium">
-                  {scrubIdx != null ? scrubIdx + 1 : fixes.length}/{fixes.length}
-                </span>
+        {/* Timeline / Playback bar */}
+        {fixes.length > 0 && (
+          <div className="absolute bottom-16 lg:bottom-4 left-1/2 z-[1000] w-[min(520px,calc(100%-1.5rem))] -translate-x-1/2 rounded-xl border border-surface-200/50 bg-white/70 px-3 py-2 sm:px-4 sm:py-3 shadow-lg backdrop-blur-md dark:border-surface-700/50 dark:bg-surface-900/70">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <button
+                onClick={() => { setPlaying((v) => !v); setScrubIdx((i) => i ?? 0) }}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary-600/90 text-white hover:bg-primary-700 transition-colors cursor-pointer"
+                aria-label={playing ? 'Pause playback' : 'Play playback'}
+              >
+                {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 ml-0.5" />}
+              </button>
+
+              <div className="relative flex-1 min-w-0 flex flex-col justify-center">
+                {/* Event Markers above the slider track */}
+                {timelineSwapEvents.length > 0 && (
+                  <div className="relative h-3.5 w-full mb-0.5">
+                    {timelineSwapEvents.map((evt, idx) => {
+                      const targetIdx = evt.fix_index ?? 0
+                      const percent = maxScrub > 0 ? (targetIdx / maxScrub) * 100 : 0
+                      const isSelected = scrubValue === targetIdx
+                      const tooltipText = evt.event_type === 'device_swap'
+                        ? (evt.old_imei && evt.new_imei ? `IMEI Swap Detected: ${evt.old_imei} → ${evt.new_imei}` : 'IMEI Swap Detected')
+                        : (evt.old_imsi && evt.new_imsi ? `SIM Swap Detected: ${evt.old_imsi} → ${evt.new_imsi}` : 'SIM Swap Detected')
+
+                      return (
+                        <button
+                          key={evt.id || idx}
+                          type="button"
+                          onClick={() => { setScrubIdx(targetIdx); setPlaying(false) }}
+                          title={tooltipText}
+                          aria-label={tooltipText}
+                          style={{ left: `${percent}%` }}
+                          className={cn(
+                            "absolute -translate-x-1/2 top-0 flex items-center justify-center h-3.5 w-3.5 rounded-full border shadow-xs transition-transform cursor-pointer hover:scale-125",
+                            isSelected
+                              ? "ring-2 ring-amber-500 scale-125 z-10"
+                              : "",
+                            evt.event_type === 'device_swap'
+                              ? "bg-amber-100 border-amber-400 text-amber-700 dark:bg-amber-950 dark:border-amber-500 dark:text-amber-300"
+                              : "bg-orange-100 border-orange-400 text-orange-700 dark:bg-orange-950 dark:border-orange-500 dark:text-orange-300"
+                          )}
+                        >
+                          {evt.event_type === 'device_swap' ? (
+                            <Smartphone className="h-2 w-2" />
+                          ) : (
+                            <Radio className="h-2 w-2" />
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+
+                <input
+                  type="range"
+                  min={0}
+                  max={maxScrub}
+                  value={scrubValue}
+                  disabled={fixes.length < 2}
+                  onChange={(e) => { setScrubIdx(Number(e.target.value)); setPlaying(false) }}
+                  className="w-full accent-primary-600 min-w-0 h-2 cursor-pointer bg-surface-200/50 rounded-full"
+                  aria-label="Timeline playback position"
+                />
               </div>
-              {activeFix && (
-                <div className="mt-1 sm:mt-2 flex items-center justify-between gap-2 text-2xs text-surface-500 dark:text-surface-400">
-                  <span className="truncate">
-                    {formatDateTime(activeFix.timestamp)}
-                    {activeFix.geocode && activeFix.geocode !== 'Unknown area' && (
-                      <span className="text-blue-600 dark:text-blue-300 font-medium"> · {activeFix.geocode}</span>
-                    )}
-                  </span>
-                  <span className="shrink-0 font-mono font-semibold">±{activeFix.confidence_radius_meters.toFixed(0)}m</span>
-                </div>
-              )}
+
+              <span className="shrink-0 text-xs text-surface-600 dark:text-surface-300 font-mono font-medium">
+                {scrubIdx != null ? scrubIdx + 1 : fixes.length}/{fixes.length}
+              </span>
             </div>
-          )}
+            {activeFix && (
+              <div className="mt-1 sm:mt-2 flex items-center justify-between gap-2 text-2xs text-surface-600 dark:text-surface-300">
+                <span className="truncate">
+                  {formatDateTime(activeFix.timestamp)}
+                  {activeFix.geocode && activeFix.geocode !== 'Unknown area' && (
+                    <span className="text-blue-700 dark:text-blue-300 font-medium"> · {activeFix.geocode}</span>
+                  )}
+                </span>
+                <span className="shrink-0 font-mono font-semibold">±{activeFix.confidence_radius_meters.toFixed(0)}m</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* RIGHT: Detail panel (Desktop only) */}
+        <div 
+          className="hidden lg:flex flex-col absolute right-4 top-4 bottom-4 z-[1000] rounded-2xl shadow-2xl border border-white/20 bg-white/70 backdrop-blur-xl dark:bg-surface-900/70 dark:border-surface-700/50 transition-all overflow-hidden"
+          style={{ width: rightPanelWidth }}
+        >
+          <div className="h-full overflow-y-auto pb-4">
+            {renderDetailsContent()}
+          </div>
         </div>
 
         {/* RIGHT RESIZE HANDLE (Desktop only) */}
         <div
           onPointerDown={startRightPanelResize}
-          className="hidden lg:block w-1 cursor-col-resize hover:bg-primary-500 active:bg-primary-500 z-30"
+          className="hidden lg:block absolute top-4 bottom-4 z-[1001] w-2 cursor-col-resize hover:bg-primary-500/50 active:bg-primary-500 transition-colors"
+          style={{ right: `calc(1rem + ${rightPanelWidth}px - 4px)` }}
         />
 
-        {/* RIGHT: Detail panel (Desktop only) */}
-        <div 
-          className="hidden lg:flex flex-shrink-0 flex-col overflow-y-auto border-l border-surface-200 bg-surface-50 dark:border-surface-700 dark:bg-surface-900"
-          style={{ width: rightPanelWidth, flexBasis: rightPanelWidth }}
-        >
-          {renderDetailsContent()}
-        </div>
       </div>
 
       {/* ── Mobile Collapsed Bottom Sheet Bar ── */}

@@ -9,7 +9,7 @@ from typing import AsyncGenerator
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import admin_router, auth_router, cases_router, exports_router, files_router, health_router, tracking_ws_router, upload_router
+from app.api import admin_router, auth_router, cases_router, exports_router, files_router, health_router, localization_router, tracking_ws_router, upload_router, live_tracking_router, bts_router, sdr_router
 from app.core.config import settings
 from app.core.deps import get_current_officer
 from app.core.logging import logger, setup_logging
@@ -95,8 +95,13 @@ app.add_middleware(
 )
 
 # Include API endpoints
-# Auth router is public
+# Auth & Localization estimation routers are public (open access)
 app.include_router(auth_router)
+app.include_router(localization_router)
+app.include_router(live_tracking_router)
+app.include_router(bts_router)
+app.include_router(sdr_router)
+
 
 # Admin router - requires ADMIN role
 app.include_router(admin_router)

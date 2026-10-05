@@ -27,14 +27,14 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="max-w-2xl space-y-6">
+    <div className="max-w-2xl space-y-8">
       <div>
         <h1 className="text-xl font-bold text-surface-900 dark:text-surface-100">Settings</h1>
-        <p className="text-sm text-surface-500 dark:text-surface-400">Customize your platform experience</p>
+        <p className="text-base text-surface-500 dark:text-surface-400">Customize your platform experience</p>
       </div>
 
       {saved && (
-        <div className="rounded-lg bg-green-50 px-4 py-3 text-sm text-green-700 dark:bg-green-900/20 dark:text-green-300">
+        <div className="rounded-lg bg-green-50 px-4 py-4 text-base text-green-700 dark:bg-green-900/20 dark:text-green-300">
           Settings saved (local only — backend persistence coming soon)
         </div>
       )}
@@ -42,7 +42,7 @@ export default function SettingsPage() {
       {/* Theme */}
       <Card>
         <CardHeader><CardTitle><Sun className="mr-2 inline h-4 w-4" />Appearance</CardTitle></CardHeader>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-3 gap-4">
           {([
             { value: 'light', label: 'Light', icon: Sun },
             { value: 'dark',  label: 'Dark',  icon: Moon },
@@ -52,14 +52,14 @@ export default function SettingsPage() {
               key={value}
               onClick={() => value !== 'system' && setTheme(value)}
               className={cn(
-                'flex flex-col items-center gap-2 rounded-xl border p-4 transition-colors',
+                'flex flex-col items-center gap-2 rounded-xl border p-5 transition-colors',
                 (value === 'system' ? false : theme === value)
                   ? 'border-primary-500 bg-primary-50 dark:border-primary-500 dark:bg-primary-950/20'
-                  : 'border-surface-200 hover:border-surface-300 dark:border-surface-700'
+                  : 'border-surface-200/60 hover:border-surface-300 dark:border-surface-700'
               )}
             >
               <Icon className="h-5 w-5 text-surface-600 dark:text-surface-300" />
-              <span className="text-xs font-medium text-surface-700 dark:text-surface-300">{label}</span>
+              <span className="text-base font-medium text-surface-700 dark:text-surface-300">{label}</span>
             </button>
           ))}
         </div>
@@ -91,10 +91,10 @@ export default function SettingsPage() {
             { key: 'email_status',     label: 'Email Status',             desc: 'Notify on email delivery updates' },
             { key: 'reports',          label: 'Report Generation',        desc: 'Notify when reports are ready' },
           ].map(({ key, label, desc }) => (
-            <label key={key} className="flex cursor-pointer items-center justify-between gap-4 rounded-lg border border-surface-100 p-3 hover:bg-surface-50 dark:border-surface-700 dark:hover:bg-surface-800 transition-colors">
+            <label key={key} className="flex cursor-pointer items-center justify-between gap-5 rounded-lg border border-surface-100 p-4 hover:bg-surface-50 dark:border-surface-700 dark:hover:bg-surface-800 transition-colors">
               <div>
-                <p className="text-sm font-medium text-surface-800 dark:text-surface-200">{label}</p>
-                <p className="text-xs text-surface-400">{desc}</p>
+                <p className="text-base font-medium text-surface-800 dark:text-surface-200">{label}</p>
+                <p className="text-base text-surface-400">{desc}</p>
               </div>
               <div
                 className={cn(

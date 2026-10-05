@@ -69,15 +69,15 @@ export default function AuditLogsPage() {
   }, [loadLogs])
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Heading */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5">
         <div>
           <h1 className="text-2xl font-bold text-surface-900 dark:text-surface-100 flex items-center gap-2">
             <ShieldCheck className="h-6 w-6 text-amber-500" />
             Forensic & Security Audit Trail
           </h1>
-          <p className="text-sm text-surface-500 dark:text-surface-400 mt-1">
+          <p className="text-base text-surface-500 dark:text-surface-400 mt-1">
             Immutable, timestamped records of all forensic operations, data ingestion, and officer authorization events.
           </p>
         </div>
@@ -94,14 +94,14 @@ export default function AuditLogsPage() {
       </div>
 
       {error && (
-        <div className="flex items-center gap-3 p-3.5 bg-danger/10 border border-danger/20 rounded-xl text-danger text-sm">
+        <div className="flex items-center gap-4 p-4.5 bg-danger/10 border border-danger/20 rounded-xl text-danger text-base">
           <AlertCircle className="h-5 w-5 shrink-0" />
           <p>{error}</p>
         </div>
       )}
 
       {/* Filter and Search Bar */}
-      <div className="flex flex-col md:flex-row items-center justify-between gap-3">
+      <div className="flex flex-col md:flex-row items-center justify-between gap-4">
         <div className="relative w-full md:w-80">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-surface-400" />
           <Input
@@ -123,7 +123,7 @@ export default function AuditLogsPage() {
               setActionFilter(e.target.value)
               setPage(1)
             }}
-            className="rounded-lg border border-surface-200 bg-white px-3 py-1.5 text-xs text-surface-700 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-300"
+            className="rounded-lg border border-surface-200/60 bg-white px-3 py-1.5 text-base text-surface-700 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-300"
           >
             {COMMON_ACTIONS.map((a) => (
               <option key={a} value={a}>
@@ -139,7 +139,7 @@ export default function AuditLogsPage() {
               setStatusFilter(e.target.value as 'ALL' | 'SUCCESS' | 'FAILURE' | 'DENIED')
               setPage(1)
             }}
-            className="rounded-lg border border-surface-200 bg-white px-3 py-1.5 text-xs text-surface-700 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-300"
+            className="rounded-lg border border-surface-200/60 bg-white px-3 py-1.5 text-base text-surface-700 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-300"
           >
             <option value="ALL">All Outcomes</option>
             <option value="SUCCESS">Success Only</option>
@@ -152,15 +152,15 @@ export default function AuditLogsPage() {
       {/* Audit Logs Table */}
       <Card>
         <div className="overflow-x-auto">
-          <table className="w-full text-xs text-left">
-            <thead className="bg-surface-50 dark:bg-surface-800 text-surface-500 uppercase tracking-wider font-semibold border-b border-surface-200 dark:border-surface-700">
+          <table className="w-full text-base text-left">
+            <thead className="bg-surface-50 dark:bg-surface-800 text-surface-500 uppercase tracking-wider font-semibold border-b border-surface-200/60 dark:border-surface-700">
               <tr>
-                <th className="px-4 py-3">Timestamp (IST)</th>
-                <th className="px-4 py-3">Event Action</th>
-                <th className="px-4 py-3">Actor / Role</th>
-                <th className="px-4 py-3">Associated Case</th>
-                <th className="px-4 py-3">Outcome</th>
-                <th className="px-4 py-3 text-right">Details</th>
+                <th className="px-4 py-4">Timestamp (IST)</th>
+                <th className="px-4 py-4">Event Action</th>
+                <th className="px-4 py-4">Actor / Role</th>
+                <th className="px-4 py-4">Associated Case</th>
+                <th className="px-4 py-4">Outcome</th>
+                <th className="px-4 py-4 text-right">Details</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-surface-100 dark:divide-surface-800">
@@ -173,29 +173,29 @@ export default function AuditLogsPage() {
               ) : (
                 logs.map((log) => (
                   <tr key={log.log_id} className="hover:bg-surface-50/50 dark:hover:bg-surface-800/50 transition-colors">
-                    <td className="px-4 py-3 font-mono text-surface-500 whitespace-nowrap">
+                    <td className="px-4 py-4 font-mono text-surface-500 whitespace-nowrap">
                       {new Date(log.timestamp).toLocaleString('en-IN', {
                         timeZone: 'Asia/Kolkata',
                         dateStyle: 'short',
                         timeStyle: 'medium',
                       })}
                     </td>
-                    <td className="px-4 py-3 font-semibold text-surface-900 dark:text-surface-100">
-                      <span className="rounded bg-surface-100 dark:bg-surface-800 px-2 py-0.5 font-mono text-2xs">
+                    <td className="px-4 py-4 font-semibold text-surface-900 dark:text-surface-100">
+                      <span className="rounded bg-surface-100 dark:bg-surface-800 px-2 py-0.5 font-mono text-xs text-surface-500">
                         {log.action}
                       </span>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-4">
                       <div className="min-w-0">
                         <p className="font-medium text-surface-800 dark:text-surface-200 truncate">
                           {log.actor_name}
                         </p>
-                        <p className="text-2xs text-surface-400 truncate">
+                        <p className="text-xs text-surface-400 truncate">
                           {log.actor_role} {log.actor_email && `• ${log.actor_email}`}
                         </p>
                       </div>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-4">
                       {log.case_id ? (
                         <span className="font-mono font-semibold text-primary-600 dark:text-primary-400">
                           {log.case_id}
@@ -204,10 +204,10 @@ export default function AuditLogsPage() {
                         <span className="text-surface-400">—</span>
                       )}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-4">
                       <span
                         className={cn(
-                          'inline-flex items-center gap-1 px-2 py-0.5 rounded text-2xs font-bold uppercase tracking-wider',
+                          'inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs text-surface-500 font-bold uppercase tracking-wider',
                           log.status === 'SUCCESS'
                             ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
                             : 'bg-danger/10 text-danger'
@@ -217,7 +217,7 @@ export default function AuditLogsPage() {
                         {log.status}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="px-4 py-4 text-right">
                       <Button
                         variant="ghost"
                         size="xs"
@@ -236,7 +236,7 @@ export default function AuditLogsPage() {
         </div>
 
         {/* Pagination Bar */}
-        <div className="flex items-center justify-between px-4 py-3 border-t border-surface-200 dark:border-surface-700 text-xs text-surface-500">
+        <div className="flex items-center justify-between px-4 py-4 border-t border-surface-200/60 dark:border-surface-700 text-base text-surface-500">
           <div>
             Showing {logs.length} of {totalRecords} events (Page {page} of {totalPages})
           </div>
@@ -266,12 +266,12 @@ export default function AuditLogsPage() {
       {/* Modal: JSON Details Inspector */}
       <AnimatePresence>
         {selectedLog && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-5 bg-black/60 backdrop-blur-xs">
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-lg bg-white dark:bg-surface-900 rounded-2xl border border-surface-200 dark:border-surface-700 shadow-2xl p-6 overflow-hidden"
+              className="w-full max-w-lg bg-white dark:bg-surface-900 rounded-2xl border border-surface-200/60 dark:border-surface-700 shadow-2xl p-6 overflow-hidden"
             >
               <div className="flex items-center justify-between pb-4 border-b border-surface-100 dark:border-surface-800">
                 <div className="flex items-center gap-2">
@@ -288,29 +288,29 @@ export default function AuditLogsPage() {
                 </button>
               </div>
 
-              <div className="mt-4 space-y-3 text-xs">
-                <div className="grid grid-cols-2 gap-2 bg-surface-50 dark:bg-surface-800 p-3 rounded-xl">
+              <div className="mt-4 space-y-3 text-base">
+                <div className="grid grid-cols-2 gap-2 bg-surface-50 dark:bg-surface-800 p-4 rounded-xl">
                   <div>
-                    <span className="text-surface-400 font-semibold uppercase text-2xs">Action</span>
+                    <span className="text-surface-400 font-semibold uppercase text-xs text-surface-500">Action</span>
                     <p className="font-mono font-bold text-surface-900 dark:text-surface-100 mt-0.5">{selectedLog.action}</p>
                   </div>
                   <div>
-                    <span className="text-surface-400 font-semibold uppercase text-2xs">Status</span>
+                    <span className="text-surface-400 font-semibold uppercase text-xs text-surface-500">Status</span>
                     <p className="font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">{selectedLog.status}</p>
                   </div>
                   <div>
-                    <span className="text-surface-400 font-semibold uppercase text-2xs">Actor</span>
+                    <span className="text-surface-400 font-semibold uppercase text-xs text-surface-500">Actor</span>
                     <p className="text-surface-900 dark:text-surface-100 mt-0.5">{selectedLog.actor_name} ({selectedLog.actor_role})</p>
                   </div>
                   <div>
-                    <span className="text-surface-400 font-semibold uppercase text-2xs">IP Address</span>
+                    <span className="text-surface-400 font-semibold uppercase text-xs text-surface-500">IP Address</span>
                     <p className="font-mono text-surface-600 dark:text-surface-300 mt-0.5">{selectedLog.ip_address || 'Internal'}</p>
                   </div>
                 </div>
 
                 <div>
-                  <span className="text-surface-400 font-semibold uppercase text-2xs">Metadata JSON</span>
-                  <pre className="mt-1 max-h-60 overflow-y-auto rounded-xl bg-surface-950 p-3 text-2xs text-emerald-400 font-mono">
+                  <span className="text-surface-400 font-semibold uppercase text-xs text-surface-500">Metadata JSON</span>
+                  <pre className="mt-1 max-h-60 overflow-y-auto rounded-xl bg-surface-950 p-4 text-xs text-surface-500 text-emerald-400 font-mono">
                     {JSON.stringify(selectedLog.details || {}, null, 2)}
                   </pre>
                 </div>

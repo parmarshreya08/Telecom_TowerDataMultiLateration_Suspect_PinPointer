@@ -30,11 +30,19 @@ async def _authorize_websocket(token: str | None) -> bool:
     """
     Validate the bearer JWT and a non-revoked, non-expired session row.
     Returns True when the connection may be accepted.
+    Supports both standard session tokens and short-lived live tracking tokens.
     """
     if not token:
         return False
     payload = decode_token(token)
-    if not payload or not payload.get("sub") or not payload.get("jti"):
+    if not payload:
+        return False
+        
+    # Check if it's a live tracking token
+    if payload.get("type") == "live_tracking" and payload.get("case_id"):
+        return True
+        
+    if not payload.get("sub") or not payload.get("jti"):
         return False
     jti = payload.get("jti")
     try:

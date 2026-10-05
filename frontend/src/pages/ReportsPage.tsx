@@ -119,10 +119,10 @@ export default function ReportsPage() {
   }
 
   return (
-    <div className="max-w-5xl space-y-6">
+    <div className="max-w-5xl mx-auto space-y-8">
       <div>
         <h1 className="text-xl font-bold text-surface-900 dark:text-surface-100">Forensic Reports & Exports</h1>
-        <p className="text-sm text-surface-500 dark:text-surface-400">Generate court-admissible forensic localization reports from real database telemetry</p>
+        <p className="text-base text-surface-500 dark:text-surface-400">Generate court-admissible forensic localization reports from real database telemetry</p>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -138,12 +138,12 @@ export default function ReportsPage() {
             </CardHeader>
 
             {loadingCases ? (
-              <div className="py-8 text-center text-sm text-surface-400">
+              <div className="py-8 text-center text-base text-surface-400">
                 <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-2 text-primary-500" />
                 Loading cases from database...
               </div>
             ) : cases.length === 0 ? (
-              <div className="py-8 text-center text-sm text-surface-400">
+              <div className="py-8 text-center text-base text-surface-400">
                 No cases found in database. Ingest CDR/tower logs first.
               </div>
             ) : (
@@ -151,10 +151,10 @@ export default function ReportsPage() {
                 {cases.map((inv) => (
                   <label
                     key={inv.id}
-                    className={`flex items-center gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${
+                    className={`flex items-center gap-4 rounded-lg border p-4 cursor-pointer transition-colors ${
                       selectedInv === inv.id
                         ? 'border-primary-400 bg-primary-50 dark:border-primary-600 dark:bg-primary-950/20'
-                        : 'border-surface-200 dark:border-surface-700 hover:border-surface-300'
+                        : 'border-surface-200/60 dark:border-surface-700 hover:border-surface-300'
                     }`}
                   >
                     <input
@@ -166,8 +166,8 @@ export default function ReportsPage() {
                       className="accent-primary-600"
                     />
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-surface-800 dark:text-surface-200">{inv.case_name || inv.id}</p>
-                      <p className="text-xs text-surface-400">{inv.case_number || inv.id}</p>
+                      <p className="text-base font-medium text-surface-800 dark:text-surface-200">{inv.case_name || inv.id}</p>
+                      <p className="text-base text-surface-400">{inv.case_number || inv.id}</p>
                     </div>
                     <Badge variant={getCaseStatusBadgeVariant(getCaseLifecycleStatus(inv))}>
                       {getCaseLifecycleStatus(inv)}
@@ -181,30 +181,30 @@ export default function ReportsPage() {
             <div className="border-t border-surface-100 dark:border-surface-700 pt-4 mt-2">
               <div className="flex items-center gap-2 mb-3">
                 <Clock className="h-3.5 w-3.5 text-surface-400" />
-                <label className="text-xs font-medium text-surface-500 dark:text-surface-400 uppercase tracking-wider">Time Range (Optional)</label>
+                <label className="text-base font-medium text-surface-500 dark:text-surface-400 uppercase tracking-wider">Time Range (Optional)</label>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-2xs text-surface-400 block mb-1">Start</label>
+                  <label className="text-xs text-surface-400 block mb-1">Start</label>
                   <input
                     type="datetime-local"
                     value={timeStart}
                     onChange={(e) => setTimeStart(e.target.value)}
-                    className="input text-xs py-1.5"
+                    className="input text-base py-1.5"
                   />
                 </div>
                 <div>
-                  <label className="text-2xs text-surface-400 block mb-1">End</label>
+                  <label className="text-xs text-surface-400 block mb-1">End</label>
                   <input
                     type="datetime-local"
                     value={timeEnd}
                     onChange={(e) => setTimeEnd(e.target.value)}
-                    className="input text-xs py-1.5"
+                    className="input text-base py-1.5"
                   />
                 </div>
               </div>
               {(timeStart || timeEnd) && (
-                <p className="text-2xs text-primary-600 dark:text-primary-400 mt-2">
+                <p className="text-xs text-surface-500 text-primary-600 dark:text-primary-400 mt-2">
                   Exports will include only fixes within the selected time range.
                 </p>
               )}
@@ -212,12 +212,12 @@ export default function ReportsPage() {
 
             {/* Export Formats */}
             <div className="mt-4">
-              <label className="text-xs font-medium text-surface-500 dark:text-surface-400 uppercase tracking-wider mb-3 block">Export Format</label>
-              <div className="grid gap-3 sm:grid-cols-2">
+              <label className="text-base font-medium text-surface-500 dark:text-surface-400 uppercase tracking-wider mb-3 block">Export Format</label>
+              <div className="grid gap-4 sm:grid-cols-2">
                 {EXPORT_FORMATS.map(({ value, label, icon: Icon, desc }) => (
                   <motion.button
                     key={value}
-                    className="flex items-start gap-3 rounded-lg border border-surface-200 p-3 text-left hover:border-primary-400 hover:bg-primary-50/50 dark:border-surface-700 dark:hover:border-primary-600 dark:hover:bg-primary-950/10 transition-colors"
+                    className="flex items-start gap-4 rounded-lg border border-surface-200/60 p-4 text-left hover:border-primary-400 hover:bg-primary-50/50 dark:border-surface-700 dark:hover:border-primary-600 dark:hover:bg-primary-950/10 transition-colors"
                     onClick={() => handleGenerate(value)}
                     whileTap={{ scale: 0.98 }}
                     disabled={generating === value || !selectedInv}
@@ -229,8 +229,8 @@ export default function ReportsPage() {
                       }
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-surface-800 dark:text-surface-200">{label}</p>
-                      <p className="text-2xs text-surface-400 mt-0.5">{desc}</p>
+                      <p className="text-base font-medium text-surface-800 dark:text-surface-200">{label}</p>
+                      <p className="text-xs text-surface-400 mt-0.5">{desc}</p>
                     </div>
                   </motion.button>
                 ))}
@@ -239,7 +239,7 @@ export default function ReportsPage() {
           </Card>
 
           {reportError && (
-            <div className="flex items-start gap-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 p-4 text-xs text-red-700 dark:text-red-300">
+            <div className="flex items-start gap-4 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 p-5 text-base text-red-700 dark:text-red-300">
               <AlertCircle className="h-4 w-4 shrink-0 text-red-500 mt-0.5" />
               <div>
                 <p className="font-semibold">Unable to Generate Report</p>
@@ -271,43 +271,43 @@ export default function ReportsPage() {
                   </div>
                 </CardHeader>
                 <div className="space-y-4">
-                  <div className="flex items-center gap-3 rounded-lg bg-surface-50 p-4 dark:bg-surface-800">
+                  <div className="flex items-center gap-4 rounded-lg bg-surface-50 p-5 dark:bg-surface-800">
                     <Shield className="h-8 w-8 text-primary-600 shrink-0" />
                     <div>
-                      <p className="text-sm font-semibold text-surface-800 dark:text-surface-200">Report Reference: {report.report_id}</p>
-                      <p className="text-xs text-surface-400">Generated {formatDateTime(report.generated_at)}</p>
+                      <p className="text-base font-semibold text-surface-800 dark:text-surface-200">Report Reference: {report.report_id}</p>
+                      <p className="text-base text-surface-400">Generated {formatDateTime(report.generated_at)}</p>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                    <div className="p-3 rounded-lg bg-surface-50 dark:bg-surface-800">
-                      <p className="text-2xs text-surface-400">Algorithm</p>
-                      <p className="text-xs font-semibold text-surface-800 dark:text-surface-200 mt-0.5">{report.methodology?.algorithm || 'Trilateration'}</p>
+                  <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                    <div className="p-4 rounded-lg bg-surface-50 dark:bg-surface-800">
+                      <p className="text-xs text-surface-400">Algorithm</p>
+                      <p className="text-base font-semibold text-surface-800 dark:text-surface-200 mt-0.5">{report.methodology?.algorithm || 'Trilateration'}</p>
                     </div>
-                    <div className="p-3 rounded-lg bg-surface-50 dark:bg-surface-800">
-                      <p className="text-2xs text-surface-400">Confidence Level</p>
-                      <p className="text-xs font-semibold text-surface-800 dark:text-surface-200 mt-0.5">{((report.methodology?.confidence_level || 0.95) * 100).toFixed(0)}%</p>
+                    <div className="p-4 rounded-lg bg-surface-50 dark:bg-surface-800">
+                      <p className="text-xs text-surface-400">Confidence Level</p>
+                      <p className="text-base font-semibold text-surface-800 dark:text-surface-200 mt-0.5">{((report.methodology?.confidence_level || 0.95) * 100).toFixed(0)}%</p>
                     </div>
-                    <div className="p-3 rounded-lg bg-surface-50 dark:bg-surface-800">
-                      <p className="text-2xs text-surface-400">Fix Count</p>
-                      <p className="text-xs font-semibold text-surface-800 dark:text-surface-200 mt-0.5">{report.summary?.fix_count || 0}</p>
+                    <div className="p-4 rounded-lg bg-surface-50 dark:bg-surface-800">
+                      <p className="text-xs text-surface-400">Fix Count</p>
+                      <p className="text-base font-semibold text-surface-800 dark:text-surface-200 mt-0.5">{report.summary?.fix_count || 0}</p>
                     </div>
-                    <div className="p-3 rounded-lg bg-surface-50 dark:bg-surface-800">
-                      <p className="text-2xs text-surface-400">Subscribers</p>
-                      <p className="text-xs font-semibold text-surface-800 dark:text-surface-200 mt-0.5">{report.summary?.subscriber_count || 0}</p>
+                    <div className="p-4 rounded-lg bg-surface-50 dark:bg-surface-800">
+                      <p className="text-xs text-surface-400">Subscribers</p>
+                      <p className="text-base font-semibold text-surface-800 dark:text-surface-200 mt-0.5">{report.summary?.subscriber_count || 0}</p>
                     </div>
                   </div>
 
                   {report.subscribers && report.subscribers.length > 0 && (
                     <div>
-                      <p className="text-xs font-semibold text-surface-500 dark:text-surface-400 mb-2">Subscriber Analysis</p>
+                      <p className="text-base font-semibold text-surface-500 dark:text-surface-400 mb-2">Subscriber Analysis</p>
                       {report.subscribers.map((sub) => (
-                        <div key={sub.subscriber_identifier} className="rounded-lg border border-surface-200 p-3 dark:border-surface-700">
+                        <div key={sub.subscriber_identifier} className="rounded-lg border border-surface-200/60 p-4 dark:border-surface-700">
                           <div className="flex items-center justify-between mb-1">
-                            <p className="text-sm font-semibold text-surface-800 dark:text-surface-200">{sub.subscriber_identifier}</p>
-                            <span className="text-xs font-medium text-primary-600 dark:text-primary-400">{sub.fix_count} fixes computed</span>
+                            <p className="text-base font-semibold text-surface-800 dark:text-surface-200">{sub.subscriber_identifier}</p>
+                            <span className="text-base font-medium text-primary-600 dark:text-primary-400">{sub.fix_count} fixes computed</span>
                           </div>
-                          <div className="grid grid-cols-2 gap-2 text-xs text-surface-500 dark:text-surface-400">
+                          <div className="grid grid-cols-2 gap-2 text-base text-surface-500 dark:text-surface-400">
                             <span>Centroid Lat/Lon: {sub.centroid?.latitude?.toFixed(4)}, {sub.centroid?.longitude?.toFixed(4)}</span>
                             <span>Mean Confidence Radius: ±{sub.confidence?.mean_meters?.toFixed(0)}m</span>
                           </div>
@@ -325,11 +325,11 @@ export default function ReportsPage() {
         <div>
           <Card>
             <CardHeader><CardTitle>Report Standards</CardTitle></CardHeader>
-            <div className="space-y-3 text-xs text-surface-500 dark:text-surface-400">
+            <div className="space-y-3 text-base text-surface-500 dark:text-surface-400">
               <p>
                 E-Rakshak reports adhere to digital evidence preservation standards under the Indian Evidence Act / Bharatiya Sakshya Adhiniyam.
               </p>
-              <div className="p-3 rounded-lg bg-surface-50 dark:bg-surface-800 space-y-1">
+              <div className="p-4 rounded-lg bg-surface-50 dark:bg-surface-800 space-y-1">
                 <p className="font-semibold text-surface-700 dark:text-surface-300">Included In Forensic Exports:</p>
                 <ul className="list-disc list-inside space-y-0.5">
                   <li>JPL Multilateration Residuals</li>
@@ -340,7 +340,7 @@ export default function ReportsPage() {
                   <li>Timestamped Audit Trail</li>
                 </ul>
               </div>
-              <div className="p-3 rounded-lg bg-surface-50 dark:bg-surface-800 space-y-1">
+              <div className="p-4 rounded-lg bg-surface-50 dark:bg-surface-800 space-y-1">
                 <p className="font-semibold text-surface-700 dark:text-surface-300">Export Formats:</p>
                 <ul className="list-disc list-inside space-y-0.5">
                   <li><b>PDF</b> — Court-admissible forensic report</li>
@@ -350,8 +350,8 @@ export default function ReportsPage() {
                   <li><b>GeoJSON</b> — GIS-compatible map layer</li>
                 </ul>
               </div>
-              <div className="p-3 rounded-lg bg-primary-50 dark:bg-primary-950/20 border border-primary-200 dark:border-primary-800">
-                <p className="font-semibold text-primary-700 dark:text-primary-300 text-2xs uppercase tracking-wider mb-1">Time Range Filter</p>
+              <div className="p-4 rounded-lg bg-primary-50 dark:bg-primary-950/20 border border-primary-200 dark:border-primary-800">
+                <p className="font-semibold text-primary-700 dark:text-primary-300 text-xs text-surface-500 uppercase tracking-wider mb-1">Time Range Filter</p>
                 <p className="text-primary-600 dark:text-primary-400">
                   Set a start and end time to export only the fixes within that window. All formats respect the filter.
                 </p>

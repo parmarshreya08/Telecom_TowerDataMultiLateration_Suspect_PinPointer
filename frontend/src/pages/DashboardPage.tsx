@@ -19,18 +19,18 @@ const StatCard = ({
   icon: Icon, label, value, sub, color,
 }: { icon: React.ElementType; label: string; value: number | string; sub?: string; color: string }) => (
   <motion.div
-    className="card p-4"
+    className="card p-6 shadow-md border border-surface-200/60 dark:border-surface-800"
     whileHover={{ y: -2 }}
     transition={{ duration: 0.15 }}
   >
-    <div className="flex items-center gap-3">
+    <div className="flex items-center gap-4">
       <div className={`flex h-10 w-10 items-center justify-center rounded-xl shrink-0 ${color}`}>
         <Icon className="h-5 w-5" />
       </div>
       <div className="min-w-0">
-        <p className="text-xs text-surface-500 dark:text-surface-400 truncate">{label}</p>
+        <p className="text-base text-surface-500 dark:text-surface-400 truncate">{label}</p>
         <p className="text-xl font-bold text-surface-900 dark:text-surface-100">{value}</p>
-        {sub && <p className="text-xs text-surface-400 mt-0.5">{sub}</p>}
+        {sub && <p className="text-base text-surface-400 mt-0.5">{sub}</p>}
       </div>
     </div>
   </motion.div>
@@ -110,18 +110,18 @@ export default function DashboardPage() {
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
 
   return (
-    <div className="space-y-6 max-w-7xl">
+    <div className="space-y-8 max-w-7xl mx-auto">
       {/* ── Header ── */}
       <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-xl font-bold text-surface-900 dark:text-surface-100">
             {greeting}, Officer
           </h1>
-          <p className="text-sm text-surface-500 dark:text-surface-400">
+          <p className="text-base text-surface-500 dark:text-surface-400">
             {new Date().toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-4">
           <Button
             variant="secondary"
             size="md"
@@ -143,12 +143,12 @@ export default function DashboardPage() {
 
       {/* Error state */}
       {error && (
-        <div className="p-4 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className="p-5 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 flex items-center justify-between">
+          <div className="flex items-center gap-4">
             <AlertCircle className="h-5 w-5 shrink-0 text-red-500" />
             <div>
-              <p className="font-semibold text-sm">Unable to connect to backend</p>
-              <p className="text-xs text-red-600 dark:text-red-400">{error}</p>
+              <p className="font-semibold text-base">Unable to connect to backend</p>
+              <p className="text-base text-red-600 dark:text-red-400">{error}</p>
             </div>
           </div>
           <Button variant="secondary" size="sm" icon={<RefreshCw className="h-4 w-4" />} onClick={refresh}>
@@ -158,7 +158,7 @@ export default function DashboardPage() {
       )}
 
       {/* ── Stats Grid ── */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-6">
         <StatCard icon={Activity} label="Active Cases" value={stats?.active_cases ?? (isLoading ? '...' : 0)} color="bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" />
         <StatCard icon={CheckCircle} label="Completed Cases" value={stats?.completed_cases ?? (isLoading ? '...' : 0)} color="bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400" />
         <StatCard icon={Upload} label="Total Uploads" value={stats?.total_uploads ?? (isLoading ? '...' : 0)} color="bg-teal-100 text-teal-600 dark:bg-teal-900/30 dark:text-teal-400" />
@@ -173,31 +173,31 @@ export default function DashboardPage() {
           <Card>
             <CardHeader>
               <CardTitle>Recent Investigations</CardTitle>
-              <button onClick={() => navigate('/investigations')} className="flex items-center gap-1 text-xs text-primary-600 hover:underline dark:text-primary-400">
+              <button onClick={() => navigate('/investigations')} className="flex items-center gap-1 text-base text-primary-600 hover:underline dark:text-primary-400">
                 View all <ArrowRight className="h-3.5 w-3.5" />
               </button>
             </CardHeader>
             {isLoading ? (
-              <div className="p-8 text-center text-sm text-surface-400">
+              <div className="p-8 text-center text-base text-surface-400">
                 <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-2 text-primary-500" />
                 Loading backend investigations...
               </div>
             ) : cases.length === 0 ? (
-              <div className="p-8 text-center text-sm text-surface-400">
+              <div className="p-8 text-center text-base text-surface-400">
                 <FolderOpen className="h-8 w-8 mx-auto mb-2 text-surface-300 dark:text-surface-600" />
                 <p className="font-medium text-surface-600 dark:text-surface-300">No investigations found in database</p>
-                <p className="text-xs text-surface-400 mt-1 mb-4">Upload CDR/tower data to create your first investigation case.</p>
+                <p className="text-base text-surface-400 mt-1 mb-4">Upload CDR/tower data to create your first investigation case.</p>
                 <Button variant="primary" size="sm" icon={<Plus className="h-4 w-4" />} onClick={() => navigate('/upload')}>
                   Upload Data
                 </Button>
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="w-full text-base">
                   <thead>
                     <tr className="border-b border-surface-100 dark:border-surface-700">
                       {['Case ID', 'Target / Suspect', 'Status', 'Tracking', 'Updated'].map((h) => (
-                        <th key={h} className="pb-3 text-left text-xs font-semibold text-surface-500 dark:text-surface-400 pr-4 last:pr-0">
+                        <th key={h} className="pb-3 text-left text-base font-semibold text-surface-500 dark:text-surface-400 pr-4 last:pr-0">
                           {h}
                         </th>
                       ))}
@@ -210,27 +210,27 @@ export default function DashboardPage() {
                         className="group cursor-pointer hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors"
                         onClick={() => navigate(`/investigations/${inv.id}`)}
                       >
-                        <td className="py-3 pr-4">
-                          <p className="font-medium text-surface-900 dark:text-surface-100 group-hover:text-primary-600 transition-colors text-xs leading-tight">
+                        <td className="py-4 pr-4">
+                          <p className="font-medium text-surface-900 dark:text-surface-100 group-hover:text-primary-600 transition-colors text-base leading-tight">
                             {inv.case_name || inv.id}
                           </p>
-                          <p className="text-2xs text-surface-400">{inv.case_number || inv.id}</p>
+                          <p className="text-xs text-surface-400">{inv.case_number || inv.id}</p>
                         </td>
-                        <td className="py-3 pr-4 text-xs text-surface-600 dark:text-surface-400">
+                        <td className="py-4 pr-4 text-base text-surface-600 dark:text-surface-400">
                           {inv.suspect_name || inv.mobile_number || 'Target'}
                         </td>
-                        <td className="py-3 pr-4">
+                        <td className="py-4 pr-4">
                           <Badge variant={getCaseStatusBadgeVariant(getCaseLifecycleStatus(inv))}>
                             {getCaseLifecycleStatus(inv)}
                           </Badge>
                         </td>
-                        <td className="py-3 pr-4">
-                          <span className={cn('text-xs font-medium', TRACKING_STATUS_COLORS[inv.tracking_status] || 'text-surface-500 dark:text-surface-400')}>
+                        <td className="py-4 pr-4">
+                          <span className={cn('text-base font-medium', TRACKING_STATUS_COLORS[inv.tracking_status] || 'text-surface-500 dark:text-surface-400')}>
                             {inv.tracking_status === 'Live' && <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-green-400 animate-ping-slow" />}
                             {inv.tracking_status}
                           </span>
                         </td>
-                        <td className="py-3 text-xs text-surface-400">
+                        <td className="py-4 text-base text-surface-400">
                           {inv.updated_at ? formatTimeAgo(inv.updated_at) : 'Recent'}
                         </td>
                       </tr>

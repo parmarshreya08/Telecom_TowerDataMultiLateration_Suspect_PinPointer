@@ -121,3 +121,54 @@ class LocalizationFix(BaseModel):
         if val < 0.0:
             raise ValueError("Confidence radius must be non-negative.")
         return val
+
+
+class TowerMeasurementInput(BaseModel):
+    """
+    Input schema for a single cell transceiver measurement in standalone API calls.
+    """
+    tower_id: Optional[UUID] = Field(default=None, description="Optional transceiver ID.")
+    cgi: str = Field(default="404-20-0000-0000", description="Cell Global Identity (MCC-MNC-LAC-CellID).")
+    latitude: float = Field(..., ge=-90.0, le=90.0, description="WGS84 latitude coordinate.")
+    longitude: float = Field(..., ge=-180.0, le=180.0, description="WGS84 longitude coordinate.")
+    azimuth: Optional[float] = Field(default=None, ge=0.0, le=360.0, description="Sector azimuth in degrees.")
+    beamwidth: Optional[float] = Field(default=None, ge=0.0, le=360.0, description="Beamwidth in degrees.")
+    signal_strength: Optional[float] = Field(default=None, description="Received signal strength (RSSI) in dBm.")
+    timing_advance: Optional[int] = Field(default=None, description="LTE Timing Advance index.")
+    rtt: Optional[float] = Field(default=None, description="Network Round Trip Time in ms.")
+    pseudorange_meters: Optional[float] = Field(default=None, gt=0.0, description="Explicit pseudorange in meters.")
+    is_catalog: bool = Field(default=True, description="True if tower is from authoritative catalog.")
+
+
+class SingleFrameInput(BaseModel):
+    """
+    Group of tower observations at a single instant in time.
+    """
+    timestamp: Optional[datetime] = Field(default_factory=now_ist, description="Observation timestamp.")
+    towers: list[TowerMeasurementInput] = Field(..., min_length=3, description="List of observed towers (min 3 for trilateration).")
+
+
+class LocalizationEstimateRequest(BaseModel):
+    """
+    Standalone request payload for localization engine estimation.
+    """
+    subscriber_identifier: str = Field(default="EXTERNAL_TARGET", description="Suspect identity target (MSISDN/IMSI).")
+    case_id: str = Field(default="EXTERNAL_QUERY", description="Case reference identifier.")
+    target_type: str = Field(default="pedestrian", description="Target mobility profile: 'pedestrian' or 'vehicle'.")
+    frames: list[SingleFrameInput] = Field(..., min_length=1, description="One or more frames of tower observations.")
+    apply_kalman: bool = Field(default=True, description="Whether to apply Kalman tracking across consecutive frames.")
+    include_velocity: bool = Field(default=False, description="Whether to include velocity vectors in output fixes (default False).")
+    utm_zone: int = Field(default=0, description="Fixed UTM zone (0 for auto-derivation per frame).")
+
+
+
+class LocalizationEstimateResponse(BaseModel):
+    """
+    Response containing resolved localization fixes and map GeoJSON.
+    """
+    status: str = Field(default="success")
+    fix_count: int = Field(..., description="Number of successfully resolved position fixes.")
+    fixes: list[LocalizationFix] = Field(..., description="List of resolved LocalizationFix records.")
+    geojson: dict = Field(..., description="GeoJSON FeatureCollection representing fixes and ellipses for map rendering.")
+    rogue_cgis_detected: list[str] = Field(default_factory=list, description="Rogue BTS/IMSI-catcher CGIs detected and excluded.")
+
