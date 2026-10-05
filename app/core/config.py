@@ -3,8 +3,17 @@ E-Rakshak configuration management.
 Defines system settings using Pydantic Settings v2.
 """
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+# Origins that must ALWAYS be allowed, regardless of how CORS_ORIGINS is set.
+# These are the real deployment URLs — keeping them here prevents the
+# "works on localhost, blocked in production" failure mode where the hosted
+# frontend calls a separate backend origin (hardcoded in the built bundle).
+REQUIRED_CORS_ORIGINS = (
+    "https://tower-multilateration.onrender.com",
+)
 
 
 class Settings(BaseSettings):
@@ -28,6 +37,20 @@ class Settings(BaseSettings):
         default="http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000,http://localhost:4173,http://127.0.0.1:4173",
         description="Comma-separated list of allowed CORS origins",
     )
+
+    @field_validator("CORS_ORIGINS")
+    @classmethod
+    def _ensure_required_origins(cls, value: str) -> str:
+        """Merge the always-allowed deployment origins into CORS_ORIGINS.
+
+        Guarantees the production frontend is never rejected even if the
+        CORS_ORIGINS env var is missing, stale, or only lists localhost.
+        """
+        origins = [o.strip() for o in value.split(",") if o.strip()]
+        for required in REQUIRED_CORS_ORIGINS:
+            if required not in origins:
+                origins.append(required)
+        return ",".join(origins)
     API_KEY_SECRET: str = Field(
         ...,
         description="Secret key for JWT signing and API authentication (must be set in .env)",
