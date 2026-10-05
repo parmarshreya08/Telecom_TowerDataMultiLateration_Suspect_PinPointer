@@ -63,6 +63,8 @@ export function formatDeleteError(err: unknown, resource: 'file' | 'investigatio
 }
 
 // Response interceptor — on 401 (except auth endpoints), clear session + go to login
+let redirectingToLogin = false
+
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -72,8 +74,12 @@ apiClient.interceptors.response.use(
     if (status === 401 && !isAuthCall && !url.endsWith('/login')) {
       localStorage.removeItem('erakshak_access_token')
       localStorage.removeItem('erakshak_officer')
-      if (!window.location.pathname.startsWith('/login')) {
-        window.location.href = '/login'
+      // Guard against a burst of concurrent 401s each firing a redirect.
+      if (!redirectingToLogin && !window.location.pathname.startsWith('/login')) {
+        redirectingToLogin = true
+        const returnTo = window.location.pathname + window.location.search
+        const target = returnTo && returnTo !== '/' ? `/login?returnTo=${encodeURIComponent(returnTo)}` : '/login'
+        window.location.assign(target)
       }
     }
     return Promise.reject(error)

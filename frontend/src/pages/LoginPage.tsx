@@ -41,9 +41,17 @@ export default function LoginPage() {
       const res = await authApi.login({ email, password })
       setToken(res.access_token)
       setStoredOfficer(res.officer)
-      // Redirect back to the page the user was trying to reach, or fall back to /dashboard
-      const from = (location.state as { from?: string } | null)?.from
-      navigate(from && from !== '/login' ? from : '/dashboard', { replace: true })
+      // Redirect back to the page the user was trying to reach, or fall back to /dashboard.
+      // `from` (router state) wins; otherwise honour a ?returnTo= param set by the
+      // 401 interceptor so session-expiry logins resume where they left off.
+      const fromState = (location.state as { from?: string } | null)?.from
+      const rawReturnTo = new URLSearchParams(location.search).get('returnTo')
+      // Only accept same-origin paths — reject absolute/protocol-relative URLs.
+      const returnTo = rawReturnTo && rawReturnTo.startsWith('/') && !rawReturnTo.startsWith('//')
+        ? rawReturnTo
+        : null
+      const target = fromState || returnTo || '/dashboard'
+      navigate(target && target !== '/login' ? target : '/dashboard', { replace: true })
     } catch (err) {
       setError(errorMessage(err))
     } finally {

@@ -1,11 +1,13 @@
 import { useState } from 'react'
-import { Outlet } from 'react-router-dom'
+import { Outlet, useLocation } from 'react-router-dom'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { Topbar } from '@/components/layout/Topbar'
 import { NotificationDrawer } from '@/components/notifications/NotificationDrawer'
+import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
 import { useNotifications } from '@/hooks/useNotifications'
 
 export function AppLayout() {
+  const location = useLocation()
   const [sidebarOpen, setSidebarOpen]   = useState(() => typeof window !== 'undefined' ? window.innerWidth >= 768 : true)
   const [notifOpen, setNotifOpen]       = useState(false)
   const { notifications, unreadCount, markRead, markAllRead } = useNotifications()
@@ -25,7 +27,9 @@ export function AppLayout() {
         />
 
         <main className="flex-1 overflow-y-auto p-6">
-          <Outlet />
+          <ErrorBoundary key={location.pathname} label="This page failed to load">
+            <Outlet />
+          </ErrorBoundary>
         </main>
       </div>
 

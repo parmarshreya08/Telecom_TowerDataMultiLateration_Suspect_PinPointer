@@ -72,12 +72,14 @@ export default function RegisterPage() {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setError(null)
-    if (password !== confirm) { setError('Passwords do not match.'); return }
-    if (password.length < 8)  { setError('Password must be at least 8 characters.'); return }
+    const trimmedPassword = password.trim()
+    const trimmedConfirm  = confirm.trim()
+    if (trimmedPassword !== trimmedConfirm) { setError('Passwords do not match.'); return }
+    if (trimmedPassword.length < 8)  { setError('Password must be at least 8 characters.'); return }
 
     setLoading(true)
     try {
-      const res = await authApi.register({ officer_name: name, email, password })
+      const res = await authApi.register({ officer_name: name.trim(), email: email.trim(), password: trimmedPassword })
       setToken(res.access_token)
       setStoredOfficer(res.officer)
       navigate('/dashboard', { replace: true })

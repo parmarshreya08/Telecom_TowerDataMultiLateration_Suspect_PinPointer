@@ -48,7 +48,10 @@ export default function FieldTrackerPage() {
 
     // 2. Connect to WebSocket
     // Remove http:// or https:// from API URL to get ws:// or wss://
-    const wsUrlBase = import.meta.env.VITE_API_URL?.replace(/^http/, 'ws') || 'ws://localhost:8000'
+    const pageIsHttps = window.location.protocol === 'https:'
+    const wsUrlBase =
+      import.meta.env.VITE_API_URL?.replace(/^https?:\/\//, pageIsHttps ? 'wss://' : 'ws://') ||
+      (pageIsHttps ? 'wss://' : 'ws://') + window.location.host
     const ws = new WebSocket(`${wsUrlBase}/api/ws/tracking/${caseId}?token=${token}`)
     
     ws.onopen = () => {
