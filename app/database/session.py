@@ -10,12 +10,20 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from app.core.config import settings
 
 
-# Create asynchronous database engine. 
-# Uses 'echo' to dump SQL commands when running in debug mode
+# Create asynchronous database engine.
+# Uses 'echo' to dump SQL commands when running in debug mode.
+#
+# pool_pre_ping guards against serverless Postgres (Neon/Supabase) closing
+# idle connections; pool_recycle caps connection age below typical proxy idle
+# timeouts. pool_size/max_overflow tuned modestly for single-instance deploys.
 engine = create_async_engine(
     settings.DATABASE_URL,
     echo=settings.DEBUG,
-    future=True
+    future=True,
+    pool_pre_ping=True,
+    pool_recycle=1800,
+    pool_size=5,
+    max_overflow=10,
 )
 
 # Async session factory

@@ -28,6 +28,7 @@ class Settings(BaseSettings):
 
     # General App Configs
     APP_NAME: str = Field(default="E-Rakshak Telecom Ingestion")
+    APP_VERSION: str = Field(default="1.0.0")
     APP_ENV: str = Field(default="development")
     DEBUG: bool = Field(default=True)
     LOG_LEVEL: str = Field(default="INFO")

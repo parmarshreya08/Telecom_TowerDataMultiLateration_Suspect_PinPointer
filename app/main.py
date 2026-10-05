@@ -6,13 +6,15 @@ Initializes FastAPI, configures routers, configures documentation, and manages l
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.api import admin_router, auth_router, cases_router, exports_router, files_router, health_router, localization_router, tracking_ws_router, upload_router, live_tracking_router, bts_router, sdr_router
 from app.core.config import settings
 from app.core.deps import get_current_officer
 from app.core.logging import logger, setup_logging
+from app.core.middleware import RequestContextMiddleware, SecurityHeadersMiddleware
 from app.database.session import check_database_connection
 
 
@@ -92,7 +94,34 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Request-ID"],
 )
+
+# Cross-cutting HTTP middleware (order matters: outermost first).
+# Security headers wrap request-context so the request ID is still attached
+# to responses even if an inner layer raises.
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(RequestContextMiddleware)
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Catch-all so unexpected errors return JSON (with a request id) and are
+    logged with context instead of leaking a bare 500 traceback to clients."""
+    request_id = request.scope.get("state", {}).get("request_id")
+    logger.exception(
+        "unhandled_exception",
+        path=request.url.path,
+        method=request.method,
+        request_id=request_id,
+    )
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": "Internal server error",
+            "request_id": request_id,
+        },
+    )
 
 # Include API endpoints
 # Auth & Localization estimation routers are public (open access)
@@ -114,6 +143,19 @@ app.include_router(files_router, dependencies=[Depends(get_current_officer)])
 
 # Health check stays public
 app.include_router(health_router)
+
+
+@app.get("/", tags=["meta"], summary="API index")
+async def root() -> dict[str, str]:
+    """Friendly API index so hitting the base URL is not a bare 404."""
+    return {
+        "service": settings.APP_NAME,
+        "version": settings.APP_VERSION,
+        "environment": settings.APP_ENV,
+        "docs": "/docs",
+        "health": "/health",
+    }
+
 
 # WebSocket tracking (auth validated inside the handler before accept)
 app.include_router(tracking_ws_router)
