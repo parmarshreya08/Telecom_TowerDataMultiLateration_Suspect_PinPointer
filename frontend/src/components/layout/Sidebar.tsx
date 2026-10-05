@@ -2,7 +2,7 @@ import { NavLink, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'motion/react'
 import {
   LayoutDashboard, FolderSearch, MapPin, FileBarChart,
-  Settings, ChevronLeft, ChevronRight, Radio, Users, ShieldCheck,
+  Settings, ChevronLeft, ChevronRight, Users, ShieldCheck,
 } from 'lucide-react'
 import { cn } from '@/utils'
 import { Logo } from '@/components/ui/Logo'
@@ -169,20 +169,6 @@ export function Sidebar({ open, onToggle }: SidebarProps) {
           </div>
         )}
 
-        {/* System status */}
-        {open && (
-          <div className="mt-6 mx-2 rounded-lg border border-surface-200 bg-surface-50/80 p-3 dark:border-surface-700/60 dark:bg-surface-800 transition-colors">
-            <div className="flex items-center gap-2 mb-2">
-              <Radio className="h-3.5 w-3.5 text-emerald-500 dark:text-emerald-400" />
-              <span className="text-2xs font-semibold uppercase tracking-wider text-surface-500 dark:text-surface-400">System Status</span>
-            </div>
-            <div className="space-y-1.5">
-              <StatusRow label="Backend API" status="online" />
-              <StatusRow label="Database" status="online" />
-              <StatusRow label="Live Tracking" status="idle" />
-            </div>
-          </div>
-        )}
       </nav>
 
       {/* Toggle button */}
@@ -195,19 +181,5 @@ export function Sidebar({ open, onToggle }: SidebarProps) {
       </button>
     </motion.aside>
     </>
-  )
-}
-
-function StatusRow({ label, status }: { label: string; status: 'online' | 'offline' | 'idle' }) {
-  const dotColor = { online: 'bg-emerald-500', offline: 'bg-danger', idle: 'bg-amber-500' }[status]
-  const text = { online: 'Online', offline: 'Offline', idle: 'Idle' }[status]
-  return (
-    <div className="flex items-center justify-between">
-      <span className="text-2xs text-surface-500 dark:text-surface-400">{label}</span>
-      <div className="flex items-center gap-1.5">
-        <span className={cn('h-1.5 w-1.5 rounded-full', dotColor)} />
-        <span className="text-2xs font-medium text-surface-700 dark:text-surface-300">{text}</span>
-      </div>
-    </div>
   )
 }
