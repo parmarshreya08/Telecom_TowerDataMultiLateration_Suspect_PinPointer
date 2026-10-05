@@ -12,10 +12,11 @@ import {
   MapPin, Radio, FileSearch, ChevronRight,
   Cpu, Database, BarChart3,
   CheckCircle, Zap, LogIn, Sparkles,
-  Sun, Moon,
+  Sun, Moon, LayoutDashboard,
 } from 'lucide-react'
 import { useThemeContext } from '@/hooks/useThemeContext'
 import { Logo } from '@/components/ui/Logo'
+import { getStoredOfficer, hasValidSession } from '@/services/auth'
 import { LiveEngineTester } from '@/components/landing/LiveEngineTester'
 import { BtsDetectorTester } from '@/components/landing/BtsDetectorTester'
 import { SdrEngineTester } from '@/components/landing/SdrEngineTester'
@@ -70,6 +71,18 @@ const STACK = [
 export default function LandingPage() {
   const navigate = useNavigate()
   const { isDark, toggleTheme } = useThemeContext()
+
+  // Session awareness — if the officer already has a valid session, show a
+  // direct "Dashboard" action instead of "Sign In" so visiting the homepage
+  // never feels like they were logged out.
+  const [session, setSession] = useState<{ name: string } | null>(null)
+  useEffect(() => {
+    if (!hasValidSession()) { setSession(null); return }
+    const officer = getStoredOfficer()
+    setSession({ name: officer?.officer_name || officer?.name || 'Officer' })
+  }, [])
+  const isLoggedIn = session !== null
+  const goPrimary = () => navigate(isLoggedIn ? '/dashboard' : '/login')
 
   const handleScrollToEngine = () => {
     const el = document.getElementById('try-engine-section')
@@ -147,14 +160,14 @@ export default function LandingPage() {
               Try Engine Live
             </button>
 
-            {/* Sign In */}
+            {/* Sign In / Dashboard */}
             <button
-              onClick={() => navigate('/login')}
+              onClick={goPrimary}
               className="hidden sm:inline-flex btn items-center gap-2 rounded-lg border border-surface-200 bg-white px-3.5 py-1.5 text-xs font-semibold text-surface-700 hover:border-primary-400 hover:text-primary-700 hover:bg-primary-50 hover:shadow-md hover:-translate-y-0.5 dark:border-surface-700/80 dark:bg-surface-800/80 dark:text-surface-200 dark:hover:border-primary-500/60 dark:hover:text-primary-300 dark:hover:bg-primary-900/30 dark:hover:shadow-lg dark:hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.97] active:shadow-sm select-none cursor-pointer"
-              aria-label="Sign in to E-RAKSHAK"
+              aria-label={isLoggedIn ? 'Go to dashboard' : 'Sign in to E-RAKSHAK'}
             >
-              <LogIn className="h-3.5 w-3.5" />
-              Sign In
+              {isLoggedIn ? <LayoutDashboard className="h-3.5 w-3.5" /> : <LogIn className="h-3.5 w-3.5" />}
+              {isLoggedIn ? 'Dashboard' : 'Sign In'}
             </button>
           </div>
         </div>
@@ -169,12 +182,12 @@ export default function LandingPage() {
             Try Engine
           </button>
           <button
-            onClick={() => navigate('/login')}
+            onClick={goPrimary}
             className="inline-flex btn items-center gap-1.5 rounded-lg border border-surface-200 bg-white px-3 py-1 text-xs font-semibold text-surface-700 dark:border-surface-700/80 dark:bg-surface-800/80 dark:text-surface-200 select-none cursor-pointer"
-            aria-label="Sign in to E-RAKSHAK"
+            aria-label={isLoggedIn ? 'Go to dashboard' : 'Sign in to E-RAKSHAK'}
           >
-            <LogIn className="h-3.5 w-3.5" />
-            Sign In
+            {isLoggedIn ? <LayoutDashboard className="h-3.5 w-3.5" /> : <LogIn className="h-3.5 w-3.5" />}
+            {isLoggedIn ? 'Dashboard' : 'Sign In'}
           </button>
         </div>
       </header>
@@ -261,12 +274,14 @@ export default function LandingPage() {
                 {/* Primary CTAs — Sign In + Try Live Engine */}
                 <div className="flex flex-wrap items-center gap-4 mt-6">
                   <button
-                    onClick={() => navigate('/login')}
+                    onClick={goPrimary}
                     className="w-full sm:w-auto px-6 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 hover:shadow-xl hover:shadow-blue-600/40 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.97] active:shadow-lg shadow-lg shadow-blue-600/30 flex items-center justify-center gap-2.5 text-sm sm:text-base select-none cursor-pointer"
-                    aria-label="Sign in to E-RAKSHAK"
+                    aria-label={isLoggedIn ? 'Go to dashboard' : 'Sign in to E-RAKSHAK'}
                   >
-                    <LogIn className="h-4.5 w-4.5" aria-hidden="true" />
-                    Sign In
+                    {isLoggedIn
+                      ? <LayoutDashboard className="h-4.5 w-4.5" aria-hidden="true" />
+                      : <LogIn className="h-4.5 w-4.5" aria-hidden="true" />}
+                    {isLoggedIn ? 'Go to Dashboard' : 'Sign In'}
                   </button>
 
                   <button
@@ -559,18 +574,22 @@ export default function LandingPage() {
       {/* ── CTA banner ───────────────────────────────────────────────────── */}
       <section className="py-20 px-6 bg-primary-600 text-white">
         <div className="mx-auto max-w-2xl text-center">
-          <h2 className="mb-3 text-2xl font-bold">Ready to Start an Investigation?</h2>
+          <h2 className="mb-3 text-2xl font-bold">
+            {isLoggedIn ? `Welcome back${session?.name ? `, ${session.name}` : ''}` : 'Ready to Start an Investigation?'}
+          </h2>
           <p className="mb-7 text-primary-200 text-sm">
-            Sign in to access the dashboard and upload CDR files.
+            {isLoggedIn
+              ? 'Your session is active — jump straight back into your investigations.'
+              : 'Sign in to access the dashboard and upload CDR files.'}
           </p>
           <div className="flex flex-wrap items-center justify-center gap-4">
             <button
-              onClick={() => navigate('/login')}
+              onClick={goPrimary}
               className="btn btn-lg bg-white text-primary-700 hover:bg-primary-50 dark:bg-surface-100 dark:text-primary-800 dark:hover:bg-surface-200 select-none cursor-pointer"
-              aria-label="Sign in"
+              aria-label={isLoggedIn ? 'Go to dashboard' : 'Sign in'}
             >
-              <LogIn className="h-5 w-5" aria-hidden="true" />
-              Sign In
+              {isLoggedIn ? <LayoutDashboard className="h-5 w-5" aria-hidden="true" /> : <LogIn className="h-5 w-5" aria-hidden="true" />}
+              {isLoggedIn ? 'Go to Dashboard' : 'Sign In'}
             </button>
           </div>
         </div>
