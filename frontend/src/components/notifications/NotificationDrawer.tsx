@@ -111,12 +111,19 @@ export function NotificationDrawer({
                   </span>
                 )}
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
                 {unread > 0 && (
                   <button
                     onClick={onMarkAllRead}
-                    className="text-xs text-primary-600 hover:text-primary-700 hover:underline dark:text-primary-400 transition-colors"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-surface-200 bg-white
+                               px-2.5 py-1.5 text-xs font-medium text-surface-600 transition-colors
+                               hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700
+                               focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-500
+                               dark:border-surface-700 dark:bg-surface-800 dark:text-surface-300
+                               dark:hover:border-primary-700 dark:hover:bg-primary-950/40 dark:hover:text-primary-300
+                               select-none cursor-pointer"
                   >
+                    <CheckCheck className="h-3.5 w-3.5" aria-hidden="true" />
                     Mark all read
                   </button>
                 )}
