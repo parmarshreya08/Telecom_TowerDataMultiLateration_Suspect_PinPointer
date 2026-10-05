@@ -139,7 +139,6 @@ export function CaseStatusSelector({
         type="button"
         disabled={disabled || isUpdating}
         onClick={() => setIsOpen((prev) => !prev)}
-        title="Click to change case lifecycle status"
         className={cn(
           'group inline-flex items-center gap-2 rounded-lg font-bold tracking-wide transition-all duration-150 cursor-pointer select-none',
           'border shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500/40',

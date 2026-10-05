@@ -256,7 +256,7 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ caseId, onUploadComp
                   type="checkbox"
                   checked={selectedFiles.has(file.upload_id)}
                   onChange={() => toggleFileSelection(file.upload_id)}
-                  className="h-4 w-4 rounded border-surface-300 text-primary-600 dark:border-surface-500 dark:bg-surface-700"
+                  className="checkbox"
                 />
 
                 <div className="min-w-0 flex-1">

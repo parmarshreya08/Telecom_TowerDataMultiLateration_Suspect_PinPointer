@@ -11,6 +11,8 @@ import {
   ChevronUp, ChevronDown, Smartphone, ShieldAlert,
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
+import { Modal } from '@/components/ui/Modal'
+import { Tooltip } from '@/components/ui/Tooltip'
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
 import { InvestigationMap } from '@/components/map/InvestigationMap'
 import { ShareLocationModal } from '@/components/investigation/ShareLocationModal'
@@ -139,6 +141,7 @@ export default function LiveInvestigationPage() {
   const [files, setFiles] = useState<CaseFile[]>([])
   const [selectedItem, setSelectedItem] = useState<SelectedItem>({ type: 'overview', id: null })
   const [isDeletingFile, setIsDeletingFile] = useState(false)
+  const [deleteFileTarget, setDeleteFileTarget] = useState<string | null>(null)
 
   // RF / SDR Ground Verification state
   const [rfVerifiedFix, setRfVerifiedFix] = useState<RFVerifiedFix | null>(null)
@@ -379,7 +382,6 @@ export default function LiveInvestigationPage() {
   }
 
   const handleDeleteFile = async (uploadId: string) => {
-    if (!confirm('Are you sure you want to delete this CDR? All associated tracking fixes will be lost.')) return
     setIsDeletingFile(true)
     try {
       await fileApi.deleteFile(uploadId)
@@ -391,6 +393,7 @@ export default function LiveInvestigationPage() {
       setError(extractErrorMessage(err) || 'Failed to delete file')
     } finally {
       setIsDeletingFile(false)
+      setDeleteFileTarget(null)
     }
   }
 
@@ -642,7 +645,7 @@ export default function LiveInvestigationPage() {
                 <Button
                   size="sm" variant="danger" className="w-full mt-2"
                   icon={isDeletingFile ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-                  onClick={() => handleDeleteFile(f.upload_id)}
+                  onClick={() => setDeleteFileTarget(f.upload_id)}
                   disabled={isDeletingFile}
                 >
                   Delete CDR
@@ -662,8 +665,7 @@ export default function LiveInvestigationPage() {
               type="datetime-local"
               value={timeStart}
               onChange={(e) => setTimeStart(e.target.value)}
-              className="w-full rounded-lg border border-surface-300 bg-white px-2.5 py-1.5 text-xs
-                         dark:border-surface-600 dark:bg-surface-800 dark:text-surface-200"
+              className="input text-xs py-1.5"
             />
           </div>
           <div>
@@ -672,8 +674,7 @@ export default function LiveInvestigationPage() {
               type="datetime-local"
               value={timeEnd}
               onChange={(e) => setTimeEnd(e.target.value)}
-              className="w-full rounded-lg border border-surface-300 bg-white px-2.5 py-1.5 text-xs
-                         dark:border-surface-600 dark:bg-surface-800 dark:text-surface-200"
+              className="input text-xs py-1.5"
             />
           </div>
           <div className="flex gap-2">
@@ -946,19 +947,21 @@ export default function LiveInvestigationPage() {
 
         {/* Desktop Action Toolbar (hidden on mobile/tablet, visible on lg:) */}
         <div className="hidden lg:flex items-center gap-2 shrink-0">
-          <button
-            onClick={() => setAutoFollow((v) => !v)}
-            className={cn(
-              'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors',
-              autoFollow
-                ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300'
-                : 'bg-surface-100 text-surface-600 dark:bg-surface-700 dark:text-surface-300'
-            )}
-            title="Toggle auto-follow"
-          >
-            <Crosshair className="h-3.5 w-3.5" />
-            {autoFollow ? 'Following' : 'Follow'}
-          </button>
+          <Tooltip content="Toggle auto-follow">
+            <button
+              onClick={() => setAutoFollow((v) => !v)}
+              className={cn(
+                'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors',
+                autoFollow
+                  ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300'
+                  : 'bg-surface-100 text-surface-600 dark:bg-surface-700 dark:text-surface-300'
+              )}
+              aria-label="Toggle auto-follow"
+            >
+              <Crosshair className="h-3.5 w-3.5" />
+              {autoFollow ? 'Following' : 'Follow'}
+            </button>
+          </Tooltip>
 
           <div className="flex items-center gap-1 rounded-lg bg-surface-100 p-1 dark:bg-surface-700">
             <button
@@ -1002,20 +1005,21 @@ export default function LiveInvestigationPage() {
 
         {/* Mobile / Tablet Action Toolbar (visible below lg:) */}
         <div className="flex lg:hidden items-center gap-1.5 shrink-0" ref={mobileActionsRef}>
-          <button
-            onClick={() => setAutoFollow((v) => !v)}
-            className={cn(
-              'flex h-10 items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold transition-colors cursor-pointer',
-              autoFollow
-                ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300'
-                : 'border border-surface-200 bg-white text-surface-600 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-300'
-            )}
-            title="Toggle auto-follow"
-            aria-label="Toggle auto-follow"
-          >
-            <Crosshair className="h-4 w-4" />
-            <span className="hidden sm:inline">{autoFollow ? 'Following' : 'Follow'}</span>
-          </button>
+          <Tooltip content="Toggle auto-follow">
+            <button
+              onClick={() => setAutoFollow((v) => !v)}
+              className={cn(
+                'flex h-10 items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold transition-colors cursor-pointer',
+                autoFollow
+                  ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300'
+                  : 'border border-surface-200 bg-white text-surface-600 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-300'
+              )}
+              aria-label="Toggle auto-follow"
+            >
+              <Crosshair className="h-4 w-4" />
+              <span className="hidden sm:inline">{autoFollow ? 'Following' : 'Follow'}</span>
+            </button>
+          </Tooltip>
 
           <Button
             size="sm"
@@ -1029,19 +1033,20 @@ export default function LiveInvestigationPage() {
           </Button>
 
           <div className="relative">
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation()
-                setMobileActionsOpen((prev) => !prev)
-              }}
-              className="flex h-10 w-10 items-center justify-center rounded-lg border border-surface-200 bg-white text-surface-600 hover:bg-surface-100 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-300 dark:hover:bg-surface-700 transition-colors cursor-pointer"
-              title="More actions"
-              aria-label="More actions"
-              aria-expanded={mobileActionsOpen}
-            >
-              <MoreVertical className="h-5 w-5" />
-            </button>
+            <Tooltip content="More actions">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setMobileActionsOpen((prev) => !prev)
+                }}
+                className="flex h-10 w-10 items-center justify-center rounded-lg border border-surface-200 bg-white text-surface-600 hover:bg-surface-100 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-300 dark:hover:bg-surface-700 transition-colors cursor-pointer"
+                aria-label="More actions"
+                aria-expanded={mobileActionsOpen}
+              >
+                <MoreVertical className="h-5 w-5" />
+              </button>
+            </Tooltip>
 
             {mobileActionsOpen && (
               <div className="absolute right-0 top-full mt-1.5 z-[1002] w-56 rounded-xl border border-surface-200 bg-white p-2 shadow-2xl dark:border-surface-700 dark:bg-surface-800 animate-fade-in">
@@ -1566,6 +1571,30 @@ export default function LiveInvestigationPage() {
           setSdrFocusTrigger((v) => !v)
         }}
       />
+
+      <Modal
+        open={deleteFileTarget !== null}
+        onClose={() => { if (!isDeletingFile) setDeleteFileTarget(null) }}
+        title="Delete this CDR?"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setDeleteFileTarget(null)} disabled={isDeletingFile}>
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              loading={isDeletingFile}
+              onClick={() => deleteFileTarget && handleDeleteFile(deleteFileTarget)}
+            >
+              Delete
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-surface-600 dark:text-surface-300">
+          This will permanently remove this CDR file. All associated tracking fixes will be lost.
+        </p>
+      </Modal>
     </div>
   )
 }

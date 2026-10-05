@@ -163,7 +163,7 @@ export default function ReportsPage() {
                       value={inv.id}
                       checked={selectedInv === inv.id}
                       onChange={() => setSelectedInv(inv.id)}
-                      className="accent-primary-600"
+                      className="radio"
                     />
                     <div className="flex-1 min-w-0">
                       <p className="text-base font-medium text-surface-800 dark:text-surface-200">{inv.case_name || inv.id}</p>

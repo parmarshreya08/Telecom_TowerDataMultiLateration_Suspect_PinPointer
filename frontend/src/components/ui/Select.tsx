@@ -1,72 +1,68 @@
-import { forwardRef, type SelectHTMLAttributes } from 'react'
+import { useId } from 'react'
+import { Dropdown, type DropdownOption } from './Dropdown'
 import { cn } from '@/utils'
 
-interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
+interface SelectProps {
   label?: string
   error?: string
   options: { value: string; label: string }[]
   placeholder?: string
+  value?: string
+  onChange?: (value: string) => void
+  disabled?: boolean
+  required?: boolean
+  id?: string
+  className?: string
 }
 
-export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select(
-  { label, error, options, placeholder, className, id, ...props },
-  ref
-) {
+/**
+ * Select — labelled form field backed by the themed Dropdown primitive.
+ *
+ * Kept as a distinct component so form layouts keep the label/error styling,
+ * but the popup is fully app-rendered (no native OS menu).
+ * Emits the selected value directly: `onChange={(value) => ...}`.
+ */
+export function Select({
+  label,
+  error,
+  options,
+  placeholder,
+  value,
+  onChange,
+  disabled,
+  required,
+  id,
+  className,
+}: SelectProps) {
   const selectId = id ?? label?.toLowerCase().replace(/\s+/g, '-')
+  const generatedId = useId()
+
+  const dropdownOptions: DropdownOption[] = options.map((o) => ({
+    value: o.value,
+    label: o.label,
+  }))
 
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className={cn('flex flex-col gap-1.5', className)}>
       {label && (
         <label
           htmlFor={selectId}
           className="text-sm font-medium text-surface-700 dark:text-surface-300"
         >
           {label}
-          {props.required && <span className="ml-1 text-danger">*</span>}
+          {required && <span className="ml-1 text-danger">*</span>}
         </label>
       )}
 
-      {/* Wrapper provides the custom chevron via pseudo-element / background */}
-      <div className="relative">
-        <select
-          ref={ref}
-          id={selectId}
-          className={cn(
-            'input appearance-none pr-9',
-            error && 'input-error',
-            className
-          )}
-          aria-invalid={!!error}
-          aria-describedby={error ? `${selectId}-error` : undefined}
-          {...props}
-        >
-          {placeholder && <option value="">{placeholder}</option>}
-          {options.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-
-        {/* Chevron icon — uses currentColor so it adapts to light/dark */}
-        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-surface-400 dark:text-surface-500">
-          <svg
-            className="h-4 w-4"
-            viewBox="0 0 16 16"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-            aria-hidden="true"
-          >
-            <path
-              d="M4 6l4 4 4-4"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </div>
-      </div>
+      <Dropdown
+        id={selectId ?? `select-${generatedId}`}
+        value={value ?? ''}
+        onChange={(v) => onChange?.(v)}
+        options={dropdownOptions}
+        placeholder={placeholder}
+        disabled={disabled}
+        aria-label={label}
+      />
 
       {error && (
         <p id={`${selectId}-error`} className="text-xs text-danger" role="alert">
@@ -75,4 +71,4 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select
       )}
     </div>
   )
-})
+}

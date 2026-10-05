@@ -7,6 +7,7 @@ import {
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { Dropdown } from '@/components/ui/Dropdown'
 import { adminApi } from '@/services/api'
 import { cn } from '@/utils'
 import type { AuditLogEntry } from '@/types'
@@ -117,35 +118,36 @@ export default function AuditLogsPage() {
 
         <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
           {/* Action Filter */}
-          <select
+          <Dropdown
             value={actionFilter}
-            onChange={(e) => {
-              setActionFilter(e.target.value)
+            onChange={(v) => {
+              setActionFilter(v)
               setPage(1)
             }}
-            className="rounded-lg border border-surface-200/60 bg-white px-3 py-1.5 text-base text-surface-700 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-300"
-          >
-            {COMMON_ACTIONS.map((a) => (
-              <option key={a} value={a}>
-                {a === 'ALL' ? 'All Event Types' : a.replace(/_/g, ' ')}
-              </option>
-            ))}
-          </select>
+            aria-label="Filter by event type"
+            options={COMMON_ACTIONS.map((a) => ({
+              value: a,
+              label: a === 'ALL' ? 'All Event Types' : a.replace(/_/g, ' '),
+            }))}
+            className="w-full sm:w-52"
+          />
 
           {/* Status Filter */}
-          <select
+          <Dropdown
             value={statusFilter}
-            onChange={(e) => {
-              setStatusFilter(e.target.value as 'ALL' | 'SUCCESS' | 'FAILURE' | 'DENIED')
+            onChange={(v) => {
+              setStatusFilter(v as 'ALL' | 'SUCCESS' | 'FAILURE' | 'DENIED')
               setPage(1)
             }}
-            className="rounded-lg border border-surface-200/60 bg-white px-3 py-1.5 text-base text-surface-700 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-300"
-          >
-            <option value="ALL">All Outcomes</option>
-            <option value="SUCCESS">Success Only</option>
-            <option value="FAILURE">Failures</option>
-            <option value="DENIED">Access Denied</option>
-          </select>
+            aria-label="Filter by outcome"
+            options={[
+              { value: 'ALL', label: 'All Outcomes' },
+              { value: 'SUCCESS', label: 'Success Only' },
+              { value: 'FAILURE', label: 'Failures' },
+              { value: 'DENIED', label: 'Access Denied' },
+            ]}
+            className="w-full sm:w-44"
+          />
         </div>
       </div>
 

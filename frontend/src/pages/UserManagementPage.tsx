@@ -279,7 +279,6 @@ export default function UserManagementPage() {
                         <Button
                           variant="ghost"
                           size="xs"
-                          title="Switch Role"
                           onClick={() => handleToggleRole(u)}
                           className="text-surface-600 hover:text-primary-600"
                         >
@@ -288,7 +287,6 @@ export default function UserManagementPage() {
                         <Button
                           variant="ghost"
                           size="xs"
-                          title="Reset Password"
                           onClick={() => setResetModalUser(u)}
                           className="text-surface-600 hover:text-amber-600 gap-1"
                         >

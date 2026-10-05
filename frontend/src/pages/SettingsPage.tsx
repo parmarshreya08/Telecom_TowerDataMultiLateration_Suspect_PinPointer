@@ -75,7 +75,7 @@ export default function SettingsPage() {
             { value: 'gu', label: 'Gujarati' },
           ]}
           value={language}
-          onChange={(e) => setLanguage(e.target.value)}
+          onChange={setLanguage}
           label="Display Language"
         />
       </Card>
@@ -123,7 +123,7 @@ export default function SettingsPage() {
             { value: 'satellite',     label: 'Satellite View (ESRI)' },
           ]}
           value={mapProvider}
-          onChange={(e) => setMapProvider(e.target.value)}
+          onChange={setMapProvider}
         />
       </Card>
 
@@ -138,7 +138,7 @@ export default function SettingsPage() {
             { value: 'csv',     label: 'CSV Data' },
           ]}
           value={exportFormat}
-          onChange={(e) => setExportFormat(e.target.value)}
+          onChange={setExportFormat}
         />
       </Card>
 

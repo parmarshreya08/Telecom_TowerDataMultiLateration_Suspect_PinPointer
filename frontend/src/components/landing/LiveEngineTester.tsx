@@ -482,7 +482,7 @@ export function LiveEngineTester({ isDark }: { isDark: boolean }) {
               <MapRecenter center={mapCenter} />
               <TileLayer
                 attribution='&copy; Google Maps'
-                url="http://mt0.google.com/vt/lyrs=y&hl=en&x={x}&y={y}&z={z}"
+                url="https://mt0.google.com/vt/lyrs=y&hl=en&x={x}&y={y}&z={z}"
                 maxZoom={20}
               />
 

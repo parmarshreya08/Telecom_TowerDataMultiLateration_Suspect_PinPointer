@@ -93,7 +93,6 @@ export function ShareLocationModal({
                 onClick={() => handleCopy(coordsText, 'coords')}
                 className="shrink-0 flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium text-surface-600 hover:bg-surface-100 hover:text-primary-600 dark:text-surface-300 dark:hover:bg-surface-700 dark:hover:text-primary-400 transition-colors cursor-pointer border border-surface-200 dark:border-surface-700"
                 aria-label="Copy Coordinates"
-                title="Copy Coordinates"
               >
                 {copied === 'coords' ? (
                   <>

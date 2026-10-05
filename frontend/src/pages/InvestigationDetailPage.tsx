@@ -8,6 +8,8 @@ import {
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
+import { Dropdown } from '@/components/ui/Dropdown'
+import { Tooltip } from '@/components/ui/Tooltip'
 import { fileApi, investigationApi, trackingApi, adminApi, formatDeleteError } from '@/services/api'
 import { getStoredOfficer } from '@/services/auth'
 import { CaseStatusSelector } from '@/components/investigation/CaseStatusSelector'
@@ -488,15 +490,17 @@ export default function InvestigationDetailPage() {
                           <p className="font-semibold text-surface-800 dark:text-surface-200 truncate">{a.officer_name}</p>
                           <p className="text-2xs text-surface-400 truncate">{a.email}</p>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => handleUnassignOfficer(a.officer_id)}
-                          disabled={assignLoading}
-                          title="Remove assignment"
-                          className="p-1 text-surface-400 hover:text-danger rounded"
-                        >
-                          <UserMinus className="h-3.5 w-3.5" />
-                        </button>
+                        <Tooltip content="Remove assignment">
+                          <button
+                            type="button"
+                            onClick={() => handleUnassignOfficer(a.officer_id)}
+                            disabled={assignLoading}
+                            aria-label="Remove assignment"
+                            className="p-1 text-surface-400 hover:text-danger rounded"
+                          >
+                            <UserMinus className="h-3.5 w-3.5" />
+                          </button>
+                        </Tooltip>
                       </div>
                     ))}
                   </div>
@@ -504,20 +508,20 @@ export default function InvestigationDetailPage() {
 
                 {/* Add assignment dropdown */}
                 <div className="pt-2 border-t border-surface-100 dark:border-surface-800 space-y-2">
-                  <select
+                  <Dropdown
                     value={selectedAssignId}
-                    onChange={(e) => setSelectedAssignId(e.target.value)}
-                    className="w-full rounded-lg border border-surface-200 bg-white px-2.5 py-1.5 text-xs text-surface-700 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-300"
-                  >
-                    <option value="">Select Officer to Assign...</option>
-                    {availableInspectors
+                    onChange={setSelectedAssignId}
+                    size="sm"
+                    placeholder="Select Officer to Assign..."
+                    aria-label="Select officer to assign"
+                    options={availableInspectors
                       .filter((u) => !assignments.some((a) => a.officer_id === u.officer_id))
-                      .map((u) => (
-                        <option key={u.officer_id} value={u.officer_id}>
-                          {u.officer_name} ({u.role})
-                        </option>
-                      ))}
-                  </select>
+                      .map((u) => ({
+                        value: u.officer_id,
+                        label: `${u.officer_name} (${u.role})`,
+                      }))}
+                    className="w-full"
+                  />
                   <Button
                     size="xs"
                     variant="outline"
