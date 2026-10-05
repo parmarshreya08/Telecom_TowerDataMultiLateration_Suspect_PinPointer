@@ -40,9 +40,11 @@ const DEFAULT_STATS: DashboardStats = {
   total_cases: 0,
   total_uploads: 0,
   total_measurements: 0,
+  total_localization_fixes: 0,
   total_towers: 0,
   active_cases: 0,
   completed_cases: 0,
+  scope: 'officer',
 }
 
 export default function DashboardPage() {
@@ -115,10 +117,12 @@ export default function DashboardPage() {
       <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-xl font-bold text-surface-900 dark:text-surface-100">
-            {greeting}, Officer
+            {greeting}, {officer?.officer_name?.split(' ')[0] || 'Officer'}
           </h1>
           <p className="text-base text-surface-500 dark:text-surface-400">
             {new Date().toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+            {' · '}
+            <span className="text-surface-400 dark:text-surface-500">Your caseload</span>
           </p>
         </div>
         <div className="flex items-center gap-4">
@@ -162,9 +166,9 @@ export default function DashboardPage() {
         <StatCard icon={Activity} label="Active Cases" value={stats?.active_cases ?? (isLoading ? '...' : 0)} color="bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" />
         <StatCard icon={CheckCircle} label="Completed Cases" value={stats?.completed_cases ?? (isLoading ? '...' : 0)} color="bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400" />
         <StatCard icon={Upload} label="Total Uploads" value={stats?.total_uploads ?? (isLoading ? '...' : 0)} color="bg-teal-100 text-teal-600 dark:bg-teal-900/30 dark:text-teal-400" />
-        <StatCard icon={Radio} label="Total Measurements" value={stats?.total_measurements ?? (isLoading ? '...' : 0)} color="bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400" />
+        <StatCard icon={Radio} label="Localization Fixes" value={stats?.total_localization_fixes ?? stats?.total_measurements ?? (isLoading ? '...' : 0)} color="bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400" />
         <StatCard icon={FileText} label="Total Cases" value={stats?.total_cases ?? (isLoading ? '...' : 0)} color="bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400" />
-        <StatCard icon={Radio} label="Total Towers" value={stats?.total_towers ?? (isLoading ? '...' : 0)} color="bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400" />
+        <StatCard icon={Radio} label="Tower Catalog" value={stats?.total_towers ?? (isLoading ? '...' : 0)} sub="shared" color="bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400" />
       </div>
 
       <div className="grid gap-6 xl:grid-cols-3">

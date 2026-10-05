@@ -544,10 +544,14 @@ export type InvestigationStatus = 'Active' | 'Pending' | 'Completed' | 'Archived
 export interface DashboardStats {
   total_cases: number
   total_uploads: number
+  /** @deprecated mislabeled alias of total_localization_fixes; kept for compat */
   total_measurements: number
+  total_localization_fixes?: number
   total_towers: number
   active_cases: number
   completed_cases: number
+  /** 'global' for admins, 'officer' for scoped inspector stats */
+  scope?: 'global' | 'officer'
 }
 
 // Fix ForensicReport to match what pages expect

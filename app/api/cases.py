@@ -1099,13 +1099,15 @@ async def get_case_quality_report(
 @router.get(
     "/api/dashboard/stats",
     status_code=status.HTTP_200_OK,
-    summary="Get system-wide dashboard statistics",
+    summary="Get dashboard statistics scoped to the requesting officer",
 )
 async def get_dashboard_stats(
+    officer: OfficerModel = Depends(get_current_officer),
     db: AsyncSession = Depends(get_db_session),
 ) -> dict[str, Any]:
+    """Officers see stats for their own cases; admins see global totals."""
     repo = TelecomRepository(db)
-    return await repo.get_dashboard_stats()
+    return await repo.get_dashboard_stats(officer=officer)
 
 
 @router.post(

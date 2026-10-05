@@ -566,43 +566,96 @@ class TelecomRepository:
             for row in rows
         ]
 
-    async def get_dashboard_stats(self) -> dict[str, Any]:
+    async def get_dashboard_stats(
+        self,
+        officer: Optional["OfficerModel"] = None,  # noqa: F821
+    ) -> dict[str, Any]:
         """
-        Calculates real summary statistics across all cases, uploads, fixes, towers.
+        Calculates summary statistics.
+
+        Scope:
+        - ADMIN (or no officer passed, e.g. internal callers): global totals.
+        - INSPECTOR: only cases they created or are assigned to. Uploads and
+          fixes are narrowed to those cases.
+
+        `total_towers` is intentionally global — tower_records is a shared
+        reference catalog (open operator data), not per-investigation data.
         """
-        from sqlalchemy import func
+        from sqlalchemy import func, or_
 
-        cases_count_stmt = select(func.count(func.distinct(UploadMetadataModel.case_id)))
-        cases_res = await self.session.execute(cases_count_stmt)
-        total_cases = cases_res.scalar() or 0
+        from app.database.models.audit import CaseAssignmentModel
+        from app.database.models.telecom import CaseModel
 
-        uploads_count_stmt = select(func.count(UploadMetadataModel.upload_id))
-        uploads_res = await self.session.execute(uploads_count_stmt)
-        total_uploads = uploads_res.scalar() or 0
+        # ── Resolve the set of case ids visible to this officer ──────────
+        scoped_case_ids: Optional[list[str]] = None
+        if officer is not None and getattr(officer, "role", None) != "ADMIN":
+            created_stmt = select(CaseModel.case_id).where(
+                or_(
+                    CaseModel.created_by == officer.officer_name,
+                    CaseModel.created_by == officer.email,
+                )
+            )
+            created_res = await self.session.execute(created_stmt)
+            ids = {row[0] for row in created_res.all()}
 
-        fixes_count_stmt = select(func.count(LocalizationFixModel.fix_id))
-        fixes_res = await self.session.execute(fixes_count_stmt)
-        total_fixes = fixes_res.scalar() or 0
+            assigned_stmt = select(CaseAssignmentModel.case_id).where(
+                CaseAssignmentModel.officer_id == officer.officer_id
+            )
+            assigned_res = await self.session.execute(assigned_stmt)
+            ids.update(row[0] for row in assigned_res.all())
 
-        towers_count_stmt = select(func.count(TowerRecordModel.tower_id))
-        towers_res = await self.session.execute(towers_count_stmt)
-        total_towers = towers_res.scalar() or 0
+            scoped_case_ids = list(ids)
 
-        active_cases_stmt = select(func.count(CaseModel.case_id)).where(CaseModel.status == "Active")
-        active_res = await self.session.execute(active_cases_stmt)
-        active_cases = active_res.scalar() or 0
+        def scope_case(query, column):
+            """Restrict a query to the officer's cases when scoped."""
+            if scoped_case_ids is None:
+                return query
+            return query.where(column.in_(scoped_case_ids))
 
-        completed_cases_stmt = select(func.count(CaseModel.case_id)).where(CaseModel.status == "Completed")
-        completed_res = await self.session.execute(completed_cases_stmt)
-        completed_cases = completed_res.scalar() or 0
+        # ── Totals (all real `cases` rows, not just those with uploads) ──
+        cases_stmt = scope_case(select(func.count(CaseModel.case_id)), CaseModel.case_id)
+        total_cases = (await self.session.execute(cases_stmt)).scalar() or 0
+
+        active_stmt = scope_case(
+            select(func.count(CaseModel.case_id)).where(CaseModel.status == "Active"),
+            CaseModel.case_id,
+        )
+        active_cases = (await self.session.execute(active_stmt)).scalar() or 0
+
+        completed_stmt = scope_case(
+            select(func.count(CaseModel.case_id)).where(CaseModel.status == "Completed"),
+            CaseModel.case_id,
+        )
+        completed_cases = (await self.session.execute(completed_stmt)).scalar() or 0
+
+        uploads_stmt = scope_case(
+            select(func.count(UploadMetadataModel.upload_id)),
+            UploadMetadataModel.case_id,
+        )
+        total_uploads = (await self.session.execute(uploads_stmt)).scalar() or 0
+
+        fixes_stmt = scope_case(
+            select(func.count(LocalizationFixModel.fix_id)),
+            LocalizationFixModel.case_id,
+        )
+        total_fixes = (await self.session.execute(fixes_stmt)).scalar() or 0
+
+        # Shared reference catalog — always global.
+        towers_stmt = select(func.count(TowerRecordModel.tower_id))
+        total_towers = (await self.session.execute(towers_stmt)).scalar() or 0
 
         return {
             "total_cases": total_cases,
             "total_uploads": total_uploads,
+            # Historically surfaced as "Total Measurements" but the counter is
+            # localization fixes; return it under an accurate key and keep the
+            # legacy key for backwards compatibility.
+            "total_localization_fixes": total_fixes,
             "total_measurements": total_fixes,
             "total_towers": total_towers,
             "active_cases": active_cases,
             "completed_cases": completed_cases,
+            "scope": "global" if scoped_case_ids is None else "officer",
         }
 
     # ── File Management ──────────────────────────────────────
