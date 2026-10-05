@@ -6,7 +6,6 @@ from app.core.logging import logger
 from app.services.mock_tsp_service import mock_tsp_service
 from app.services.alert_service import alert_service
 from app.core.security import decode_token
-from app.api.dependencies.auth import get_current_user
 
 router = APIRouter(prefix="/api/v1/live-tracking", tags=["live-tracking"])
 
