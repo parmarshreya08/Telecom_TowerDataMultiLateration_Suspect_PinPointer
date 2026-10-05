@@ -10,7 +10,10 @@ python-dotenv>=1.0.1
 email-validator>=2.2.0
 
 # Database Layer
-sqlalchemy>=2.0.30
+# sqlalchemy[asyncio] pulls in greenlet, which is REQUIRED at import time for
+# sqlalchemy.ext.asyncio on all platforms (including Python 3.14 on Render).
+sqlalchemy[asyncio]>=2.0.30
+greenlet>=3.0
 alembic>=1.13.1
 asyncpg>=0.29.0
 psycopg2-binary>=2.9.9
