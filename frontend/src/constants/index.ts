@@ -10,6 +10,8 @@ export const WS_BASE_URL = (import.meta.env.VITE_WS_BASE_URL as string) || ''
 export const LS_KEYS = {
   THEME: 'e-rakshak-theme',
   SESSION: 'e-rakshak-session',
+  WORKSPACE_TOUR_SEEN: 'e-rakshak-workspace-tour-seen',
+  LIVE_TOUR_SEEN: 'e-rakshak-live-tour-seen',
 } as const
 
 export const CASE_STATUS = {
@@ -87,7 +89,8 @@ export const ACCEPTED_FILE_TYPES = {
   xls:  ['.xls'],
 } as const
 
-export const MAX_FILE_SIZE_MB = 50
+// Match the backend's default MAX_CONTENT_LENGTH_MB (override both together if changed).
+export const MAX_FILE_SIZE_MB = 100
 export const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 
 export const API_KEY = import.meta.env.VITE_API_KEY as string
@@ -95,6 +98,19 @@ export const API_KEY = import.meta.env.VITE_API_KEY as string
 // ── Map Defaults ──────────────────────────────────────────
 export const DEFAULT_MAP_CENTER: [number, number] = [21.1702, 72.8311] // Surat
 export const DEFAULT_MAP_ZOOM = 12
+
+// Operating area (leaflet order: south-west, north-east). Tower/cell-site data
+// is only held for the Surat district, so the map warns when the viewport
+// wanders outside it.
+export const SURAT_BOUNDS: [[number, number], [number, number]] = [
+  [20.65, 72.45],
+  [21.40, 73.15],
+]
+
+// How far past the district the viewport may span before the operator is warned.
+// ~6x still shows all of Surat with generous context, which is useful context
+// for a multilateration view; beyond that the towers are a speck on the map.
+export const SERVICE_AREA_ZOOM_TOLERANCE = 6
 
 // ── Operator Colors ───────────────────────────────────────
 export const OPERATOR_COLORS: Record<string, string> = {
