@@ -314,6 +314,14 @@ export const exportApi = {
         responseType: 'blob',
       })
       .then((r) => r.data as Blob),
+
+  downloadJSON: (caseId: string, params?: ExportParams) =>
+    apiClient
+      .get(`/api/case/${caseId}/export/json`, {
+        params,
+        responseType: 'blob',
+      })
+      .then((r) => r.data as Blob),
 }
 
 // ── Admin API ───────────────────────────────────────────────

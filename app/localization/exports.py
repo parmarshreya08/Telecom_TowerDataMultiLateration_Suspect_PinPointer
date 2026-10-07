@@ -556,3 +556,247 @@ def generate_pdf(
 
     doc.build(elements)
     return buf.getvalue()
+
+
+# ── JSON Export ─────────────────────────────────────────────
+
+
+def compute_payload_sha256(payload_dict: dict[str, Any]) -> str:
+    """
+    Computes the SHA-256 over the canonical (sorted-keys, no-whitespace) JSON
+    of everything in the dictionary except the 'integrity' block.
+    """
+    import hashlib
+    import json
+
+    clean_dict = {k: v for k, v in payload_dict.items() if k != "integrity"}
+    canonical_json = json.dumps(
+        clean_dict,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    )
+    return hashlib.sha256(canonical_json.encode("utf-8")).hexdigest()
+
+
+def export_json(
+    case: Any,
+    fixes: list[Any],
+    case_id: str | None = None,
+    officer_id: str | None = None,
+    audit_entry_id: str | None = None,
+    frames: list[Any] | None = None,
+    parameters_override: dict[str, Any] | None = None,
+    utm_zone: int = 43,
+) -> dict[str, Any]:
+    """
+    Generates a structured forensic JSON dictionary matching Schema version 1.0.
+    Includes case metadata, parameter config, timestamped fixes with speeds/headings,
+    GeoJSON trace, heatmap summary, and cryptographic SHA-256 integrity hash.
+    """
+    import math
+    from datetime import datetime, timezone
+    from app.localization.heatmap import compute_heatmap
+    from app.services.geocoder import reverse_geocode
+
+    # 1. Resolve Case Metadata
+    resolved_case_id = case_id
+    case_name = "Investigation"
+    target_identifiers: dict[str, Any] = {}
+
+    if isinstance(case, dict):
+        resolved_case_id = resolved_case_id or case.get("case_id") or case.get("id") or "UNKNOWN_CASE"
+        case_name = case.get("case_name") or case.get("title") or f"Investigation {resolved_case_id}"
+        if case.get("mobile_number"):
+            target_identifiers["msisdn"] = str(case["mobile_number"])
+        if case.get("suspect_name"):
+            target_identifiers["suspect_name"] = str(case["suspect_name"])
+        if case.get("imei"):
+            target_identifiers["imei"] = str(case["imei"])
+        if case.get("imsi"):
+            target_identifiers["imsi"] = str(case["imsi"])
+    elif case is not None:
+        resolved_case_id = resolved_case_id or getattr(case, "case_id", None) or "UNKNOWN_CASE"
+        case_name = getattr(case, "case_name", None) or getattr(case, "title", None) or f"Investigation {resolved_case_id}"
+        if getattr(case, "mobile_number", None):
+            target_identifiers["msisdn"] = str(case.mobile_number)
+        if getattr(case, "suspect_name", None):
+            target_identifiers["suspect_name"] = str(case.suspect_name)
+    else:
+        resolved_case_id = resolved_case_id or "UNKNOWN_CASE"
+        case_name = f"Investigation {resolved_case_id}"
+
+    # If target identifiers are still incomplete, check fixes
+    if fixes:
+        first_fix = fixes[0]
+        sub_id = getattr(first_fix, "subscriber_identifier", None)
+        if sub_id:
+            target_identifiers.setdefault("subscriber_identifier", str(sub_id))
+            if not target_identifiers.get("msisdn") and (str(sub_id).isdigit() or len(str(sub_id)) in (10, 12, 13)):
+                target_identifiers["msisdn"] = str(sub_id)
+
+    # 2. Build frame lookup map for towers used
+    frame_towers_map: dict[str, list[str]] = {}
+    if frames:
+        for fr in frames:
+            fr_id = str(getattr(fr, "frame_id", ""))
+            tws = getattr(fr, "towers", [])
+            cgis = [str(getattr(t, "cgi", "")) for t in tws if getattr(t, "cgi", None)]
+            if fr_id:
+                frame_towers_map[fr_id] = cgis
+
+    # 3. Parameters configuration
+    params_dict: dict[str, Any] = {
+        "solver": "cheung_lee_jpl",
+        "huber_k": 1.345,
+        "kalman_q_r_config": {
+            "process_noise_q": 1.0,
+            "measurement_noise_r": 25.0,
+            "target_type": "pedestrian",
+        },
+        "utm_zone": utm_zone,
+        "chi2_gate": 9.21,
+    }
+    if parameters_override:
+        params_dict.update(parameters_override)
+
+    # 4. Formulate Fixes list
+    fixes_list: list[dict[str, Any]] = []
+    coordinates_list: list[list[float]] = []
+
+    for f in fixes:
+        lat = round(float(f.latitude), 6)
+        lon = round(float(f.longitude), 6)
+        coordinates_list.append([lon, lat])
+
+        # Speed & Heading
+        ve = getattr(f, "velocity_east", None)
+        vn = getattr(f, "velocity_north", None)
+        speed_mps = None
+        heading_deg = None
+
+        if ve is not None and vn is not None:
+            speed_val = math.sqrt(float(ve) ** 2 + float(vn) ** 2)
+            speed_mps = round(speed_val, 2)
+            if speed_val > 0.05:
+                # 0 = North, 90 = East
+                heading_val = (math.degrees(math.atan2(float(ve), float(vn))) + 360.0) % 360.0
+                heading_deg = round(heading_val, 1)
+
+        conf_radius = round(float(f.confidence_radius_meters), 2)
+        gdop_val = round(float(f.gdop), 2) if getattr(f, "gdop", None) is not None else None
+
+        # Towers used
+        fr_id_str = str(getattr(f, "frame_id", ""))
+        towers_used = frame_towers_map.get(fr_id_str, [])
+        if not towers_used and hasattr(f, "towers_used") and f.towers_used:
+            towers_used = [str(x) for x in f.towers_used]
+
+        n_towers = len(towers_used) if towers_used else (3 if gdop_val is not None else 0)
+
+        # Fix method
+        fix_method = "multilateration"
+        if n_towers == 2:
+            fix_method = "two_tower"
+        elif n_towers == 1:
+            fix_method = "single_sector"
+
+        # Address
+        addr = getattr(f, "geocoded_address", None)
+        if not addr:
+            addr = reverse_geocode(f.latitude, f.longitude)
+
+        # Timestamp
+        ts = f.timestamp
+        if hasattr(ts, "isoformat"):
+            ts_str = ts.isoformat()
+        else:
+            ts_str = str(ts)
+
+        fixes_list.append({
+            "timestamp": ts_str,
+            "lat": lat,
+            "lon": lon,
+            "speed_mps": speed_mps,
+            "heading_deg": heading_deg,
+            "confidence_radius_95_m": conf_radius,
+            "gdop": gdop_val,
+            "n_towers": n_towers,
+            "fix_method": fix_method,
+            "address": addr,
+            "towers_used": towers_used,
+            "raw_vs_filtered": {
+                "raw_lat": lat,
+                "raw_lon": lon,
+            },
+        })
+
+    # 5. Trace
+    trace_dict = {
+        "type": "LineString",
+        "coordinates": coordinates_list,
+    }
+
+    # 6. Heatmap Summary
+    heatmap_summary: dict[str, Any] = {
+        "peak_lat": None,
+        "peak_lon": None,
+        "area_50pct_m2": None,
+        "area_90pct_m2": None,
+    }
+
+    if fixes:
+        try:
+            hm = compute_heatmap(fixes, resolution_m=50)
+            features = hm.get("features", [])
+            if features:
+                top_feature = max(features, key=lambda ft: ft.get("properties", {}).get("weight", 0.0))
+                top_coords = top_feature.get("geometry", {}).get("coordinates", [None, None])
+                heatmap_summary["peak_lon"] = round(float(top_coords[0]), 6) if top_coords[0] is not None else None
+                heatmap_summary["peak_lat"] = round(float(top_coords[1]), 6) if top_coords[1] is not None else None
+
+                count_50 = sum(1 for ft in features if ft.get("properties", {}).get("weight", 0.0) >= 0.50)
+                count_90 = sum(1 for ft in features if ft.get("properties", {}).get("weight", 0.0) >= 0.90)
+                heatmap_summary["area_50pct_m2"] = float(count_50 * 2500.0)
+                heatmap_summary["area_90pct_m2"] = float(count_90 * 2500.0)
+            else:
+                mean_lat = round(float(sum(f.latitude for f in fixes) / len(fixes)), 6)
+                mean_lon = round(float(sum(f.longitude for f in fixes) / len(fixes)), 6)
+                heatmap_summary["peak_lat"] = mean_lat
+                heatmap_summary["peak_lon"] = mean_lon
+                min_r = min(float(f.confidence_radius_meters) for f in fixes)
+                heatmap_summary["area_50pct_m2"] = round(math.pi * (min_r * 0.5) ** 2, 2)
+                heatmap_summary["area_90pct_m2"] = round(math.pi * min_r ** 2, 2)
+        except Exception:
+            if fixes:
+                heatmap_summary["peak_lat"] = round(float(fixes[0].latitude), 6)
+                heatmap_summary["peak_lon"] = round(float(fixes[0].longitude), 6)
+
+    # 7. Assembled Payload (without integrity)
+    now_utc_str = datetime.now(timezone.utc).isoformat()
+    raw_payload: dict[str, Any] = {
+        "schema_version": "1.0",
+        "case": {
+            "id": resolved_case_id,
+            "title": case_name,
+            "target_identifiers": target_identifiers,
+        },
+        "generated_at": now_utc_str,
+        "generated_by": str(officer_id or "system"),
+        "parameters": params_dict,
+        "fixes": fixes_list,
+        "trace": trace_dict,
+        "heatmap_summary": heatmap_summary,
+    }
+
+    # 8. Compute Canonical SHA-256 Hash
+    sha256_hash = compute_payload_sha256(raw_payload)
+
+    # 9. Attach Integrity Block
+    raw_payload["integrity"] = {
+        "sha256_of_payload": sha256_hash,
+        "audit_entry_id": str(audit_entry_id) if audit_entry_id else None,
+    }
+
+    return raw_payload
+

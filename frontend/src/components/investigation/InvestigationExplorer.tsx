@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  ChevronRight, ChevronDown, FileText, Database, Radio, CheckCircle, Clock, XCircle, Navigation, Map, MapPin, Download, FileJson, Layers, Search, Loader2, Plus
+  ChevronRight, ChevronDown, FileText, Database, Radio, CheckCircle, Clock, XCircle, Navigation, Map, MapPin, Download, FileJson, Braces, Layers, Search, Loader2, Plus
 } from 'lucide-react'
 import { cn } from '@/utils'
 import type { CaseFile, Investigation, RFVerifiedFix } from '@/types'
@@ -23,7 +23,7 @@ interface InvestigationExplorerProps {
   onSelectItem: (type: ExplorerItemType, id: string | null) => void
   onRunMultilateration: () => void
   isLocalizationRunning: boolean
-  onExportClick: (type: 'pdf' | 'csv' | 'kml') => void
+  onExportClick: (type: 'pdf' | 'csv' | 'kml' | 'json') => void
   onUploadClick?: () => void
   rfVerifiedFix?: RFVerifiedFix | null
   onUploadSDRClick?: () => void
@@ -383,6 +383,11 @@ export function InvestigationExplorer({
             icon={<Map className="h-3.5 w-3.5" />} 
             label="Export KML Trace" 
             onClick={() => onExportClick('kml')}
+          />
+          <Item 
+            icon={<Braces className="h-3.5 w-3.5" />} 
+            label="Export Forensic JSON" 
+            onClick={() => onExportClick('json')}
           />
         </Section>
 

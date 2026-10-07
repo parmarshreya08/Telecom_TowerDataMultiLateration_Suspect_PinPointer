@@ -77,8 +77,8 @@ export default function ReportsPage() {
 
     try {
       if (format === 'json') {
-        const data = await reportApi.getForensicReport(selectedInv)
-        setReport(data)
+        const blob = await exportApi.downloadJSON(selectedInv, getExportParams())
+        downloadBlob(blob, `e-rakshak_${selectedInv}_export.json`)
       } else if (format === 'geojson') {
         const geoData = await trackingApi.getGeoJSON(selectedInv, timeStart || undefined, timeEnd || undefined)
         const blob = new Blob([JSON.stringify(geoData, null, 2)], { type: 'application/geo+json' })
