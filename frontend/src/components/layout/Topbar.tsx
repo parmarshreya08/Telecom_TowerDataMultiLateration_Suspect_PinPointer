@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Bell, Sun, Moon, Menu, ChevronRight, Home, LogOut } from 'lucide-react'
+import { Bell, Sun, Moon, Menu, ChevronRight, Home, LogOut, Compass } from 'lucide-react'
 import { useThemeContext } from '@/hooks/useThemeContext'
 import { authApi, clearAuth, getStoredOfficer } from '@/services/auth'
 import { cn } from '@/utils'
@@ -10,6 +10,7 @@ interface TopbarProps {
   onToggleSidebar: () => void
   unreadNotifications: number
   onOpenNotifications: () => void
+  onStartTour?: () => void
 }
 
 // Build breadcrumb from pathname
@@ -23,7 +24,7 @@ function useBreadcrumb() {
   }))
 }
 
-export function Topbar({ onToggleSidebar, unreadNotifications, onOpenNotifications }: TopbarProps) {
+export function Topbar({ onToggleSidebar, unreadNotifications, onOpenNotifications, onStartTour }: TopbarProps) {
   const { isDark, toggleTheme } = useThemeContext()
   const navigate                = useNavigate()
   const breadcrumb              = useBreadcrumb()
@@ -98,6 +99,7 @@ export function Topbar({ onToggleSidebar, unreadNotifications, onOpenNotificatio
       <div className="flex items-center gap-1">
         {/* Theme toggle */}
         <button
+          data-tour="theme-toggle"
           onClick={toggleTheme}
           className="rounded-lg p-2 text-surface-500 hover:bg-surface-100 hover:text-surface-700 dark:hover:bg-surface-700 dark:hover:text-surface-300 transition-colors"
           aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
@@ -107,6 +109,7 @@ export function Topbar({ onToggleSidebar, unreadNotifications, onOpenNotificatio
 
         {/* Notifications */}
         <button
+          data-tour="notifications"
           onClick={onOpenNotifications}
           className="relative rounded-lg p-2 text-surface-500 hover:bg-surface-100 hover:text-surface-700 dark:hover:bg-surface-700 dark:hover:text-surface-300 transition-colors"
           aria-label={`Notifications — ${unreadNotifications} unread`}
@@ -120,7 +123,7 @@ export function Topbar({ onToggleSidebar, unreadNotifications, onOpenNotificatio
         </button>
 
         {/* User menu */}
-        <div className="relative" ref={menuRef}>
+        <div className="relative" data-tour="user-menu" ref={menuRef}>
           <button
             onClick={() => setMenuOpen((v) => !v)}
             className="ml-1 flex items-center gap-2 rounded-lg p-1.5 text-surface-500 hover:bg-surface-100 hover:text-surface-700 dark:hover:bg-surface-700 dark:hover:text-surface-300 transition-colors"
@@ -194,14 +197,28 @@ export function Topbar({ onToggleSidebar, unreadNotifications, onOpenNotificatio
                 </div>
               )}
 
+              {onStartTour && (
+                <div className="border-b border-surface-100 py-1.5 dark:border-surface-700">
+                  <button
+                    onClick={() => {
+                      setMenuOpen(false)
+                      onStartTour()
+                    }}
+                    className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-surface-700 hover:bg-surface-100 dark:text-surface-300 dark:hover:bg-surface-800"
+                  >
+                    <Compass className="h-3.5 w-3.5" />
+                    Take a tour
+                  </button>
+                </div>
+              )}
+
               <button
                 onClick={handleLogout}
                 className="mt-1 flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm text-danger hover:bg-danger/10"
               >
                 <LogOut className="h-4 w-4" />
                 Log out
-              </button>
-            </div>
+              </button>            </div>
           )}
         </div>
 

@@ -12,7 +12,6 @@ const DashboardPage           = lazy(() => import('@/pages/DashboardPage'))
 const InvestigationsPage      = lazy(() => import('@/pages/InvestigationsPage'))
 const NewInvestigationPage    = lazy(() => import('@/pages/NewInvestigationPage'))
 const InvestigationDetailPage = lazy(() => import('@/pages/InvestigationDetailPage'))
-const UploadCDRPage           = lazy(() => import('@/pages/UploadCDRPage'))
 const ProcessingPage          = lazy(() => import('@/pages/ProcessingPage'))
 const LiveInvestigationPage   = lazy(() => import('@/pages/LiveInvestigationPage'))
 const ReportsPage             = lazy(() => import('@/pages/ReportsPage'))
@@ -40,8 +39,6 @@ export function AppRoutes() {
           <Route path="/investigations" element={<InvestigationsPage />} />
           <Route path="/investigations/new" element={<NewInvestigationPage />} />
           <Route path="/investigations/:id" element={<InvestigationDetailPage />} />
-          <Route path="/upload" element={<UploadCDRPage />} />
-          <Route path="/investigations/:id/upload" element={<UploadCDRPage />} />
           <Route path="/investigations/:id/processing" element={<ProcessingPage />} />
           <Route path="/investigations/:id/live" element={<LiveInvestigationPage />} />
           <Route path="/reports" element={<ReportsPage />} />

@@ -75,7 +75,7 @@ export function Sidebar({ open, onToggle }: SidebarProps) {
       </div>
 
       {/* Nav items */}
-      <nav className="flex-1 overflow-y-auto py-4">
+      <nav data-tour="sidebar-nav" className="flex-1 overflow-y-auto py-4">
         <ul className="space-y-1 px-2">
           {NAV_ITEMS.map(({ path, label, icon: Icon, badge }) => {
             const isActive = location.pathname.startsWith(path)
@@ -83,6 +83,7 @@ export function Sidebar({ open, onToggle }: SidebarProps) {
               <li key={path}>
                 <NavLink
                   to={path}
+                  data-tour={`nav-${path.replace(/^\//, '')}`}
                   className={cn(
                     'group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors duration-150',
                     isActive

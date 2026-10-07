@@ -4,6 +4,8 @@ import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet'
 import { Loader2, Navigation, AlertTriangle } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import 'leaflet/dist/leaflet.css'
+import { useMapTheme } from '@/hooks/useMapTheme'
+import { MapThemeSwitcher } from '@/components/map/MapThemeSwitcher'
 
 interface LocationUpdate {
   lat: number
@@ -14,6 +16,7 @@ interface LocationUpdate {
 
 export default function FieldTrackerPage() {
   const { token } = useParams<{ token: string }>()
+  const { activeTheme } = useMapTheme()
   const [isValidating, setIsValidating] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [caseId, setCaseId] = useState<string | null>(null)
@@ -142,6 +145,11 @@ export default function FieldTrackerPage() {
 
       {/* Map Area */}
       <div className="flex-1 relative z-0 h-full w-full">
+        {/* Floating Map Theme Switcher */}
+        <div className="absolute top-4 right-4 z-[1000] pointer-events-auto">
+          <MapThemeSwitcher />
+        </div>
+
         <MapContainer 
           center={center} 
           zoom={15} 
@@ -149,8 +157,11 @@ export default function FieldTrackerPage() {
           zoomControl={false}
         >
           <TileLayer
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            attribution='&copy; OpenStreetMap contributors'
+            key={activeTheme.id}
+            url={activeTheme.url}
+            attribution={activeTheme.attribution}
+            subdomains={activeTheme.subdomains || 'abc'}
+            maxZoom={activeTheme.maxZoom}
           />
           
           {/* Path */}

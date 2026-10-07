@@ -13,6 +13,7 @@ import { Tooltip } from '@/components/ui/Tooltip'
 import { fileApi, investigationApi, trackingApi, adminApi, formatDeleteError } from '@/services/api'
 import { getStoredOfficer } from '@/services/auth'
 import { CaseStatusSelector } from '@/components/investigation/CaseStatusSelector'
+import { CdrUploadModal } from '@/components/investigation/CdrUploadModal'
 import { formatDateTime, formatFileSize, cn } from '@/utils'
 import { TRACKING_STATUS_COLORS, OPERATOR_COLORS } from '@/constants'
 import type { Investigation, UploadMetadata, CaseAssignment, AdminUser, QualityReport } from '@/types'
@@ -42,6 +43,7 @@ export default function InvestigationDetailPage() {
   const [availableInspectors, setAvailableInspectors] = useState<AdminUser[]>([])
   const [selectedAssignId, setSelectedAssignId] = useState<string>('')
   const [assignLoading, setAssignLoading] = useState(false)
+  const [showUploadModal, setShowUploadModal] = useState(false)
 
   // Auto-dismiss action success message after 4s
   useEffect(() => {
@@ -394,7 +396,7 @@ export default function InvestigationDetailPage() {
           <Card>
             <CardHeader>
               <CardTitle>CDR Uploads ({uploads.length})</CardTitle>
-              <Button size="sm" variant="primary" icon={<Plus className="h-4 w-4" />} onClick={() => navigate(`/investigations/${currentInv.id}/upload`)}>
+              <Button size="sm" variant="primary" icon={<Plus className="h-4 w-4" />} onClick={() => setShowUploadModal(true)}>
                 Upload File
               </Button>
             </CardHeader>
@@ -405,7 +407,7 @@ export default function InvestigationDetailPage() {
                   <p className="text-sm font-medium text-surface-600 dark:text-surface-300">No CDR files uploaded for this case</p>
                   <p className="text-xs text-surface-400">Upload a CDR file to start localization and analysis.</p>
                 </div>
-                <Button size="sm" variant="primary" onClick={() => navigate(`/investigations/${currentInv.id}/upload`)}>
+                <Button size="sm" variant="primary" onClick={() => setShowUploadModal(true)}>
                   Upload File
                 </Button>
               </div>
@@ -450,7 +452,7 @@ export default function InvestigationDetailPage() {
               <Button size="md" variant="primary" className="w-full justify-start" icon={<MapPin className="h-4 w-4" />} onClick={() => navigate(`/investigations/${currentInv.id}/live`)}>
                 Open Multilateration Map
               </Button>
-              <Button size="md" variant="secondary" className="w-full justify-start" icon={<Upload className="h-4 w-4" />} onClick={() => navigate(`/investigations/${currentInv.id}/upload`)}>
+              <Button size="md" variant="secondary" className="w-full justify-start" icon={<Upload className="h-4 w-4" />} onClick={() => setShowUploadModal(true)}>
                 Upload CDR File
               </Button>
               <Button size="md" variant="secondary" className="w-full justify-start" icon={<FileText className="h-4 w-4" />} onClick={() => navigate('/reports')}>
@@ -645,6 +647,12 @@ export default function InvestigationDetailPage() {
           <p className="font-medium text-surface-800 dark:text-surface-200">This action cannot be undone.</p>
         </div>
       </Modal>
+
+      <CdrUploadModal
+        open={showUploadModal}
+        caseId={currentInv.id}
+        onClose={() => setShowUploadModal(false)}
+      />
     </div>
   )
 }

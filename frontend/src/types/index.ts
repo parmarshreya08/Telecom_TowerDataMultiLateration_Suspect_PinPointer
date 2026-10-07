@@ -183,6 +183,8 @@ export interface Officer {
   role: UserRole
   is_active: boolean
   created_at: string
+  map_theme?: string
+  preferences?: Record<string, unknown>
 }
 
 export interface AuthResponse {

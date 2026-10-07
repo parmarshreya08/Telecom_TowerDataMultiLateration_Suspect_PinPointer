@@ -16,6 +16,8 @@ import {
 } from 'lucide-react'
 import axios from 'axios'
 import { cn } from '@/utils'
+import { useMapTheme } from '@/hooks/useMapTheme'
+import { MapThemeSwitcher } from '@/components/map/MapThemeSwitcher'
 
 // ── Leaflet Icons setup ──────────────────────────────────────────────────
 const towerIcon = L.divIcon({
@@ -114,6 +116,7 @@ function getHaversineDistanceMeters(lat1: number, lon1: number, lat2: number, lo
 }
 
 export function LiveEngineTester({ isDark }: { isDark: boolean }) {
+  const { activeTheme } = useMapTheme()
   const [selectedPresetId, setSelectedPresetId] = useState<string>('surat')
   const activePreset = useMemo(
     () => PRESETS.find((p) => p.id === selectedPresetId) || PRESETS[0],
@@ -460,7 +463,12 @@ export function LiveEngineTester({ isDark }: { isDark: boolean }) {
           </div>
 
           {/* Map Preview */}
-          <div className="rounded-2xl border border-surface-200 dark:border-surface-800 overflow-hidden bg-surface-100 dark:bg-surface-900 shadow-sm relative h-[320px]">
+          <div className="rounded-2xl border border-surface-200 dark:border-surface-800 bg-surface-100 dark:bg-surface-900 shadow-sm relative h-[320px]">
+            {/* Map Basemap Switcher Widget */}
+            <div className="absolute top-3 right-3 z-[1000] pointer-events-auto">
+              <MapThemeSwitcher />
+            </div>
+
             {isSolving && (
               <div className="absolute inset-0 z-[1000] bg-black/20 dark:bg-black/40 backdrop-blur-[1px] flex flex-col items-center justify-center pointer-events-none">
                 <div className="relative flex items-center justify-center h-20 w-20">
@@ -477,14 +485,28 @@ export function LiveEngineTester({ isDark }: { isDark: boolean }) {
               center={mapCenter}
               zoom={15}
               scrollWheelZoom={false}
-              className="w-full h-full"
+              className="w-full h-full rounded-2xl"
+              style={{ borderRadius: '1rem', overflow: 'hidden' }}
             >
               <MapRecenter center={mapCenter} />
               <TileLayer
-                attribution='&copy; Google Maps'
-                url="https://mt0.google.com/vt/lyrs=y&hl=en&x={x}&y={y}&z={z}"
-                maxZoom={20}
+                key={activeTheme.id}
+                attribution={activeTheme.attribution}
+                url={activeTheme.url}
+                subdomains={activeTheme.subdomains || 'abc'}
+                maxZoom={activeTheme.maxZoom}
+                maxNativeZoom={activeTheme.maxNativeZoom ?? activeTheme.maxZoom}
               />
+              {activeTheme.overlayUrl && (
+                <TileLayer
+                  key={`${activeTheme.id}-labels`}
+                  url={activeTheme.overlayUrl}
+                  attribution={activeTheme.overlayAttribution ?? ''}
+                  maxZoom={activeTheme.maxZoom}
+                  maxNativeZoom={activeTheme.maxNativeZoom ?? activeTheme.maxZoom}
+                  opacity={0.9}
+                />
+              )}
 
               {/* Tower markers */}
               {towers.map((tower, idx) => (

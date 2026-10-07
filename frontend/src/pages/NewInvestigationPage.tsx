@@ -70,7 +70,7 @@ export default function NewInvestigationPage() {
     setIsLoading(true)
     try {
       const created = await investigationApi.create(data)
-      navigate(`/investigations/${created.id}/upload`)
+      navigate(`/investigations/${created.id}`)
     } catch (err: unknown) {
       setError(extractErrorMessage(err))
     } finally {

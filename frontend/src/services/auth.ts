@@ -88,4 +88,11 @@ export const authApi = {
     apiClient.post<{ message: string }>('/api/auth/logout-all').then((r) => r.data),
 
   me: () => apiClient.get<Officer>('/api/auth/me').then((r) => r.data),
+
+  updatePreferences: (data: { map_theme?: string; preferences?: Record<string, unknown> }) =>
+    apiClient.patch<Officer>('/api/auth/preferences', data).then((r) => {
+      const cur = getStoredOfficer()
+      if (cur) setStoredOfficer({ ...cur, ...r.data })
+      return r.data
+    }),
 }

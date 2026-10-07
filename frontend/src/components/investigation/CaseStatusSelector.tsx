@@ -180,7 +180,7 @@ export function CaseStatusSelector({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 4, scale: 0.96 }}
             transition={{ duration: 0.12 }}
-            className="absolute top-full left-0 z-[100] mt-1.5 w-72 rounded-xl border border-surface-200 bg-white p-2 shadow-2xl dark:border-surface-700 dark:bg-surface-850"
+            className="absolute top-full left-0 z-100 mt-1.5 w-72 rounded-xl border border-surface-200 bg-white p-2 shadow-2xl dark:border-surface-700 dark:bg-surface-850"
             role="listbox"
           >
             <div className="flex items-center justify-between px-2.5 py-1.5 border-b border-surface-100 dark:border-surface-700/70 mb-1.5">

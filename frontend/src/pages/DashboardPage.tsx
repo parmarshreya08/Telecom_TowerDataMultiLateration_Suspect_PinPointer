@@ -254,7 +254,7 @@ export default function DashboardPage() {
             </CardHeader>
             <div className="space-y-2">
               {[
-                { label: 'Upload CDR Data', icon: Upload, path: '/upload', variant: 'primary' as const },
+                { label: 'Upload CDR Data', icon: Upload, path: '/investigations', variant: 'primary' as const },
                 { label: 'New Investigation', icon: Plus, path: '/investigations/new', variant: 'secondary' as const },
                 { label: 'View All Cases', icon: FolderOpen, path: '/investigations', variant: 'secondary' as const },
                 { label: 'View Reports', icon: FileText, path: '/reports', variant: 'secondary' as const },

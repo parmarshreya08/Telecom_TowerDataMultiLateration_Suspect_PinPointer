@@ -149,6 +149,11 @@ export const uploadApi = {
 }
 
 // File management
+export const eventsApi = {
+  localize: (caseId: string): Promise<{ case_id: string; event_count: number; results: Array<Record<string, unknown>> }> =>
+    apiClient.get(`/api/case/${caseId}/events/localize`).then((r) => r.data),
+}
+
 export const fileApi = {
   listCaseFiles: (caseId: string): Promise<FileListResponse> =>
     apiClient.get<FileListResponse>(`/api/case/${caseId}/files`).then((r) => r.data),

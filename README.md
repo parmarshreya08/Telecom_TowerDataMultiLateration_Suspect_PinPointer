@@ -10,7 +10,7 @@ Multi-operator CDR ingestion, measurement-frame building, and multilateration en
 ```bash
 pip install -r requirements.txt
 cp .env.example .env   # fill in secrets
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+python -m app.main
 ```
 - API: `http://localhost:8000`
 - Swagger: `http://localhost:8000/docs`

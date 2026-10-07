@@ -4,13 +4,16 @@ import { Sidebar } from '@/components/layout/Sidebar'
 import { Topbar } from '@/components/layout/Topbar'
 import { NotificationDrawer } from '@/components/notifications/NotificationDrawer'
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
+import { WorkspaceTour } from '@/components/onboarding/WorkspaceTour'
 import { useNotifications } from '@/hooks/useNotifications'
+import { useWorkspaceTour } from '@/hooks/useWorkspaceTour'
 
 export function AppLayout() {
   const location = useLocation()
   const [sidebarOpen, setSidebarOpen]   = useState(() => typeof window !== 'undefined' ? window.innerWidth >= 768 : true)
   const [notifOpen, setNotifOpen]       = useState(false)
   const { notifications, unreadCount, markRead, markAllRead } = useNotifications()
+  const tour = useWorkspaceTour()
 
   return (
     <div className="flex h-screen overflow-hidden bg-surface-50 dark:bg-surface-950">
@@ -24,6 +27,7 @@ export function AppLayout() {
           onToggleSidebar={() => setSidebarOpen((v) => !v)}
           unreadNotifications={unreadCount}
           onOpenNotifications={() => setNotifOpen(true)}
+          onStartTour={tour.restart}
         />
 
         <main className="flex-1 overflow-y-auto p-6">
@@ -41,6 +45,9 @@ export function AppLayout() {
         onMarkRead={markRead}
         onMarkAllRead={markAllRead}
       />
+
+      {/* One-time workspace onboarding tour */}
+      <WorkspaceTour open={tour.open} onFinish={tour.finish} />
     </div>
   )
 }

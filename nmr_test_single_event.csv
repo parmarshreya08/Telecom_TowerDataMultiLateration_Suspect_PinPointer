@@ -1,0 +1,4 @@
+event_id,event_timestamp,event_type,subscriber_id,cell_global_id,cell_role,measurement_type,measurement_value,measurement_unit,measurement_sigma
+EVT-001,2026-10-07T10:00:00+05:30,call,919765432109,405-867-1022-10004,serving,radio_rtt,0.529,us,0.15
+EVT-001,2026-10-07T10:00:00+05:30,call,919765432109,404-10-2025-10005,neighbor,radio_rtt,0.556,us,0.15
+EVT-001,2026-10-07T10:00:00+05:30,call,919765432109,405-867-1041-10006,neighbor,radio_rtt,0.556,us,0.15

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Sun, Moon, Monitor, Bell, Map, FileText, Globe, Save } from 'lucide-react'
 import { useThemeContext } from '@/hooks/useThemeContext'
+import { useMapTheme } from '@/hooks/useMapTheme'
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Select'
@@ -8,6 +9,7 @@ import { cn } from '@/utils'
 
 export default function SettingsPage() {
   const { theme, setTheme } = useThemeContext()
+  const { themeId: mapThemeId, setMapTheme, availableThemes } = useMapTheme()
   const [notifications, setNotifications] = useState({
     location_updates: true,
     tower_changes:    true,
@@ -15,7 +17,6 @@ export default function SettingsPage() {
     email_status:     false,
     reports:          true,
   })
-  const [mapProvider, setMapProvider]     = useState('openstreetmap')
   const [exportFormat, setExportFormat]   = useState('pdf')
   const [language, setLanguage]           = useState('en')
   const [saved, setSaved]                 = useState(false)
@@ -117,14 +118,14 @@ export default function SettingsPage() {
       <Card>
         <CardHeader><CardTitle><Map className="mr-2 inline h-4 w-4" />Map Settings</CardTitle></CardHeader>
         <Select
-          label="Map Provider"
-          options={[
-            { value: 'openstreetmap', label: 'OpenStreetMap (default)' },
-            { value: 'satellite',     label: 'Satellite View (ESRI)' },
-          ]}
-          value={mapProvider}
-          onChange={setMapProvider}
+          label="Basemap Style"
+          options={availableThemes.map((t) => ({ value: t.id, label: `${t.name} — ${t.badge}` }))}
+          value={mapThemeId}
+          onChange={setMapTheme}
         />
+        <p className="mt-2 text-xs text-surface-400">
+          Applies to all investigation maps. Your choice is saved to your account.
+        </p>
       </Card>
 
       {/* Exports */}
