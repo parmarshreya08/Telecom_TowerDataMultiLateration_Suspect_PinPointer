@@ -129,6 +129,23 @@ class TelecomIngestionPipeline:
         # Step 4: Extract Raw Rows
         raw_rows = extractor.extract(file_path, upload_id=upload_id)
 
+        # NMR already yields normalized SubscriberEventRecord rows; skip
+        # operator-specific validation/normalization and the legacy frame builder.
+        if source_type == SourceType.NMR:
+            events = [r for r in raw_rows if isinstance(r, SubscriberEventRecord)]
+            await self.repo.save_subscriber_events(events)
+            await self.db_session.commit()
+            end_time = datetime.now()
+            return {
+                "upload_id": upload_id,
+                "case_id": case_id,
+                "operator": operator.value,
+                "source_type": source_type.value,
+                "records_processed": len(events),
+                "measurement_frames_built": 0,
+                "duration_ms": int((end_time - start_time).total_seconds() * 1000),
+            }
+
         # Step 5: Data Constraints Validation
         valid_rows = self.validator.validate_raw_records(raw_rows, file_type_str)
 
@@ -144,9 +161,26 @@ class TelecomIngestionPipeline:
             towers = [r for r in normalized_records if isinstance(r, TowerRecord)]
             await self.repo.save_tower_records(towers)
         else:
-            # CDR or SpotDump subscriber activities
+            # NMR / CDR / Spot dump subscriber activities
             events = [r for r in normalized_records if isinstance(r, SubscriberEventRecord)]
+            if not events and source_type == SourceType.NMR:
+                events = [r for r in raw_rows if isinstance(r, SubscriberEventRecord)]
             await self.repo.save_subscriber_events(events)
+
+            if source_type == SourceType.NMR:
+                # NMR is evaluated per event in EventLocalizationEngine; do NOT
+                # bundle into time-windowed frames or apply Kalman smoothing.
+                await self.db_session.commit()
+                end_time = datetime.now()
+                return {
+                    "upload_id": upload_id,
+                    "case_id": case_id,
+                    "operator": operator.value,
+                    "source_type": source_type.value,
+                    "records_processed": len(events),
+                    "measurement_frames_built": 0,
+                    "duration_ms": int((end_time - start_time).total_seconds() * 1000),
+                }
 
             # Build Measurement Frames for the suspect subscriber voice/data connections
             frames = await self.builder.build_frames(events)
@@ -187,6 +221,9 @@ class TelecomIngestionPipeline:
             return TowerDumpExtractor()
         if file_type == "SpotDump":
             return SpotDumpExtractor()
+        if file_type in ("NMR", SourceType.NMR.value):
+            from app.ingestion.extractors.nmr import NmrExtractor
+            return NmrExtractor()
 
         # Route CDR extractors
         if operator == "Airtel":

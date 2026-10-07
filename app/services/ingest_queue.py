@@ -109,6 +109,9 @@ class IngestQueue:
                         extractor = TowerDumpExtractor()
                     elif source_type == SourceType.SPOT_DUMP:
                         extractor = SpotDumpExtractor()
+                    elif source_type == SourceType.NMR:
+                        from app.ingestion.extractors.nmr import NmrExtractor
+                        extractor = NmrExtractor()
                     elif operator_str == "Airtel":
                         extractor = AirtelExtractor()
                     elif operator_str == "Jio":
@@ -131,33 +134,54 @@ class IngestQueue:
                         )
                         towers = [r for r in normalized if isinstance(r, TowerRecord)]
                         await repo.save_tower_records(towers)
+                    if source_type == SourceType.NMR:
+                        events = [r for r in raw_rows if isinstance(r, SubscriberEventRecord)]
+                        await repo.save_subscriber_events(events)
+                        await repo.update_upload_status(upload_id, "completed")
+                        await db_session.commit()
+                        await connection_manager.broadcast(
+                            case_id, "upload:completed",
+                            {"upload_id": str(upload_id), "case_id": case_id, "status": "completed", "frame_count": 0},
+                        )
+                        logger.info("ingest_queue_complete", upload_id=str(upload_id), source_type="NMR", events=len(events))
+                    elif source_type == SourceType.SPOT_DUMP:
+                        validator = IngestionValidator()
+                        valid_rows = validator.validate_raw_records(raw_rows, source_type.value)
+                        normalizer = TelecomNormalizer()
+                        normalized = normalizer.normalize_records(
+                            valid_rows, operator_str, source_type.value, upload_id, upload.original_filename
+                        )
+                        events = [r for r in normalized if isinstance(r, SubscriberEventRecord)]
+                        await repo.save_subscriber_events(events)
+                        tower_lookup = TowerLookupService(db_session)
+                        builder = MeasurementFrameBuilder(tower_lookup)
+                        frames = await builder.build_frames(events)
+                        await repo.save_measurement_frames(frames)
+                        await repo.update_upload_status(upload_id, "completed")
+                        await db_session.commit()
+                        logger.info("ingest_queue_complete", upload_id=str(upload_id))
+                        frame_count = len(frames)
+                        await connection_manager.broadcast(
+                            case_id, "upload:completed",
+                            {"upload_id": str(upload_id), "case_id": case_id, "status": "completed", "frame_count": frame_count},
+                        )
                     else:
-                        if source_type == SourceType.SPOT_DUMP:
-                            validator = IngestionValidator()
-                            valid_rows = validator.validate_raw_records(raw_rows, source_type.value)
-                            normalizer = TelecomNormalizer()
-                            normalized = normalizer.normalize_records(
-                                valid_rows, operator_str, source_type.value, upload_id, upload.original_filename
-                            )
-                            events = [r for r in normalized if isinstance(r, SubscriberEventRecord)]
-                        else:
-                            events = [r for r in raw_rows if isinstance(r, SubscriberEventRecord)]
+                        events = [r for r in raw_rows if isinstance(r, SubscriberEventRecord)]
                         await repo.save_subscriber_events(events)
                         tower_lookup = TowerLookupService(db_session)
                         builder = MeasurementFrameBuilder(tower_lookup)
                         frames = await builder.build_frames(events)
                         await repo.save_measurement_frames(frames)
 
-                    await repo.update_upload_status(upload_id, "completed")
-                    await db_session.commit()
-                    logger.info("ingest_queue_complete", upload_id=str(upload_id))
+                        await repo.update_upload_status(upload_id, "completed")
+                        await db_session.commit()
+                        logger.info("ingest_queue_complete", upload_id=str(upload_id))
 
-                    frame_count = len(frames)
-                    await connection_manager.broadcast(
-                        case_id, "upload:completed",
-                        {"upload_id": str(upload_id), "case_id": case_id,
-                         "status": "completed", "frame_count": frame_count},
-                    )
+                        frame_count = len(frames)
+                        await connection_manager.broadcast(
+                            case_id, "upload:completed",
+                            {"upload_id": str(upload_id), "case_id": case_id, "status": "completed", "frame_count": frame_count},
+                        )
 
                 finally:
                     if os.path.exists(local_path):

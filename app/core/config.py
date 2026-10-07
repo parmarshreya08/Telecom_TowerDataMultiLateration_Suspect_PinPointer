@@ -35,23 +35,28 @@ class Settings(BaseSettings):
     HOST: str = Field(default="0.0.0.0")
     PORT: int = Field(default=8000)
     CORS_ORIGINS: str = Field(
-        default="http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000,http://localhost:4173,http://127.0.0.1:4173",
-        description="Comma-separated list of allowed CORS origins",
+        default="",
+        description="Comma-separated list of allowed CORS origins (empty = env-based)",
     )
+    @property
+    def effective_cors_origins(self) -> list[str]:
+        """Dev: localhost allowed. Production: only real deployment origins."""
+        configured = [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
+        is_dev = self.APP_ENV.lower() in ("development", "dev", "local", "test")
+        if is_dev:
+            allowed = set(configured)
+            for loc in ("http://localhost:5173", "http://127.0.0.1:5173",
+                        "http://localhost:3000", "http://127.0.0.1:3000",
+                        "http://localhost:4173", "http://127.0.0.1:4173"):
+                allowed.add(loc)
+            # production origin also allowed in dev for convenience
+            allowed.update(REQUIRED_CORS_ORIGINS)
+            return sorted(allowed)
+        # production: drop localhost, keep required prod origins
+        prod = {o for o in configured if "localhost" not in o and "127.0.0.1" not in o}
+        prod.update(REQUIRED_CORS_ORIGINS)
+        return sorted(prod) or list(REQUIRED_CORS_ORIGINS)
 
-    @field_validator("CORS_ORIGINS")
-    @classmethod
-    def _ensure_required_origins(cls, value: str) -> str:
-        """Merge the always-allowed deployment origins into CORS_ORIGINS.
-
-        Guarantees the production frontend is never rejected even if the
-        CORS_ORIGINS env var is missing, stale, or only lists localhost.
-        """
-        origins = [o.strip() for o in value.split(",") if o.strip()]
-        for required in REQUIRED_CORS_ORIGINS:
-            if required not in origins:
-                origins.append(required)
-        return ",".join(origins)
     API_KEY_SECRET: str = Field(
         ...,
         description="Secret key for JWT signing and API authentication (must be set in .env)",

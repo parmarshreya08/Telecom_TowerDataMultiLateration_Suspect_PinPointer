@@ -27,6 +27,7 @@ class SourceType(str, Enum):
     LBS = "LBS"
     CEIR = "CEIR"
     IPDR = "IPDR"
+    NMR = "NMR"
     UNKNOWN = "Unknown"
 
 

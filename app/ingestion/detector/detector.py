@@ -41,6 +41,9 @@ EXTRACTOR_MAP: dict[tuple[Operator, SourceType], str] = {
     (Operator.VI, SourceType.SPOT_DUMP): "SpotDumpExtractor",
     (Operator.BSNL, SourceType.SPOT_DUMP): "SpotDumpExtractor",
     (Operator.UNKNOWN, SourceType.SPOT_DUMP): "SpotDumpExtractor",
+
+    # NMR event-row format routes
+    (Operator.UNKNOWN, SourceType.NMR): "NmrExtractor",
 }
 
 

@@ -7,7 +7,7 @@ from uuid import UUID
 
 from app.utils.datetime_utils import now_ist
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, String, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
@@ -27,6 +27,9 @@ class OfficerModel(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now_ist, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=now_ist, onupdate=now_ist, nullable=False)
+
+    map_theme: Mapped[str] = mapped_column(String(50), default="dark", nullable=False)
+    preferences: Mapped[dict | None] = mapped_column(JSON, default=dict, nullable=True)
 
     sessions: Mapped[list["AuthSessionModel"]] = relationship(
         back_populates="officer", cascade="all, delete-orphan", lazy="selectin"

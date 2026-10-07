@@ -4,6 +4,7 @@ Handles officer registration, login, logout, logout-all, and session info.
 """
 
 from datetime import timedelta
+from typing import Any
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -48,6 +49,8 @@ class OfficerResponse(BaseModel):
     role: str
     is_active: bool
     created_at: str
+    map_theme: str = "dark"
+    preferences: dict[str, Any] = Field(default_factory=dict)
 
 
 class AuthResponse(BaseModel):
@@ -55,6 +58,11 @@ class AuthResponse(BaseModel):
     token_type: str = "bearer"
     expires_in: int
     officer: OfficerResponse
+
+
+class PreferencesUpdateRequest(BaseModel):
+    map_theme: str | None = None
+    preferences: dict[str, Any] | None = None
 
 
 def _to_officer_response(officer: OfficerModel) -> OfficerResponse:
@@ -67,6 +75,8 @@ def _to_officer_response(officer: OfficerModel) -> OfficerResponse:
         role=officer.role,
         is_active=officer.is_active,
         created_at=officer.created_at.isoformat(),
+        map_theme=getattr(officer, "map_theme", "dark") or "dark",
+        preferences=getattr(officer, "preferences", {}) or {},
     )
 
 
@@ -312,3 +322,28 @@ async def get_me(
     Return the authenticated officer's info, role, and active status.
     """
     return _to_officer_response(officer)
+
+
+@router.patch(
+    "/preferences",
+    status_code=status.HTTP_200_OK,
+    summary="Update officer UI preferences such as map theme",
+)
+async def update_preferences(
+    body: PreferencesUpdateRequest,
+    officer: OfficerModel = Depends(get_current_officer),
+    db: AsyncSession = Depends(get_db_session),
+) -> OfficerResponse:
+    """
+    Update preferences (map_theme, dashboard settings) for the current officer.
+    """
+    if body.map_theme is not None:
+        officer.map_theme = body.map_theme.strip().lower()
+    if body.preferences is not None:
+        current_prefs = dict(officer.preferences or {})
+        current_prefs.update(body.preferences)
+        officer.preferences = current_prefs
+
+    await db.commit()
+    await db.refresh(officer)
+    return _to_officer_response(officer)

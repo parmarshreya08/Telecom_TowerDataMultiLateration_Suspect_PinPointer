@@ -69,6 +69,11 @@ IPDR_SIGNATURE = {
     "partial": ["ipdr", "ipv4", "ipv6", "port", "protocol"]
 }
 
+NMR_SIGNATURE = {
+    "exact": ["event_id", "event_timestamp", "event_type", "subscriber_id", "cell_global_id", "measurement_type", "measurement_value", "measurement_unit"],
+    "partial": ["nmr", "measurement", "subscriber"],
+}
+
 # ==============================================================================
 # Mapping Registries
 # ==============================================================================
@@ -87,4 +92,5 @@ SOURCE_TYPE_SIGNATURES: dict[SourceType, dict[str, list[str]]] = {
     SourceType.LBS: LBS_SIGNATURE,
     SourceType.CEIR: CEIR_SIGNATURE,
     SourceType.IPDR: IPDR_SIGNATURE,
+    SourceType.NMR: NMR_SIGNATURE,
 }
