@@ -9,13 +9,16 @@ import {
   Copy, Check, Play, Pause, Trash2,
   FolderOpen, SlidersHorizontal, MoreVertical, X,
   ChevronUp, ChevronDown, Smartphone, ShieldAlert,
+  PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Compass,
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
+import { useToast } from '@/components/ui/Toast'
 import { Modal } from '@/components/ui/Modal'
 import { Tooltip } from '@/components/ui/Tooltip'
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
 import { InvestigationMap } from '@/components/map/InvestigationMap'
 import { ShareLocationModal } from '@/components/investigation/ShareLocationModal'
+import { CdrUploadModal } from '@/components/investigation/CdrUploadModal'
 import { SDRUploadModal } from '@/components/investigation/SDRUploadModal'
 import {
   formatCoordinate, formatDateTime, formatAccuracy,
@@ -23,9 +26,50 @@ import {
   buildGoogleMapsUrl, copyToClipboard,
 } from '@/utils'
 import { TRACKING_STATUS_COLORS, DEFAULT_MAP_CENTER } from '@/constants'
-import { investigationApi, trackingApi, exportApi, fileApi } from '@/services/api'
+import { investigationApi, trackingApi, exportApi, fileApi, eventsApi } from '@/services/api'
+import { socketService } from '@/services/socket'
 import type { GeoJSONFeatureCollection, Investigation, TowerRecord, RttObservation, CaseFile, InvestigationSwapEvent, RFVerifiedFix } from '@/types'
 import { InvestigationExplorer, SelectedItem } from '@/components/investigation/InvestigationExplorer'
+import { WorkspaceTour, type TourStep } from '@/components/onboarding/WorkspaceTour'
+import { LS_KEYS } from '@/constants'
+
+// First-time tour for the live investigation workspace.
+const LIVE_TOUR_STEPS: TourStep[] = [
+  {
+    title: 'Live Investigation Workspace',
+    body: 'A quick tour of the tactical map console. You can skip anytime and reopen it from the toolbar.',
+  },
+  {
+    selector: '[data-tour="explorer-panel"]',
+    placement: 'right',
+    title: 'Explorer island',
+    body: 'Your case tree — overview, CDR files, RF/SDR, towers, measurement frames, and reports. Collapse it with the ⯈ button to reclaim map space.',
+  },
+  {
+    selector: '[data-tour="details-panel"]',
+    placement: 'left',
+    title: 'Details island',
+    body: 'Case metadata, the suspect pin pointer, time-range filtering, and export tools. Also collapsible.',
+  },
+  {
+    selector: '[data-tour="tower-toggle"]',
+    placement: 'left',
+    title: 'Tower clutter control',
+    body: 'Thousands of cell towers are hidden by default. Toggle them on/off here whenever you need the full tower grid.',
+  },
+  {
+    selector: '[data-tour="map-basemap"]',
+    placement: 'left',
+    title: 'Basemap style',
+    body: 'Switch between Tactical Dark, Satellite, Streets, and Terrain. Your choice is saved to your account.',
+  },
+  {
+    selector: '[data-tour="run-engine"]',
+    placement: 'bottom',
+    title: 'Run the engine',
+    body: 'Execute JPL trilateration + Kalman filtering over the ingested frames to generate suspect fixes.',
+  },
+]
 
 interface LocalFix {
   fix_id: string
@@ -148,8 +192,23 @@ export default function LiveInvestigationPage() {
   const [sdrModalOpen, setSdrModalOpen] = useState(false)
   const [sdrFocusTrigger, setSdrFocusTrigger] = useState(false)
 
+  // First-time tour for this page (separate flag from the global workspace tour)
+  const [liveTourOpen, setLiveTourOpen] = useState(false)
+  useEffect(() => {
+    try {
+      if (localStorage.getItem(LS_KEYS.LIVE_TOUR_SEEN) !== 'true') {
+        setLiveTourOpen(true)
+      }
+    } catch { /* ignore */ }
+  }, [])
+  const finishLiveTour = useCallback(() => {
+    setLiveTourOpen(false)
+    try { localStorage.setItem(LS_KEYS.LIVE_TOUR_SEEN, 'true') } catch { /* ignore */ }
+  }, [])
+
   // Mobile drawer states
   const [mobileExplorerOpen, setMobileExplorerOpen] = useState(false)
+  const [showUploadModal, setShowUploadModal] = useState(false)
   const [mobileDetailsOpen, setMobileDetailsOpen] = useState(false)
   const [mobileActionsOpen, setMobileActionsOpen] = useState(false)
   const mobileActionsRef = useRef<HTMLDivElement>(null)
@@ -204,6 +263,13 @@ export default function LiveInvestigationPage() {
     const saved = localStorage.getItem('investigationRightPanelWidth')
     return saved ? parseInt(saved, 10) : 320
   })
+  // Collapse the two side "islands" to reclaim map space.
+  const [explorerCollapsed, setExplorerCollapsed] = useState(() => {
+    return localStorage.getItem('investigationExplorerCollapsed') === 'true'
+  })
+  const [detailsCollapsed, setDetailsCollapsed] = useState(() => {
+    return localStorage.getItem('investigationDetailsCollapsed') === 'true'
+  })
 
   useEffect(() => {
     localStorage.setItem('investigationExplorerWidth', explorerWidth.toString())
@@ -212,6 +278,14 @@ export default function LiveInvestigationPage() {
   useEffect(() => {
     localStorage.setItem('investigationRightPanelWidth', rightPanelWidth.toString())
   }, [rightPanelWidth])
+
+  useEffect(() => {
+    localStorage.setItem('investigationExplorerCollapsed', String(explorerCollapsed))
+  }, [explorerCollapsed])
+
+  useEffect(() => {
+    localStorage.setItem('investigationDetailsCollapsed', String(detailsCollapsed))
+  }, [detailsCollapsed])
 
   const workspaceRef = useRef<HTMLDivElement>(null)
 
@@ -274,6 +348,63 @@ export default function LiveInvestigationPage() {
   // Time range filter
   const [timeStart, setTimeStart] = useState('')
   const [timeEnd, setTimeEnd] = useState('')
+
+  // ── Event-based localization results (NMR) ──
+  const [eventResults, setEventResults] = useState<Array<Record<string, any>>>([])
+  const [eventsLoading, setEventsLoading] = useState(false)
+  const [eventsError, setEventsError] = useState<string | null>(null)
+  const [expandedCalc, setExpandedCalc] = useState<Record<string, boolean>>({})
+  const { toast } = useToast()
+
+  const loadEventResults = useCallback(async () => {
+    if (!id) return
+    setEventsLoading(true)
+    try {
+      const res = await eventsApi.localize(id)
+      setEventResults(res.results ?? [])
+      setEventsError(null)
+      const resolved = (res.results ?? []).filter((r) => r.status === 'resolved').length
+      if (resolved > 0) {
+        toast({ title: 'Confidence fix available', description: `${resolved} event(s) resolved with a position.`, variant: 'success' })
+      }
+    } catch (e) {
+      setEventsError(e instanceof Error ? e.message : 'Failed to load event results')
+    } finally {
+      setEventsLoading(false)
+    }
+  }, [id, toast])
+
+  useEffect(() => { loadEventResults() }, [loadEventResults])
+
+  // Refresh event results + toast when a file finishes processing over WS
+  useEffect(() => {
+    if (!id) return
+    socketService.connect(id)
+    const unsub = socketService.on<{ status?: string; frame_count?: number }>('upload:completed', (payload) => {
+      loadEventResults()
+      toast({
+        title: 'Processing complete',
+        description: payload?.frame_count != null ? `${payload.frame_count} frame(s) processed.` : 'CDR ingestion finished.',
+        variant: 'info',
+      })
+    })
+    const unsubFail = socketService.on<{ error?: string }>('upload:status', (payload) => {
+      if ((payload as { status?: string })?.status === 'failed') {
+        toast({ title: 'Processing failed', description: payload?.error || 'A file failed to process.', variant: 'error' })
+      }
+    })
+    return () => { unsub(); unsubFail() }
+  }, [id, loadEventResults, toast])
+
+  const toggleCalc = useCallback((eventId: string) => {
+    setExpandedCalc((prev) => {
+      const next = { ...prev, [eventId]: !prev[eventId] }
+      if (next[eventId]) {
+        toast({ title: 'Showing calculation', description: `Details expanded for ${eventId}.`, variant: 'info', duration: 3000 })
+      }
+      return next
+    })
+  }, [toast])
 
   const loadHeatmap = useCallback(async (start?: string, end?: string) => {
     if (!id) return []
@@ -857,7 +988,7 @@ export default function LiveInvestigationPage() {
           <DataRow label="Case ID" value={caseNumber} />
           <DataRow label="Officer" value={investigation?.created_by || 'Officer'} />
           <DataRow label="Computed Fixes" value={`${fixes.length} points`} highlight />
-          <DataRow label="GeoJSON Features" value={geojson ? `${geojson.features.length} layers` : 'None'} />
+          <DataRow label="GeoJSON Features" value={geojson?.features ? `${geojson.features.length} layers` : 'None'} />
         </div>
       </Section>
 
@@ -991,12 +1122,25 @@ export default function LiveInvestigationPage() {
           <Button
             size="sm"
             variant="primary"
+            data-tour="run-engine"
             icon={loading ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <PlayCircle className="h-3.5 w-3.5" />}
             onClick={handleRunLocalization}
             disabled={loading}
           >
             {loading ? 'Running Engine…' : 'Run Multilateration Engine'}
           </Button>
+
+          <Tooltip content="Replay the page tour">
+            <Button
+              size="sm"
+              variant="secondary"
+              icon={<Compass className="h-3.5 w-3.5" />}
+              onClick={() => setLiveTourOpen(true)}
+              aria-label="Start page tour"
+            >
+              Tour
+            </Button>
+          </Tooltip>
 
           <Button size="sm" variant="secondary" icon={<Share2 className="h-3.5 w-3.5" />} onClick={() => setShareOpen(true)}>
             Share
@@ -1102,6 +1246,44 @@ export default function LiveInvestigationPage() {
         </div>
       </div>
 
+      {/* ── Event-based localization results (NMR) ── */}
+      {!initialLoading && (
+        <div className="relative z-[1000] shrink-0 border-b border-surface-200 dark:border-surface-800 bg-white dark:bg-surface-950 px-3 sm:px-5 py-2">
+          <div className="max-w-full">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-wider text-surface-500">Event-based Localization</p>
+              {eventsLoading && <span className="text-[10px] text-surface-400 animate-pulse">Loading...</span>}
+            </div>
+            {eventsError && <p className="text-xs text-red-500 mt-1">{eventsError}</p>}
+            {eventResults.length === 0 && !eventsLoading && !eventsError && (
+              <p className="text-xs text-surface-400 mt-1">No NMR events uploaded yet.</p>
+            )}
+            {eventResults.map((ev: any, idx: number) => {
+              const statusColor = ev.status === 'resolved' ? 'text-emerald-600' : ev.status === 'uncertain' ? 'text-amber-600' : 'text-surface-400'
+              return (
+              <div key={idx} className="mt-1.5 text-xs">
+                <button type="button" className="flex w-full items-center justify-between text-left" onClick={() => toggleCalc(ev.event_id ?? `evt-${idx}`)}>
+                  <span className="font-medium text-surface-700 dark:text-surface-200">
+                    {idx + 1}. {ev.timestamp ? new Date(ev.timestamp).toLocaleString() : (ev.event_id ?? `Event ${idx+1}`)}
+                  </span>
+                  <span className={cn('text-[10px] font-semibold uppercase', statusColor)}>{ev.status ?? 'unknown'}</span>
+                </button>
+                <div className="text-[11px] text-surface-500 ml-4">
+                  {ev.latitude != null ? `${ev.latitude.toFixed(5)}, ${ev.longitude.toFixed(5)}` : 'No position'} · {ev.towers_used ?? 0} tower(s)
+                  {ev.reasons?.length ? ` · ${ev.reasons[0]}` : ''}
+                </div>
+                {expandedCalc[ev.event_id ?? `evt-${idx}`] && ev.calculation && (
+                  <pre className="ml-4 mt-1 max-h-40 overflow-auto rounded border border-surface-100 dark:border-surface-800 bg-surface-50 dark:bg-surface-900 p-2 text-[10px] text-surface-600 dark:text-surface-300">
+                    {JSON.stringify(ev.calculation, null, 2)}
+                  </pre>
+                )}
+              </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
       {/* ── Multi-SIM / Device Handover Evasion Alert Banner ── */}
       <AnimatePresence>
         {activeSwapEvent && (
@@ -1152,7 +1334,9 @@ export default function LiveInvestigationPage() {
       <div ref={workspaceRef} className="relative flex flex-1 overflow-hidden w-full h-full">
 
         {/* FULL SCREEN MAP */}
-        <div className="absolute inset-0 z-0">
+        {/* No z-index here: a positioned z-0 wrapper creates a stacking context
+            that would trap the map's own fullscreen layer under the islands. */}
+        <div className="absolute inset-0">
           {initialLoading ? (
             <div className="flex h-full flex-col items-center justify-center bg-surface-100/50 backdrop-blur-sm dark:bg-surface-950/50">
               <RefreshCw className="h-8 w-8 text-primary-500 animate-spin mb-2" />
@@ -1191,6 +1375,8 @@ export default function LiveInvestigationPage() {
                 rttObservations={mode === 'rtt' ? rttObservations : undefined}
                 rfVerifiedFix={rfVerifiedFix}
                 sdrFocusTrigger={sdrFocusTrigger}
+                controlsRightOffset={detailsCollapsed ? 150 : rightPanelWidth + 24}
+                guardServiceArea
               />
             </ErrorBoundary>
           )}
@@ -1229,10 +1415,31 @@ export default function LiveInvestigationPage() {
         </div>
 
         {/* LEFT: Explorer (Desktop only) */}
-        <div 
+        {explorerCollapsed ? (
+          <button
+            onClick={() => setExplorerCollapsed(false)}
+            className="hidden lg:flex absolute left-4 top-4 z-[1000] h-10 items-center gap-2 rounded-xl border border-white/20 bg-white/70 px-3 text-xs font-semibold text-surface-700 shadow-2xl backdrop-blur-xl hover:bg-white/90 dark:bg-surface-900/70 dark:text-surface-200 dark:hover:bg-surface-900/90 transition-colors cursor-pointer"
+            aria-label="Expand explorer"
+            data-tour="explorer-panel"
+          >
+            <PanelLeftOpen className="h-4 w-4 text-primary-600 dark:text-primary-400" />
+            Explorer
+          </button>
+        ) : (
+        <div
           className="hidden lg:block absolute left-4 top-4 bottom-4 z-[1000] rounded-2xl shadow-2xl border border-white/20 bg-white/70 backdrop-blur-xl dark:bg-surface-900/70 dark:border-surface-700/50 transition-all overflow-hidden"
           style={{ width: explorerWidth }}
+          data-tour="explorer-panel"
         >
+          {/* Collapse control */}
+          <button
+            onClick={() => setExplorerCollapsed(true)}
+            className="absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-lg text-surface-400 hover:bg-surface-100 hover:text-surface-700 dark:hover:bg-surface-700 dark:hover:text-surface-200 transition-colors cursor-pointer"
+            title="Collapse explorer"
+            aria-label="Collapse explorer"
+          >
+            <PanelLeftClose className="h-4 w-4" />
+          </button>
           <div className="h-full overflow-y-auto">
             <InvestigationExplorer 
               width={explorerWidth}
@@ -1252,20 +1459,23 @@ export default function LiveInvestigationPage() {
                 if (type === 'csv') handleExportCSV()
                 if (type === 'kml') handleExportKML()
               }}
-              onUploadClick={() => navigate(`/investigations/${id}/upload`)}
+              onUploadClick={() => setShowUploadModal(true)}
               rfVerifiedFix={rfVerifiedFix}
               onUploadSDRClick={() => setSdrModalOpen(true)}
               onSelectVerifiedTarget={() => setSdrFocusTrigger((v) => !v)}
             />
           </div>
         </div>
+        )}
 
         {/* LEFT RESIZE HANDLE (Desktop only) */}
-        <div
-          onPointerDown={startExplorerResize}
-          className="hidden lg:block absolute top-4 bottom-4 z-[1001] w-2 cursor-col-resize hover:bg-primary-500/50 active:bg-primary-500 transition-colors"
-          style={{ left: `calc(1rem + ${explorerWidth}px - 4px)` }}
-        />
+        {!explorerCollapsed && (
+          <div
+            onPointerDown={startExplorerResize}
+            className="hidden lg:block absolute top-4 bottom-4 z-[1001] w-2 cursor-col-resize hover:bg-primary-500/50 active:bg-primary-500 transition-colors"
+            style={{ left: `calc(1rem + ${explorerWidth}px - 4px)` }}
+          />
+        )}
 
         {/* Timeline / Playback bar */}
         {fixes.length > 0 && (
@@ -1351,21 +1561,50 @@ export default function LiveInvestigationPage() {
         )}
 
         {/* RIGHT: Detail panel (Desktop only) */}
-        <div 
+        {detailsCollapsed ? (
+          <button
+            onClick={() => setDetailsCollapsed(false)}
+            className="hidden lg:flex absolute right-4 top-4 z-[1000] h-10 items-center gap-2 rounded-xl border border-white/20 bg-white/70 px-3 text-xs font-semibold text-surface-700 shadow-2xl backdrop-blur-xl hover:bg-white/90 dark:bg-surface-900/70 dark:text-surface-200 dark:hover:bg-surface-900/90 transition-colors cursor-pointer"
+            aria-label="Expand details"
+            data-tour="details-panel"
+          >
+            <PanelRightOpen className="h-4 w-4 text-primary-600 dark:text-primary-400" />
+            Details
+            {fixes.length > 0 && (
+              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                {fixes.length}
+              </span>
+            )}
+          </button>
+        ) : (
+        <div
           className="hidden lg:flex flex-col absolute right-4 top-4 bottom-4 z-[1000] rounded-2xl shadow-2xl border border-white/20 bg-white/70 backdrop-blur-xl dark:bg-surface-900/70 dark:border-surface-700/50 transition-all overflow-hidden"
           style={{ width: rightPanelWidth }}
+          data-tour="details-panel"
         >
+          {/* Collapse control */}
+          <button
+            onClick={() => setDetailsCollapsed(true)}
+            className="absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-lg text-surface-400 hover:bg-surface-100 hover:text-surface-700 dark:hover:bg-surface-700 dark:hover:text-surface-200 transition-colors cursor-pointer"
+            title="Collapse details"
+            aria-label="Collapse details"
+          >
+            <PanelRightClose className="h-4 w-4" />
+          </button>
           <div className="h-full overflow-y-auto pb-4">
             {renderDetailsContent()}
           </div>
         </div>
+        )}
 
         {/* RIGHT RESIZE HANDLE (Desktop only) */}
-        <div
-          onPointerDown={startRightPanelResize}
-          className="hidden lg:block absolute top-4 bottom-4 z-[1001] w-2 cursor-col-resize hover:bg-primary-500/50 active:bg-primary-500 transition-colors"
-          style={{ right: `calc(1rem + ${rightPanelWidth}px - 4px)` }}
-        />
+        {!detailsCollapsed && (
+          <div
+            onPointerDown={startRightPanelResize}
+            className="hidden lg:block absolute top-4 bottom-4 z-[1001] w-2 cursor-col-resize hover:bg-primary-500/50 active:bg-primary-500 transition-colors"
+            style={{ right: `calc(1rem + ${rightPanelWidth}px - 4px)` }}
+          />
+        )}
 
       </div>
 
@@ -1468,10 +1707,7 @@ export default function LiveInvestigationPage() {
                       if (type === 'csv') handleExportCSV()
                       if (type === 'kml') handleExportKML()
                     }}
-                    onUploadClick={() => {
-                      navigate(`/investigations/${id}/upload`)
-                      setMobileExplorerOpen(false)
-                    }}
+                    onUploadClick={() => { setShowUploadModal(true); setMobileExplorerOpen(false) }}
                     rfVerifiedFix={rfVerifiedFix}
                     onUploadSDRClick={() => {
                       setSdrModalOpen(true)
@@ -1595,6 +1831,15 @@ export default function LiveInvestigationPage() {
           This will permanently remove this CDR file. All associated tracking fixes will be lost.
         </p>
       </Modal>
+
+      <CdrUploadModal
+        open={showUploadModal}
+        caseId={id}
+        onClose={() => setShowUploadModal(false)}
+      />
+
+      {/* First-time tour of the live workspace (skippable, relaunchable) */}
+      <WorkspaceTour open={liveTourOpen} onFinish={finishLiveTour} steps={LIVE_TOUR_STEPS} />
     </div>
   )
 }

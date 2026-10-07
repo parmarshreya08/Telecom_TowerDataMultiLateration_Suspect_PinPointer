@@ -1,12 +1,15 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, Tooltip, Polyline, Circle, Polygon, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import './leaflet-setup'
 import 'leaflet.heat'
-import { Maximize2, Target, Eye, EyeOff } from 'lucide-react'
+import { Maximize2, Target, Eye, EyeOff, Radio } from 'lucide-react'
 import type { LocalizationResult, PathPoint, TowerRecord, GeoJSONFeatureCollection, RttObservation, RFVerifiedFix } from '@/types'
 import { formatCoordinate, formatDateTime, cn } from '@/utils'
-import { DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM } from '@/constants'
+import { DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM, SERVICE_AREA_ZOOM_TOLERANCE, SURAT_BOUNDS } from '@/constants'
+import { useMapTheme } from '@/hooks/useMapTheme'
+import { MapThemeSwitcher } from '@/components/map/MapThemeSwitcher'
+import { useToast } from '@/components/ui/Toast'
 
 
 // ── Fix Leaflet default icon paths broken by Vite ────────────
@@ -120,6 +123,72 @@ function CenterControl({ lat, lon, trigger }: CenterControlProps) {
     map.setView([lat, lon], 15, { animate: true })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trigger])
+  return null
+}
+
+// ── Surat operating-area guard ────────────────────────────────
+// Cell-site/tower data only exists for the Surat district. Warn once when the
+// viewport wanders outside that area, then stay quiet until it comes back.
+interface SuratBoundsGuardProps { enabled: boolean }
+function SuratBoundsGuard({ enabled }: SuratBoundsGuardProps) {
+  const map = useMap()
+  const { toast } = useToast()
+  const warnedRef = useRef(false)
+
+  useEffect(() => {
+    if (!enabled) return
+
+    const [[sLat, wLon], [nLat, eLon]] = SURAT_BOUNDS
+    const serviceSpan = { lat: nLat - sLat, lng: eLon - wLon }
+
+    const outside = () => {
+      const b = map.getBounds()
+      const c = map.getCenter()
+
+      // Panned away from the district entirely.
+      const centreOffArea =
+        c.lat < sLat || c.lat > nLat || c.lng < wLon || c.lng > eLon
+
+      // Zoomed out past the point where the service area is usefully visible.
+      // The viewport may still be centred on Surat while towers are a speck,
+      // so compare the visible span against the district's own span.
+      const span = { lat: b.getNorth() - b.getSouth(), lng: b.getEast() - b.getWest() }
+      const zoomedOutTooFar =
+        span.lat > serviceSpan.lat * SERVICE_AREA_ZOOM_TOLERANCE ||
+        span.lng > serviceSpan.lng * SERVICE_AREA_ZOOM_TOLERANCE
+
+      return centreOffArea || zoomedOutTooFar
+    }
+
+    const check = () => {
+      if (outside()) {
+        if (warnedRef.current) return
+        warnedRef.current = true
+        toast({
+          variant: 'warning',
+          title: 'Outside the Surat service area',
+          description:
+            'E-Rakshak holds tower and cell-site records for Surat district only. Return to the service area to continue.',
+          actionLabel: 'Return to Surat',
+          onAction: () => {
+            map.flyToBounds(SURAT_BOUNDS, { padding: [40, 40], duration: 0.8 })
+          },
+        })
+      } else {
+        // Back inside — allow the warning to fire again on a future exit.
+        warnedRef.current = false
+      }
+    }
+
+    map.on('moveend', check)
+    map.on('zoomend', check)
+    check()
+    return () => {
+      map.off('moveend', check)
+      map.off('zoomend', check)
+    }
+  }, [map, toast, enabled])
+
   return null
 }
 
@@ -307,6 +376,10 @@ interface InvestigationMapProps {
   rfVerifiedFix?:   RFVerifiedFix | null
   /** Trigger to pan & zoom to SDR verified target */
   sdrFocusTrigger?: boolean
+  /** Px gap from the right edge for the floating control stack (clears side panels). */
+  controlsRightOffset?: number
+  /** Warn when the viewport leaves the Surat operating area. */
+  guardServiceArea?: boolean
 }
 
 export function InvestigationMap({
@@ -321,9 +394,13 @@ export function InvestigationMap({
   rttObservations,
   rfVerifiedFix,
   sdrFocusTrigger = false,
+  controlsRightOffset,
+  guardServiceArea = false,
 }: InvestigationMapProps) {
   const [showPath,        setShowPath]        = useState(true)
-  const [showTowers,      setShowTowers]      = useState(true)
+  // Towers are numerous (3,000+ across the city) and clutter the map, so they
+  // start hidden and are opt-in via the dedicated tower toggle.
+  const [showTowers,      setShowTowers]      = useState(false)
   const [showRogueTowers, setShowRogueTowers] = useState(true)
   const [showSdrTarget,   setShowSdrTarget]   = useState(true)
   const [showEllipse,     setShowEllipse]     = useState(true)
@@ -331,13 +408,49 @@ export function InvestigationMap({
   const [showHeatmap,     setShowHeatmap]     = useState(true)
   const [isFullscreen,    setIsFullscreen]    = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
-  const tileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
-  const tileAttribution = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+  const { activeTheme } = useMapTheme()
 
   // Auto-enable SDR layer when verified fix becomes available
   useEffect(() => {
     if (rfVerifiedFix) setShowSdrTarget(true)
   }, [rfVerifiedFix])
+
+  // Fullscreen must outrank the sidebar, topbar and side islands (z-40..z-[1001]).
+  // A `z-index` bump can't do that because an ancestor `relative z-0` wrapper
+  // traps this subtree in its own stacking context, so we promote the map into
+  // the browser's top layer instead. Esc is handled natively; the state mirror
+  // keeps React in sync when the user leaves fullscreen by other means.
+  useEffect(() => {
+    const onChange = () => {
+      setIsFullscreen(document.fullscreenElement === containerRef.current)
+    }
+    document.addEventListener('fullscreenchange', onChange)
+    return () => document.removeEventListener('fullscreenchange', onChange)
+  }, [])
+
+  useEffect(() => {
+    if (!isFullscreen) return
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = prevOverflow }
+  }, [isFullscreen])
+
+  const toggleFullscreen = useCallback(async () => {
+    const el = containerRef.current
+    if (!el) return
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen()
+      } else {
+        await el.requestFullscreen()
+        setIsFullscreen(true)
+      }
+    } catch {
+      // Blocked (e.g. an iframe without allow="fullscreen"): fall back to the
+      // CSS overlay so the button still does something useful.
+      setIsFullscreen((v) => !v)
+    }
+  }, [])
 
   const sectorWedges = parseSectorWedges(geojson)
   const ellipses = parseEllipses(geojson)
@@ -364,22 +477,50 @@ export function InvestigationMap({
     (p): [number, number] => [p.latitude, p.longitude]
   )
 
-  return (
-    <div ref={containerRef} className={cn('relative h-full w-full', isFullscreen && 'fixed inset-0 z-50')}>
+  const mapNode = (
+    <div
+      ref={containerRef}
+      className={cn(
+        'relative h-full w-full',
+        // The workspace map wrapper must stay z-index:auto so this fixed layer
+        // participates in the root stacking context and clears the side islands
+        // (z-[1000]) and mobile drawers (z-[10000]).
+        isFullscreen && 'fixed inset-0 z-[20000] bg-surface-50 dark:bg-surface-950'
+      )}
+    >
       <MapContainer
         center={center}
         zoom={currentLocation ? 14 : DEFAULT_MAP_ZOOM}
         className="h-full w-full"
         zoomControl={false}
       >
-        {/* Tile layer */}
+        {/* Dynamic Tile layer */}
         <TileLayer
-          url={tileUrl}
-          attribution={tileAttribution}
+          key={activeTheme.id}
+          url={activeTheme.url}
+          attribution={activeTheme.attribution}
+          subdomains={activeTheme.subdomains || 'abc'}
+          maxZoom={activeTheme.maxZoom}
+          maxNativeZoom={activeTheme.maxNativeZoom ?? activeTheme.maxZoom}
         />
+
+        {/* Optional transparent label/reference overlay (e.g. Esri canvas labels) */}
+        {activeTheme.overlayUrl && (
+          <TileLayer
+            key={`${activeTheme.id}-labels`}
+            url={activeTheme.overlayUrl}
+            attribution={activeTheme.overlayAttribution ?? ''}
+            maxZoom={activeTheme.maxZoom}
+            maxNativeZoom={activeTheme.maxNativeZoom ?? activeTheme.maxZoom}
+            opacity={0.9}
+          />
+        )}
 
         {/* Map resize invalidate handler */}
         <MapResizeHandler />
+
+        {/* Warn when panning/zooming outside the Surat service area */}
+        {guardServiceArea && <SuratBoundsGuard enabled={guardServiceArea} />}
 
         {/* Auto-follow live location */}
         {currentLocation && autoFollow && (
@@ -628,10 +769,18 @@ export function InvestigationMap({
       </MapContainer>
 
       {/* ── Overlay controls ── */}
-      <div className="absolute right-3 top-3 z-[1000] flex flex-col gap-2">
+      <div
+        className="absolute top-3 z-[1000] flex flex-col gap-2 items-end"
+        style={{ right: isFullscreen ? '0.75rem' : controlsRightOffset ? `${controlsRightOffset}px` : '0.75rem' }}
+      >
+        {/* Basemap switcher */}
+        <div className="pointer-events-auto" data-tour="map-basemap-control">
+          <MapThemeSwitcher />
+        </div>
+
         {/* Fullscreen toggle */}
         <button
-          onClick={() => setIsFullscreen((v) => !v)}
+          onClick={() => { void toggleFullscreen() }}
           className="flex h-8 w-8 items-center justify-center rounded-lg bg-white shadow-md
                      hover:bg-primary-50 dark:bg-surface-800 dark:hover:bg-surface-700 transition-colors cursor-pointer"
           title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
@@ -651,11 +800,35 @@ export function InvestigationMap({
           <Target className="h-4 w-4 text-surface-600 dark:text-surface-300" />
         </button>
 
+        {/* Tower visibility — prominent, since towers are the biggest clutter */}
+        <button
+          onClick={() => setShowTowers((v) => !v)}
+          data-tour="tower-toggle"
+          className={cn(
+            'flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold shadow-md transition-colors cursor-pointer',
+            showTowers
+              ? 'bg-primary-600 text-white hover:bg-primary-700'
+              : 'bg-white text-surface-600 hover:bg-primary-50 dark:bg-surface-800 dark:text-surface-300 dark:hover:bg-surface-700'
+          )}
+          title={showTowers ? 'Hide cell towers' : 'Show cell towers'}
+          aria-pressed={showTowers}
+        >
+          <Radio className="h-3.5 w-3.5" />
+          {showTowers ? 'Towers On' : 'Towers Off'}
+          {towers.length > 0 && (
+            <span className={cn(
+              'rounded-full px-1.5 text-[10px] font-bold tabular-nums',
+              showTowers ? 'bg-white/25 text-white' : 'bg-surface-100 text-surface-500 dark:bg-surface-700 dark:text-surface-300'
+            )}>
+              {towers.filter((t) => !t.is_rogue).length}
+            </span>
+          )}
+        </button>
+
         {/* Layer toggles */}
         <div className="overflow-hidden rounded-lg bg-white shadow-md dark:bg-surface-800">
           {[
             { label: 'Path',                state: showPath,        set: setShowPath        },
-            { label: 'Towers',              state: showTowers,      set: setShowTowers      },
             { label: 'Rogue Towers',        state: showRogueTowers, set: setShowRogueTowers },
             ...(rfVerifiedFix ? [{ label: 'SDR Target', state: showSdrTarget, set: setShowSdrTarget }] : []),
             { label: 'Ellipse',             state: showEllipse,     set: setShowEllipse     },
@@ -724,4 +897,6 @@ export function InvestigationMap({
       )}
     </div>
   )
+
+  return mapNode
 }
