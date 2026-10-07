@@ -96,6 +96,14 @@ class LocalizationFix(BaseModel):
         description="CGIs in this fix's measurement frame that were NOT in the tower_records "
                     "catalog (rogue BTS / IMSI-catcher candidates) and were excluded from the solve.",
     )
+    fix_method: str = Field(
+        default="multilateration",
+        description="Method used for fix: 'multilateration', 'two_tower', or 'single_sector'",
+    )
+    n_towers: int = Field(
+        default=3,
+        description="Number of towers used in resolving this fix",
+    )
     created_at: datetime = Field(
         default_factory=now_ist,
         description="Timestamp when the fix was computed.",
@@ -145,7 +153,7 @@ class SingleFrameInput(BaseModel):
     Group of tower observations at a single instant in time.
     """
     timestamp: Optional[datetime] = Field(default_factory=now_ist, description="Observation timestamp.")
-    towers: list[TowerMeasurementInput] = Field(..., min_length=3, description="List of observed towers (min 3 for trilateration).")
+    towers: list[TowerMeasurementInput] = Field(..., min_length=1, description="List of observed towers (1 for sector, 2 for circle intersection, 3+ for trilateration).")
 
 
 class LocalizationEstimateRequest(BaseModel):

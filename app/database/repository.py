@@ -299,9 +299,8 @@ class TelecomRepository:
         frames: list[MeasurementFrame] = []
         for m in models:
             tower_count = len(m.towers)
-            # Frames with fewer than 3 observed towers are skipped before strict
-            # MeasurementFrame validation because they cannot be used for trilateration.
-            if tower_count < 3:
+            # Frames with fewer than 1 observed tower are skipped
+            if tower_count < 1:
                 logger.info(
                     "measurement_frame_skipped_insufficient_towers",
                     case_id=case_id,
@@ -371,6 +370,8 @@ class TelecomRepository:
                 rss_i_dbm=f.rss_i_dbm,
                 covariance_json=f.covariance_json,
                 geocoded_address=f.geocoded_address,
+                fix_method=getattr(f, "fix_method", "multilateration"),
+                n_towers=getattr(f, "n_towers", 3),
                 created_at=f.created_at,
             )
             for f in fixes

@@ -695,11 +695,14 @@ def export_json(
         n_towers = len(towers_used) if towers_used else (3 if gdop_val is not None else 0)
 
         # Fix method
-        fix_method = "multilateration"
-        if n_towers == 2:
-            fix_method = "two_tower"
-        elif n_towers == 1:
-            fix_method = "single_sector"
+        fix_method = getattr(f, "fix_method", None)
+        if not fix_method:
+            if n_towers == 2:
+                fix_method = "two_tower"
+            elif n_towers == 1:
+                fix_method = "single_sector"
+            else:
+                fix_method = "multilateration"
 
         # Address
         addr = getattr(f, "geocoded_address", None)

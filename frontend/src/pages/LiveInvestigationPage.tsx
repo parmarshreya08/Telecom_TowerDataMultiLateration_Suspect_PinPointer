@@ -88,6 +88,9 @@ interface LocalFix {
   rss_i_dbm?: number
   geocode?: string
   localization_method?: string
+  fix_method?: 'multilateration' | 'two_tower' | 'single_sector' | string
+  n_towers?: number
+  confidence_badge?: string
   kalman_applied?: boolean
   towers_used?: Array<{ cgi: string; lat: number; lon: number; signal_strength?: number }>
   measurement_constraints?: string[]
@@ -113,6 +116,9 @@ function parseFixes(geo: GeoJSONFeatureCollection, caseId: string): LocalFix[] {
       rss_i_dbm: f.properties?.rss_i_dbm != null ? Number(f.properties.rss_i_dbm) : undefined,
       geocode: f.properties?.geocode ? String(f.properties.geocode) : undefined,
       localization_method: f.properties?.localization_method ? String(f.properties.localization_method) : undefined,
+      fix_method: String(f.properties?.fix_method || (Number(f.properties?.n_towers) === 1 ? 'single_sector' : (Number(f.properties?.n_towers) === 2 ? 'two_tower' : 'multilateration'))),
+      n_towers: Number(f.properties?.n_towers || (f.properties?.towers_used ? (f.properties.towers_used as unknown[]).length : 3)),
+      confidence_badge: f.properties?.confidence_badge ? String(f.properties.confidence_badge) : undefined,
       kalman_applied: f.properties?.kalman_applied != null ? Boolean(f.properties.kalman_applied) : undefined,
       towers_used: (f.properties?.towers_used as LocalFix['towers_used']) || [],
       measurement_constraints: (f.properties?.measurement_constraints as LocalFix['measurement_constraints']) || [],
@@ -837,6 +843,22 @@ export default function LiveInvestigationPage() {
       <Section icon={<Navigation className="h-4 w-4 text-primary-600" />} label="Suspect Pin Pointer">
         {activeFix ? (
           <div className="space-y-2">
+            <div className="flex items-center justify-between gap-1 mb-1">
+              <span className="text-2xs text-surface-400 font-semibold uppercase tracking-wider">Fix Confidence</span>
+              {activeFix.fix_method === 'single_sector' ? (
+                <span className="rounded-full bg-purple-100 px-2 py-0.5 text-2xs font-bold text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">
+                  Coarse (1 sector)
+                </span>
+              ) : activeFix.fix_method === 'two_tower' ? (
+                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-2xs font-bold text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+                  Low confidence (2 towers)
+                </span>
+              ) : (
+                <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-2xs font-bold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                  High confidence ({activeFix.n_towers ?? 3}+ towers)
+                </span>
+              )}
+            </div>
             <DataRow label="Latitude" value={formatCoordinate(activeFix.latitude)} highlight />
             <DataRow label="Longitude" value={formatCoordinate(activeFix.longitude)} highlight />
             <DataRow label="Accuracy" value={formatAccuracy(activeFix.confidence_radius_meters)} />
@@ -877,7 +899,8 @@ export default function LiveInvestigationPage() {
       {activeFix && (
         <Section icon={<Share2 className="h-4 w-4 text-primary-600" />} label="Location Evidence">
           <div className="space-y-2">
-            <DataRow label="Method" value={activeFix.localization_method || '3-Tower Multilateration'} />
+            <DataRow label="Method" value={activeFix.localization_method || (activeFix.fix_method === 'single_sector' ? 'Single-Tower Sector' : (activeFix.fix_method === 'two_tower' ? '2-Tower Circle Intersection' : '3-Tower Multilateration'))} />
+            <DataRow label="Towers Used" value={String(activeFix.n_towers ?? (activeFix.towers_used ? activeFix.towers_used.length : 3))} />
             <DataRow label="Kalman Filtered" value={activeFix.kalman_applied ? 'Yes' : 'No'} />
             {activeFix.geocode && (
               <DataRow label="Resolved Area" value={activeFix.geocode} />
@@ -1380,7 +1403,9 @@ export default function LiveInvestigationPage() {
                   geojson_heatmap: null,
                   timestamp: activeFix.timestamp,
                   accuracy_meters: activeFix.confidence_radius_meters,
-                  algorithm_used: 'Multilateration',
+                  algorithm_used: activeFix.localization_method || (activeFix.fix_method === 'single_sector' ? 'Single-Sector (Coarse)' : (activeFix.fix_method === 'two_tower' ? 'Two-Tower (Circle Intersection)' : 'Multilateration')),
+                  fix_method: activeFix.fix_method,
+                  n_towers: activeFix.n_towers,
                   confidence: 0.95,
                   geocode: activeFix.geocode,
                 } : undefined}

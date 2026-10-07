@@ -148,6 +148,9 @@ export interface LocalizationFix {
   residual_rms?: number
   velocity_east?: number
   velocity_north?: number
+  fix_method?: 'multilateration' | 'two_tower' | 'single_sector' | string
+  n_towers?: number
+  confidence_badge?: string
   [key: string]: unknown
 }
 

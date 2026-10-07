@@ -8,6 +8,7 @@ and scales Measurement Noise R_k based on GDOP + Stage 1 residual RMS error.
 Ported from my_local_work/code/kalman_filter.py.
 """
 
+from typing import Optional
 import numpy as np
 
 
@@ -56,10 +57,18 @@ class KalmanTracker:
         # Base Measurement Noise Covariance R_base
         self.R_base = np.eye(2, dtype=np.float64) * (base_measurement_std ** 2)
 
-        # Initial State Error Covariance P
         self.P = np.eye(4, dtype=np.float64) * 500.0
         self._initialized = False
         self._first_update = True
+
+    @property
+    def predicted_position(self) -> Optional[np.ndarray]:
+        """
+        Returns the a-priori predicted [x, y] position for the current state.
+        """
+        if not self._initialized:
+            return None
+        return (self.F @ self.x)[:2].flatten()
 
     def _get_process_noise_Q(self, q_var: float) -> np.ndarray:
         dt = self.dt

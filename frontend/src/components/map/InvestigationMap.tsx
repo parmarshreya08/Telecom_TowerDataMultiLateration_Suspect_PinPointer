@@ -20,7 +20,6 @@ L.Icon.Default.mergeOptions({
   shadowUrl:     'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
 })
 
-// ── Custom icons ─────────────────────────────────────────────
 const suspectIcon = L.divIcon({
   html: `<div style="
     width:24px;height:24px;border-radius:50%;
@@ -33,6 +32,38 @@ const suspectIcon = L.divIcon({
   iconSize:   [24, 24],
   iconAnchor: [12, 12],
 })
+
+const twoTowerIcon = L.divIcon({
+  html: `<div style="
+    width:24px;height:24px;border-radius:50%;
+    background:#ea580c;border:3px solid white;
+    box-shadow:0 2px 8px rgba(234,88,12,0.5);
+    display:flex;align-items:center;justify-content:center;">
+    <div style="width:6px;height:6px;border-radius:50%;background:white;"></div>
+  </div>`,
+  className: '',
+  iconSize:   [24, 24],
+  iconAnchor: [12, 12],
+})
+
+const singleSectorIcon = L.divIcon({
+  html: `<div style="
+    width:24px;height:24px;border-radius:50%;
+    background:#7c3aed;border:3px solid white;
+    box-shadow:0 2px 8px rgba(124,58,237,0.5);
+    display:flex;align-items:center;justify-content:center;">
+    <div style="width:6px;height:6px;border-radius:50%;background:white;"></div>
+  </div>`,
+  className: '',
+  iconSize:   [24, 24],
+  iconAnchor: [12, 12],
+})
+
+function getSuspectIcon(fixMethod?: string) {
+  if (fixMethod === 'single_sector') return singleSectorIcon
+  if (fixMethod === 'two_tower') return twoTowerIcon
+  return suspectIcon
+}
 
 const towerIcon = L.divIcon({
   html: `<div style="
@@ -687,19 +718,60 @@ export function InvestigationMap({
           </Marker>
         ))}
 
-        {/* Current suspect marker (multilateration broad result) */}
+        {/* Current suspect marker (multilateration / two-tower / single-sector result) */}
         {currentLocation && (
           <Marker
             position={[currentLocation.latitude, currentLocation.longitude]}
-            icon={suspectIcon}
+            icon={getSuspectIcon(currentLocation.fix_method as string)}
           >
             <Popup>
               <div className="text-xs leading-relaxed">
-                <p className="font-bold text-red-600 dark:text-red-400">⚠ Suspect Location</p>
+                <div className="flex items-center gap-1.5 mb-1">
+                  <span className={cn(
+                    "inline-block h-2 w-2 rounded-full",
+                    currentLocation.fix_method === 'single_sector'
+                      ? "bg-purple-500 animate-pulse"
+                      : currentLocation.fix_method === 'two_tower'
+                      ? "bg-amber-500 animate-pulse"
+                      : "bg-red-500"
+                  )} />
+                  <p className={cn(
+                    "font-bold",
+                    currentLocation.fix_method === 'single_sector'
+                      ? "text-purple-700 dark:text-purple-400"
+                      : currentLocation.fix_method === 'two_tower'
+                      ? "text-amber-700 dark:text-amber-400"
+                      : "text-red-600 dark:text-red-400"
+                  )}>
+                    {currentLocation.fix_method === 'single_sector'
+                      ? 'Single-Sector Fix'
+                      : currentLocation.fix_method === 'two_tower'
+                      ? 'Two-Tower Fix'
+                      : 'Suspect Location'}
+                  </p>
+                </div>
+                {/* Confidence Badge */}
+                <div className="mb-1.5">
+                  {currentLocation.fix_method === 'single_sector' && (
+                    <span className="inline-block rounded-full bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 px-2 py-0.5 text-[10px] font-bold">
+                      Coarse (1 sector)
+                    </span>
+                  )}
+                  {currentLocation.fix_method === 'two_tower' && (
+                    <span className="inline-block rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 px-2 py-0.5 text-[10px] font-bold">
+                      Low confidence (2 towers)
+                    </span>
+                  )}
+                  {(!currentLocation.fix_method || currentLocation.fix_method === 'multilateration') && (
+                    <span className="inline-block rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 px-2 py-0.5 text-[10px] font-bold">
+                      High confidence ({String(currentLocation.n_towers ?? 3)}+ towers)
+                    </span>
+                  )}
+                </div>
                 <p>{formatCoordinate(currentLocation.latitude)}°N, {formatCoordinate(currentLocation.longitude)}°E</p>
-                <p>Accuracy: ±{currentLocation.accuracy_meters.toFixed(0)}m</p>
+                <p>Accuracy: ±{currentLocation.accuracy_meters ? currentLocation.accuracy_meters.toFixed(0) : '0'}m</p>
                 <p>Confidence: {currentLocation.confidence != null ? (currentLocation.confidence * 100).toFixed(1) : 'N/A'}%</p>
-                <p>Algorithm: {currentLocation.algorithm_used}</p>
+                <p>Algorithm: {String(currentLocation.algorithm_used ?? 'Multilateration')}</p>
                 {currentLocation.geocode && String(currentLocation.geocode) !== 'Unknown area' && (
                   <p className="text-blue-700 dark:text-blue-300 font-medium mt-1">≈ {String(currentLocation.geocode)}</p>
                 )}

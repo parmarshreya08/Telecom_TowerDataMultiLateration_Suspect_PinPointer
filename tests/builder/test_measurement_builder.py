@@ -140,13 +140,21 @@ async def test_gap_beyond_cap_splits_frames(builder):
 
 
 @pytest.mark.asyncio
-async def test_less_than_3_towers_dropped(builder):
-    events = [
+async def test_two_and_one_tower_frames_compiled(builder):
+    events_2 = [
         make_event("404-20-100-1", T0),
         make_event("404-20-100-2", T0 + timedelta(minutes=1)),
     ]
-    frames = await builder.build_frames(events, time_window_minutes=5)
-    assert frames == [], "frames with <3 unique towers must be dropped"
+    frames_2 = await builder.build_frames(events_2, time_window_minutes=5)
+    assert len(frames_2) == 1, "2-tower events must compile into a frame for two-tower localization"
+    assert len(frames_2[0].towers) == 2
+
+    events_1 = [
+        make_event("404-20-100-1", T0),
+    ]
+    frames_1 = await builder.build_frames(events_1, time_window_minutes=5)
+    assert len(frames_1) == 1, "1-tower events must compile into a frame for single-sector localization"
+    assert len(frames_1[0].towers) == 1
 
 
 @pytest.mark.asyncio

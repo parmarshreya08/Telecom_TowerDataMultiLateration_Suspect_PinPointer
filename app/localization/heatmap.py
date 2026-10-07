@@ -76,6 +76,26 @@ def compute_heatmap(
 
             # Step 2: Determine covariance matrix in metric units
             r = max(30.0, float(f.confidence_radius_meters))
+            sample_points = getattr(f, "sample_points", None)
+
+            if sample_points is not None and len(sample_points) > 0:
+                # Diffuse region representation: distribute weight across sampled points
+                k_samples = len(sample_points)
+                sample_weight = (1.0 / r) / float(k_samples)
+                sample_sigma = max(30.0, (r / 2.447) / math.sqrt(k_samples))
+                sample_var = sample_sigma ** 2
+                sample_inv_cov = np.array([[1.0 / sample_var, 0.0], [0.0, 1.0 / sample_var]], dtype=np.float64)
+
+                for sp in sample_points:
+                    sp_local = np.array([sp[0] - origin[0], sp[1] - origin[1]], dtype=np.float64)
+                    processed_fixes.append({
+                        "center": sp_local,
+                        "inv_cov": sample_inv_cov,
+                        "radius": r,
+                        "weight_factor": sample_weight,
+                    })
+                continue
+
             # 95% confidence radius corresponds to chi-square critical value for 2 DOF: sqrt(5.991) ≈ 2.447
             sigma = r / 2.447
             var_fallback = sigma ** 2

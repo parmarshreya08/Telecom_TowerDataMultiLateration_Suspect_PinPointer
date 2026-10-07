@@ -32,7 +32,9 @@ from app.core.logging import logger
 from app.localization.gis_utils import GISUtils
 from app.localization.kalman_filter import KalmanTracker
 from app.localization.sector_wedge import point_in_sector
+from app.localization.single_tower import SingleTowerResolver
 from app.localization.trilateration import JPLTrilateration
+from app.localization.two_tower import TwoTowerResolver
 from app.utils.datetime_utils import now_ist
 
 # One LTE timing advance index step approximates 78.12 meters (matches builder).
@@ -94,14 +96,18 @@ class LocalizationEngine:
         self.utm_zone = utm_zone
         self.target_type = target_type
 
-    def _frame_solve(self, frame: MeasurementFrame) -> Optional[dict[str, Any]]:
+    def _frame_solve(
+        self,
+        frame: MeasurementFrame,
+        predicted_pos: Optional[np.ndarray] = None,
+    ) -> Optional[dict[str, Any]]:
         """
-        Runs Stage 1 (trilateration) on a single frame.
-        Returns solver output dict, or None when the frame is incomplete.
-
-        Rogue-BTS whitelist: towers not present in the authoritative tower_records
-        catalog (``is_catalog=False``) are excluded from the solve and reported in
-        ``rogue_cgis`` — an IMSI-catcher must never contribute to a fix.
+        Runs Stage 1 solver on a single frame.
+        Dispatches according to usable catalog tower count:
+          >=3 towers -> JPLTrilateration (multilateration)
+          2 towers   -> TwoTowerResolver (two_tower circle intersection + wedge disambiguation)
+          1 tower    -> SingleTowerResolver (single_sector centroid + annular wedge)
+        Returns solver output dict, or None when no catalog towers exist.
         """
         rogue_cgis = [t.cgi for t in frame.towers if not t.is_catalog]
         if rogue_cgis:
@@ -111,65 +117,160 @@ class LocalizationEngine:
                 rogue_cgis=rogue_cgis,
             )
 
-        usable = [
-            (t, _tower_pseudorange(t))
-            for t in frame.towers
-            if _tower_pseudorange(t) is not None and t.is_catalog
-        ]
-
-        if len(usable) < 3:
+        catalog_towers = [t for t in frame.towers if t.is_catalog]
+        if not catalog_towers:
             logger.warning(
-                "localization_frame_incomplete",
+                "localization_frame_no_catalog_towers",
                 frame_id=str(frame.frame_id),
                 subscriber=frame.subscriber_identifier,
-                usable_towers=len(usable),
             )
             return None
 
-        towers: list[MeasurementTower] = []
-        coords: list[list[float]] = []
-        pseudoranges: list[float] = []
-        uncertainties: list[float] = []
-        rss_i_values: list[float] = []
-        azimuths: list[float] = []
-        beamwidths: list[float] = []
-        zone = self.utm_zone
+        # Resolve ranges for catalog towers
+        usable = [
+            (t, _tower_pseudorange(t))
+            for t in catalog_towers
+        ]
+        towers_with_pr = [(t, pr_unc) for t, pr_unc in usable if pr_unc is not None]
 
-        for tower, pr_unc in usable:
-            pr, unc = pr_unc
-            e, n, resolved_zone = GISUtils.latlon_to_utm(
-                tower.latitude, tower.longitude, zone=zone
+        # Case 1: 3 or more towers with ranges -> JPL Multi-lateration
+        if len(towers_with_pr) >= 3:
+            towers: list[MeasurementTower] = []
+            coords: list[list[float]] = []
+            pseudoranges: list[float] = []
+            uncertainties: list[float] = []
+            rss_i_values: list[float] = []
+            azimuths: list[float] = []
+            beamwidths: list[float] = []
+            zone = self.utm_zone
+
+            for tower, pr_unc in towers_with_pr:
+                pr, unc = pr_unc
+                e, n, resolved_zone = GISUtils.latlon_to_utm(
+                    tower.latitude, tower.longitude, zone=zone
+                )
+                zone = resolved_zone if zone == 0 else zone
+                towers.append(tower)
+                coords.append([e, n])
+                pseudoranges.append(pr)
+                uncertainties.append(unc)
+                rss_i_values.append(tower.signal_strength if tower.signal_strength is not None else -100.0)
+                azimuths.append(tower.azimuth if tower.azimuth is not None else 60.0)
+                beamwidths.append(tower.beamwidth if tower.beamwidth is not None else 60.0)
+
+            solver = JPLTrilateration(
+                np.array(coords, dtype=np.float64),
+                np.array(azimuths, dtype=np.float64),
+                np.array(beamwidths, dtype=np.float64),
             )
-            zone = resolved_zone if zone == 0 else zone
-            towers.append(tower)
-            coords.append([e, n])
-            pseudoranges.append(pr)
-            uncertainties.append(unc)
-            rss_i_values.append(tower.signal_strength if tower.signal_strength is not None else -100.0)
-            azimuths.append(tower.azimuth if tower.azimuth is not None else 60.0)
-            beamwidths.append(tower.beamwidth if tower.beamwidth is not None else 60.0)
+            result = solver.estimate_position(
+                np.array(pseudoranges, dtype=np.float64),
+                uncertainties=np.array(uncertainties, dtype=np.float64),
+            )
 
-        solver = JPLTrilateration(
-            np.array(coords, dtype=np.float64),
-            np.array(azimuths, dtype=np.float64),
-            np.array(beamwidths, dtype=np.float64),
+            return {
+                "position_utm": result["position"],
+                "utc_utm": np.array(coords, dtype=np.float64)[0].tolist(),
+                "clock_bias": result["clock_bias"],
+                "residual_rms": result["residual_rms"],
+                "gdop": result["gdop"],
+                "uncertainties": result["uncertainties"],
+                "zone": zone,
+                "towers": towers,
+                "rss_i_values": rss_i_values,
+                "rogue_cgis": rogue_cgis,
+                "fix_method": "multilateration",
+                "n_towers": len(towers),
+            }
+
+        # Case 2: 2 towers with ranges -> TwoTowerResolver
+        if len(towers_with_pr) == 2:
+            t1, pr_unc1 = towers_with_pr[0]
+            t2, pr_unc2 = towers_with_pr[1]
+            pr1, unc1 = pr_unc1
+            pr2, unc2 = pr_unc2
+
+            zone = self.utm_zone
+            e1, n1, zone1 = GISUtils.latlon_to_utm(t1.latitude, t1.longitude, zone=zone)
+            zone = zone1 if zone == 0 else zone
+            e2, n2, _ = GISUtils.latlon_to_utm(t2.latitude, t2.longitude, zone=zone)
+
+            res = TwoTowerResolver.resolve(
+                c1=np.array([e1, n1], dtype=np.float64),
+                r1=pr1,
+                unc1=unc1,
+                az1=t1.azimuth,
+                bw1=t1.beamwidth,
+                c2=np.array([e2, n2], dtype=np.float64),
+                r2=pr2,
+                unc2=unc2,
+                az2=t2.azimuth,
+                bw2=t2.beamwidth,
+                predicted_pos=predicted_pos,
+            )
+
+            rss_i_values = [
+                t1.signal_strength if t1.signal_strength is not None else -100.0,
+                t2.signal_strength if t2.signal_strength is not None else -100.0,
+            ]
+
+            return {
+                "position_utm": res["position"],
+                "utc_utm": [e1, n1],
+                "clock_bias": 0.0,
+                "residual_rms": res["residual_rms"],
+                "gdop": res["gdop"],
+                "uncertainties": np.array([unc1, unc2], dtype=np.float64),
+                "confidence_radius": res["confidence_radius"],
+                "covariance": res["covariance"],
+                "zone": zone,
+                "towers": [t1, t2],
+                "rss_i_values": rss_i_values,
+                "rogue_cgis": rogue_cgis,
+                "fix_method": "two_tower",
+                "n_towers": 2,
+                "disambiguation": res.get("disambiguation"),
+            }
+
+        # Case 3: 1 tower (or 1 tower with range from catalog towers)
+        tower = towers_with_pr[0][0] if towers_with_pr else catalog_towers[0]
+        pr_unc = towers_with_pr[0][1] if towers_with_pr else _tower_pseudorange(tower)
+        pr = pr_unc[0] if pr_unc else tower.pseudorange_meters
+        unc = pr_unc[1] if pr_unc else 300.0
+
+        zone = self.utm_zone
+        e, n, zone_resolved = GISUtils.latlon_to_utm(tower.latitude, tower.longitude, zone=zone)
+        zone = zone_resolved if zone == 0 else zone
+
+        res = SingleTowerResolver.resolve(
+            center_x=e,
+            center_y=n,
+            timing_advance=tower.timing_advance,
+            pseudorange_meters=pr,
+            rtt=tower.rtt,
+            azimuth_deg=tower.azimuth,
+            beamwidth_deg=tower.beamwidth,
         )
-        result = solver.estimate_position(
-            np.array(pseudoranges, dtype=np.float64),
-            uncertainties=np.array(uncertainties, dtype=np.float64),
-        )
+
+        rss_i_values = [tower.signal_strength if tower.signal_strength is not None else -100.0]
 
         return {
-            "position_utm": result["position"],
-            "utc_utm": np.array(coords, dtype=np.float64)[0].tolist(),
-            "clock_bias": result["clock_bias"],
-            "residual_rms": result["residual_rms"],
-            "gdop": result["gdop"],
-            "uncertainties": result["uncertainties"],
+            "position_utm": res["position"],
+            "utc_utm": [e, n],
+            "clock_bias": 0.0,
+            "residual_rms": res["residual_rms"],
+            "gdop": res["gdop"],
+            "uncertainties": np.array([unc], dtype=np.float64),
+            "confidence_radius": res["confidence_radius"],
+            "covariance": res["covariance"],
             "zone": zone,
-            "towers": towers,
+            "towers": [tower],
             "rss_i_values": rss_i_values,
             "rogue_cgis": rogue_cgis,
+            "fix_method": "single_sector",
+            "n_towers": 1,
+            "polygon": res.get("polygon"),
+            "sample_points": res.get("sample_points"),
         }
 
     def compute_fixes(
@@ -181,7 +282,7 @@ class LocalizationEngine:
         Runs the full pipeline over a case's frames and returns LocalizationFix
         records ordered chronologically per subscriber.
 
-        Frames must already belong to the given case. Incomplete frames are skipped.
+        Frames must already belong to the given case.
         """
         fixes: list[LocalizationFix] = []
 
@@ -196,24 +297,21 @@ class LocalizationEngine:
         for subscriber, sub_frames in by_subscriber.items():
             sub_frames.sort(key=lambda f: f.timestamp)
 
-            solved: list[tuple[MeasurementFrame, dict[str, Any]]] = []
-            for frame in sub_frames:
-                outcome = self._frame_solve(frame)
-                if outcome is not None:
-                    solved.append((frame, outcome))
-                    self.rogue_cgis.update(outcome.get("rogue_cgis", []))
-
-            if not solved:
-                continue
-
             dt = 1.0
-            if len(solved) >= 2:
-                gap = (solved[1][0].timestamp - solved[0][0].timestamp).total_seconds()
+            if len(sub_frames) >= 2:
+                gap = (sub_frames[1].timestamp - sub_frames[0].timestamp).total_seconds()
                 dt = max(gap, 1.0)
 
             tracker = KalmanTracker(dt=dt, target_type=self.target_type)
 
-            for frame, outcome in solved:
+            for frame in sub_frames:
+                predicted_pos = tracker.predicted_position
+                outcome = self._frame_solve(frame, predicted_pos=predicted_pos)
+                if outcome is None:
+                    continue
+
+                self.rogue_cgis.update(outcome.get("rogue_cgis", []))
+
                 pos_utm = outcome["position_utm"]
                 zone = outcome["zone"]
 
@@ -236,7 +334,6 @@ class LocalizationEngine:
                         subscriber=subscriber,
                     )
                     # Kinematic rejection: the frame's CGIs are physically implausible
-                    # (e.g. >500km/h jump) — flag them as rogue-BTS candidates.
                     self.rogue_cgis.update(t.cgi for t in frame.towers)
                     continue
 
@@ -247,20 +344,24 @@ class LocalizationEngine:
                 lat, lon = GISUtils.utm_to_latlon(
                     float(smoothed_pos[0]), float(smoothed_pos[1]), zone=zone
                 )
-                confidence_radius = float(np.sqrt(chi2.ppf(0.95, 2) * np.trace(covariance)))
 
-                ta_inner = None
-                ta_outer = None
-                for tower, pr_unc in [
-                    (t, _tower_pseudorange(t)) for t in frame.towers
-                ]:
-                    if pr_unc is not None and tower.timing_advance is not None:
-                        ta = float(tower.timing_advance)
-                        inner = max(0.0, (ta - 0.5) * _TA_METERS)
-                        outer = (ta + 0.5) * _TA_METERS
-                        ta_inner = inner
-                        ta_outer = outer
-                        break
+                kf_radius = float(np.sqrt(chi2.ppf(0.95, 2) * np.trace(covariance)))
+                solver_radius = outcome.get("confidence_radius", 0.0)
+                confidence_radius = max(kf_radius, solver_radius * 0.8)
+
+                ta_inner = outcome.get("ta_inner_m")
+                ta_outer = outcome.get("ta_outer_m")
+                if ta_inner is None or ta_outer is None:
+                    for tower, pr_unc in [
+                        (t, _tower_pseudorange(t)) for t in frame.towers
+                    ]:
+                        if pr_unc is not None and tower.timing_advance is not None:
+                            ta = float(tower.timing_advance)
+                            inner = max(0.0, (ta - 0.5) * _TA_METERS)
+                            outer = (ta + 0.5) * _TA_METERS
+                            ta_inner = inner
+                            ta_outer = outer
+                            break
 
                 rss_i = None
                 for r in outcome["rss_i_values"]:
@@ -289,6 +390,8 @@ class LocalizationEngine:
                         rss_i_dbm=rss_i,
                         covariance_json={"matrix": cov_list} if cov_list else None,
                         rogue_cgis=outcome.get("rogue_cgis", []),
+                        fix_method=outcome.get("fix_method", "multilateration"),
+                        n_towers=outcome.get("n_towers", len(outcome.get("towers", []))),
                     )
                 )
 
@@ -343,6 +446,18 @@ class LocalizationEngine:
                     c += " + ".join(parts) if parts else "No range data"
                     constraints_info.append(c)
 
+            fix_method = getattr(fix, "fix_method", "multilateration")
+            n_towers = getattr(fix, "n_towers", 3)
+            if fix_method == "single_sector":
+                method_label = "Single-Tower Sector + Kalman" if fix.velocity_east is not None else "Single-Tower Sector"
+                conf_badge = "Coarse (1 sector)"
+            elif fix_method == "two_tower":
+                method_label = "2-Tower Circle Intersection + Kalman" if fix.velocity_east is not None else "2-Tower Circle Intersection"
+                conf_badge = "Low confidence (2 towers)"
+            else:
+                method_label = f"{n_towers}-Tower Multilateration + Kalman" if fix.velocity_east is not None else f"{n_towers}-Tower Multilateration"
+                conf_badge = f"High confidence ({n_towers} towers)"
+
             point_feature: dict[str, Any] = {
                 "type": "Feature",
                 "id": str(fix.fix_id),
@@ -363,7 +478,10 @@ class LocalizationEngine:
                     "ta_outer_m": fix.ta_outer_m,
                     "rss_i_dbm": fix.rss_i_dbm,
                     "geocoded_address": fix.geocoded_address,
-                    "localization_method": "3-Tower Multilateration + Kalman" if fix.velocity_east is not None else "3-Tower Multilateration",
+                    "fix_method": fix_method,
+                    "n_towers": n_towers,
+                    "confidence_badge": conf_badge,
+                    "localization_method": method_label,
                     "kalman_applied": fix.velocity_east is not None,
                     "rogue_cgis": fix.rogue_cgis or [],
                     "towers_used": towers_info,
@@ -389,6 +507,7 @@ class LocalizationEngine:
                         "subscriber_identifier": fix.subscriber_identifier,
                         "timestamp": fix.timestamp.isoformat(),
                         "fix_id": str(fix.fix_id),
+                        "fix_method": fix_method,
                     }
                 )
                 features.append(ellipse)

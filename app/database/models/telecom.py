@@ -193,4 +193,6 @@ class LocalizationFixModel(Base):
     rss_i_dbm: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     covariance_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     geocoded_address: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    fix_method: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, default="multilateration")
+    n_towers: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=3)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now_ist, nullable=False)

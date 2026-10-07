@@ -156,8 +156,8 @@ class MeasurementFrame(BaseModel):
     @classmethod
     def validate_minimum_towers(cls, val: list[MeasurementTower]) -> list[MeasurementTower]:
         """
-        Asserts that at least 3 unique cell observation points are present.
+        Asserts that at least 1 cell observation point is present.
         """
-        if len(val) < 3:
-            raise ValueError("MeasurementFrame requires a minimum of 3 observed cell towers for trilateration.")
+        if len(val) < 1:
+            raise ValueError("MeasurementFrame requires at least 1 observed cell tower.")
         return val

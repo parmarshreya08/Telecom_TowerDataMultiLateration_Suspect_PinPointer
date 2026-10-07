@@ -178,14 +178,13 @@ class MeasurementFrameBuilder:
             )
             seen_cgis.add(rec.cgi)
 
-        # A minimum of 3 towers is required to instantiate MeasurementFrame successfully
-        # and satisfy Pydantic validations
-        if len(towers_seen) < 3:
+        # A minimum of 1 tower is required to instantiate MeasurementFrame
+        if len(towers_seen) < 1:
             logger.debug(
                 "skipping_measurement_frame",
                 subscriber_id=subscriber_id,
                 towers_count=len(towers_seen),
-                reason="insufficient_towers_for_trilateration",
+                reason="no_valid_towers_found",
             )
             return None
 

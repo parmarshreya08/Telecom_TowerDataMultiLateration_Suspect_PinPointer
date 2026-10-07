@@ -1,0 +1,80 @@
+{
+  "subscriber_identifier": "919876543210",
+  "case_id": "CASE-2026-TOWER3-TEST",
+  "target_type": "pedestrian",
+  "apply_kalman": true,
+  "include_velocity": false,
+  "utm_zone": 43,
+  "frames": [
+    {
+      "timestamp": "2026-08-01T08:20:00Z",
+      "towers": [
+        {
+          "cgi": "404-98-8290-241660674",
+          "latitude": 21.2185,
+          "longitude": 72.7792,
+          "azimuth": 0.0,
+          "beamwidth": 65.0,
+          "timing_advance": 4,
+          "signal_strength": -75.0,
+          "is_catalog": true
+        },
+        {
+          "cgi": "404-98-8290-241660679",
+          "latitude": 21.2210,
+          "longitude": 72.7830,
+          "azimuth": 240.0,
+          "beamwidth": 65.0,
+          "timing_advance": 2,
+          "signal_strength": -78.0,
+          "is_catalog": true
+        },
+        {
+          "cgi": "404-98-8290-240799496",
+          "latitude": 21.2225,
+          "longitude": 72.7845,
+          "azimuth": 0.0,
+          "beamwidth": 65.0,
+          "timing_advance": 5,
+          "signal_strength": -72.0,
+          "is_catalog": true
+        }
+      ]
+    },
+    {
+      "timestamp": "2026-08-01T09:30:00Z",
+      "towers": [
+        {
+          "cgi": "404-10-2025-10005",
+          "latitude": 21.16818,
+          "longitude": 72.78911,
+          "azimuth": 0.0,
+          "beamwidth": 65.0,
+          "timing_advance": 3,
+          "signal_strength": -76.0,
+          "is_catalog": true
+        },
+        {
+          "cgi": "404-10-2024-10009",
+          "latitude": 21.16388,
+          "longitude": 72.78784,
+          "azimuth": 120.0,
+          "beamwidth": 65.0,
+          "timing_advance": 2,
+          "signal_strength": -74.0,
+          "is_catalog": true
+        },
+        {
+          "cgi": "404-10-2021-10012",
+          "latitude": 21.17084,
+          "longitude": 72.78117,
+          "azimuth": 120.0,
+          "beamwidth": 65.0,
+          "timing_advance": 4,
+          "signal_strength": -79.0,
+          "is_catalog": true
+        }
+      ]
+    }
+  ]
+}

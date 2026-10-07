@@ -1,0 +1,85 @@
+{
+  "subscriber_identifier": "919876543210",
+  "case_id": "CASE-2026-TOWER2-TEST",
+  "target_type": "pedestrian",
+  "apply_kalman": true,
+  "include_velocity": false,
+  "utm_zone": 43,
+  "frames": [
+    {
+      "timestamp": "2026-08-01T08:15:00Z",
+      "towers": [
+        {
+          "cgi": "404-98-8290-216060674",
+          "latitude": 21.2190,
+          "longitude": 72.7801,
+          "azimuth": 120.0,
+          "beamwidth": 65.0,
+          "timing_advance": 2,
+          "signal_strength": -80.0,
+          "is_catalog": true
+        },
+        {
+          "cgi": "404-98-8290-241660679",
+          "latitude": 21.2210,
+          "longitude": 72.7830,
+          "azimuth": 240.0,
+          "beamwidth": 65.0,
+          "timing_advance": 3,
+          "signal_strength": -82.0,
+          "is_catalog": true
+        }
+      ]
+    },
+    {
+      "timestamp": "2026-08-01T08:45:00Z",
+      "towers": [
+        {
+          "cgi": "404-98-8290-241660674",
+          "latitude": 21.2185,
+          "longitude": 72.7792,
+          "azimuth": 0.0,
+          "beamwidth": 65.0,
+          "timing_advance": 3,
+          "signal_strength": -75.0,
+          "is_catalog": true
+        },
+        {
+          "cgi": "404-98-8290-240799496",
+          "latitude": 21.2225,
+          "longitude": 72.7845,
+          "azimuth": 0.0,
+          "beamwidth": 65.0,
+          "timing_advance": 2,
+          "signal_strength": -79.0,
+          "is_catalog": true
+        }
+      ]
+    },
+    {
+      "timestamp": "2026-08-01T09:15:00Z",
+      "towers": [
+        {
+          "cgi": "404-10-2025-10005",
+          "latitude": 21.16818,
+          "longitude": 72.78911,
+          "azimuth": 0.0,
+          "beamwidth": 65.0,
+          "timing_advance": 3,
+          "signal_strength": -79.0,
+          "is_catalog": true
+        },
+        {
+          "cgi": "404-10-2024-10009",
+          "latitude": 21.16388,
+          "longitude": 72.78784,
+          "azimuth": 120.0,
+          "beamwidth": 65.0,
+          "timing_advance": 2,
+          "signal_strength": -81.0,
+          "is_catalog": true
+        }
+      ]
+    }
+  ]
+}

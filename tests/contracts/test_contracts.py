@@ -126,8 +126,8 @@ def test_measurement_frame_minimum_towers_enforced() -> None:
         longitude=77.2
     )
 
-    # Success case with 3 towers
-    frame = MeasurementFrame(
+    # Success cases with 3, 2, and 1 tower
+    frame3 = MeasurementFrame(
         frame_id=uuid4(),
         upload_id=uuid4(),
         subscriber_identifier="919876543210",
@@ -135,16 +135,36 @@ def test_measurement_frame_minimum_towers_enforced() -> None:
         towers=[t1, t2, t3],
         status=FrameStatus.READY
     )
-    assert len(frame.towers) == 3
+    assert len(frame3.towers) == 3
 
-    # Fail case with 2 towers
+    frame2 = MeasurementFrame(
+        frame_id=uuid4(),
+        upload_id=uuid4(),
+        subscriber_identifier="919876543210",
+        timestamp=datetime.utcnow(),
+        towers=[t1, t2],
+        status=FrameStatus.READY
+    )
+    assert len(frame2.towers) == 2
+
+    frame1 = MeasurementFrame(
+        frame_id=uuid4(),
+        upload_id=uuid4(),
+        subscriber_identifier="919876543210",
+        timestamp=datetime.utcnow(),
+        towers=[t1],
+        status=FrameStatus.READY
+    )
+    assert len(frame1.towers) == 1
+
+    # Fail case with 0 towers
     with pytest.raises(ValidationError) as excinfo:
         MeasurementFrame(
             frame_id=uuid4(),
             upload_id=uuid4(),
             subscriber_identifier="919876543210",
             timestamp=datetime.utcnow(),
-            towers=[t1, t2],  # Invalid (<3)
+            towers=[],  # Invalid (<1)
             status=FrameStatus.READY
         )
-    assert "requires a minimum of 3 observed cell towers" in str(excinfo.value)
+    assert "requires at least 1 observed cell tower" in str(excinfo.value)
