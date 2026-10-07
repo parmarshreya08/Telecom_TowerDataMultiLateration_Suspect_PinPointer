@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'motion/react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
-  Share2, Download, FileText, Map, Globe,
+  Share2, Download, FileText, Map, Globe, Braces,
   Navigation, Radio, Wifi, WifiOff, Clock,
   ArrowLeft, Crosshair, PlayCircle, RefreshCw, AlertCircle,
   Copy, Check, Play, Pause, Trash2,
@@ -595,6 +595,17 @@ export default function LiveInvestigationPage() {
     } finally { setExporting(null) }
   }
 
+  const handleExportJSON = async () => {
+    if (!id) return
+    setExporting('json')
+    try {
+      const blob = await exportApi.downloadJSON(id, getExportParams())
+      downloadBlob(blob, `e-rakshak_${id}_export.json`)
+    } catch (err: unknown) {
+      setError(extractErrorMessage(err))
+    } finally { setExporting(null) }
+  }
+
   const latestFix = fixes.length > 0 ? fixes[fixes.length - 1] : null
 
   // ── Timeline playback scrubber ──
@@ -1018,6 +1029,14 @@ export default function LiveInvestigationPage() {
             disabled={exporting !== null || fixes.length === 0}
           >
             Export KML (Google Earth)
+          </Button>
+          <Button
+            size="sm" variant="secondary" className="w-full justify-start"
+            icon={exporting === 'json' ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Braces className="h-3.5 w-3.5" />}
+            onClick={handleExportJSON}
+            disabled={exporting !== null || fixes.length === 0}
+          >
+            Export Forensic JSON
           </Button>
           <div className="border-t border-surface-200 dark:border-surface-700 pt-2 mt-2">
             <Button
@@ -1458,6 +1477,7 @@ export default function LiveInvestigationPage() {
                 if (type === 'pdf') handleExportPDF()
                 if (type === 'csv') handleExportCSV()
                 if (type === 'kml') handleExportKML()
+                if (type === 'json') handleExportJSON()
               }}
               onUploadClick={() => setShowUploadModal(true)}
               rfVerifiedFix={rfVerifiedFix}
@@ -1706,6 +1726,7 @@ export default function LiveInvestigationPage() {
                       if (type === 'pdf') handleExportPDF()
                       if (type === 'csv') handleExportCSV()
                       if (type === 'kml') handleExportKML()
+                      if (type === 'json') handleExportJSON()
                     }}
                     onUploadClick={() => { setShowUploadModal(true); setMobileExplorerOpen(false) }}
                     rfVerifiedFix={rfVerifiedFix}

@@ -5,7 +5,7 @@ trilateration + Kalman localization engine, ready for GeoJSON serialization.
 """
 
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
@@ -171,4 +171,96 @@ class LocalizationEstimateResponse(BaseModel):
     fixes: list[LocalizationFix] = Field(..., description="List of resolved LocalizationFix records.")
     geojson: dict = Field(..., description="GeoJSON FeatureCollection representing fixes and ellipses for map rendering.")
     rogue_cgis_detected: list[str] = Field(default_factory=list, description="Rogue BTS/IMSI-catcher CGIs detected and excluded.")
+
+
+# ── JSON Export Contract Models ─────────────────────────────
+
+
+class JsonExportCase(BaseModel):
+    id: str = Field(..., description="Investigation case ID")
+    title: str = Field(..., description="Case title / investigation name")
+    target_identifiers: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Dictionary of target phone numbers, IMEIs, IMSIs, etc."
+    )
+
+
+class JsonExportParameters(BaseModel):
+    solver: str = Field(default="cheung_lee_jpl", description="Multilateration solver algorithm")
+    huber_k: float = Field(default=1.345, description="Huber robust M-estimation tuning constant")
+    kalman_q_r_config: dict[str, Any] = Field(
+        default_factory=lambda: {
+            "process_noise_q": 1.0,
+            "measurement_noise_r": 25.0,
+            "target_type": "pedestrian",
+        },
+        description="Kalman filter process and measurement noise configuration"
+    )
+    utm_zone: int = Field(default=43, description="UTM projection zone")
+    chi2_gate: float = Field(default=9.21, description="Chi-squared innovation rejection gate threshold")
+
+
+class JsonExportRawVsFiltered(BaseModel):
+    raw_lat: Optional[float] = Field(default=None, description="Raw trilateration solve latitude")
+    raw_lon: Optional[float] = Field(default=None, description="Raw trilateration solve longitude")
+
+
+class JsonExportFix(BaseModel):
+    timestamp: str = Field(..., description="ISO8601 UTC timestamp of the observation/fix")
+    lat: float = Field(..., description="Resolved WGS84 latitude")
+    lon: float = Field(..., description="Resolved WGS84 longitude")
+    speed_mps: Optional[float] = Field(default=None, description="Estimated target speed in meters per second")
+    heading_deg: Optional[float] = Field(default=None, description="Estimated target heading in degrees (0-360, 0=North)")
+    confidence_radius_95_m: float = Field(..., description="95% confidence radius in meters")
+    gdop: Optional[float] = Field(default=None, description="Geometric Dilution of Precision")
+    n_towers: int = Field(default=3, description="Number of towers used in resolving this fix")
+    fix_method: str = Field(
+        default="multilateration",
+        description="Fix method: 'multilateration', 'two_tower', or 'single_sector'"
+    )
+    address: Optional[str] = Field(default=None, description="Reverse-geocoded street/block address")
+    towers_used: list[str] = Field(default_factory=list, description="List of CGIs of towers used in this fix")
+    raw_vs_filtered: Optional[JsonExportRawVsFiltered] = Field(
+        default=None,
+        description="Comparison of raw trilateration position vs Kalman filtered position"
+    )
+
+
+class JsonExportTrace(BaseModel):
+    type: str = Field(default="LineString", description="GeoJSON geometry type")
+    coordinates: list[list[float]] = Field(
+        default_factory=list,
+        description="List of [lon, lat] coordinates representing the suspect movement trajectory"
+    )
+
+
+class JsonExportHeatmapSummary(BaseModel):
+    peak_lat: Optional[float] = Field(default=None, description="Latitude of highest probability heatmap intensity peak")
+    peak_lon: Optional[float] = Field(default=None, description="Longitude of highest probability heatmap intensity peak")
+    area_50pct_m2: Optional[float] = Field(default=None, description="Area in m² of the 50% probability core zone")
+    area_90pct_m2: Optional[float] = Field(default=None, description="Area in m² of the 90% probability search zone")
+
+
+class JsonExportIntegrity(BaseModel):
+    sha256_of_payload: str = Field(
+        ...,
+        description="SHA-256 hash computed over canonical JSON of all payload fields except 'integrity'"
+    )
+    audit_entry_id: Optional[str] = Field(
+        default=None,
+        description="UUID of the forensic audit log entry recorded in the database"
+    )
+
+
+class JsonExportPayload(BaseModel):
+    schema_version: str = Field(default="1.0", description="Forensic JSON schema version")
+    case: JsonExportCase = Field(..., description="Case metadata and target identifiers")
+    generated_at: str = Field(..., description="ISO8601 UTC timestamp of export generation")
+    generated_by: str = Field(..., description="Identifier or name of officer generating the export")
+    parameters: JsonExportParameters = Field(..., description="Mathematical solver and filtering parameters")
+    fixes: list[JsonExportFix] = Field(default_factory=list, description="Array of resolved location fixes")
+    trace: JsonExportTrace = Field(..., description="GeoJSON LineString movement trajectory")
+    heatmap_summary: JsonExportHeatmapSummary = Field(..., description="Spatial summary of the probability heatmap")
+    integrity: JsonExportIntegrity = Field(..., description="Cryptographic integrity verification and audit reference")
+
 

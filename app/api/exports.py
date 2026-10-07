@@ -16,7 +16,7 @@ from app.core.logging import logger
 from app.database.models import OfficerModel
 from app.database.repository import TelecomRepository
 from app.database.session import get_db_session
-from app.localization.exports import generate_csv, generate_kml, generate_pdf
+from app.localization.exports import export_json, generate_csv, generate_kml, generate_pdf
 from app.localization.forensic_report import generate_forensic_report
 from app.services.audit_service import record_audit_event
 from app.utils.datetime_utils import parse_iso_datetime_naive
@@ -250,3 +250,106 @@ async def export_pdf(
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="e-rakshak_{case_id}_forensic_report.pdf"'},
     )
+
+
+# ── JSON Export ─────────────────────────────────────────────
+
+async def _handle_export_json(
+    case_id: str,
+    start: str | None,
+    end: str | None,
+    req: Request,
+    officer: OfficerModel,
+    db: AsyncSession,
+) -> Response:
+    import json
+    from sqlalchemy import select
+    from app.database.models.telecom import CaseModel
+
+    await check_case_access(case_id, officer, db)
+
+    # Fetch CaseModel details
+    res_case = await db.execute(select(CaseModel).where(CaseModel.case_id == case_id))
+    case_obj = res_case.scalar_one_or_none()
+
+    if not case_obj:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Investigation case '{case_id}' not found.",
+        )
+
+    start_dt = parse_iso_datetime_naive(start) if start else None
+    end_dt = parse_iso_datetime_naive(end) if end else None
+
+    repo = TelecomRepository(db)
+    fixes = await repo.get_localization_fixes(case_id, start_time=start_dt, end_time=end_dt)
+    frames = await repo.get_frames_by_case(case_id)
+
+    # Generate JSON payload (includes SHA-256 calculation over canonical payload)
+    json_payload = export_json(
+        case=case_obj,
+        fixes=fixes or [],
+        case_id=case_id,
+        officer_id=str(officer.officer_id),
+        frames=frames or [],
+    )
+
+    audit_entry = await record_audit_event(
+        db=db,
+        action="EXPORT_JSON",
+        actor_id=officer.officer_id,
+        actor_name=officer.officer_name,
+        actor_email=officer.email,
+        actor_role=officer.role,
+        case_id=case_id,
+        details={
+            "format": "JSON",
+            "fix_count": len(fixes or []),
+            "sha256": json_payload["integrity"]["sha256_of_payload"],
+        },
+        ip_address=req.client.host if req and req.client else None,
+    )
+    await db.commit()
+
+    if audit_entry and getattr(audit_entry, "log_id", None):
+        json_payload["integrity"]["audit_entry_id"] = str(audit_entry.log_id)
+
+    logger.info("export_json", case_id=case_id, fix_count=len(fixes or []))
+    return Response(
+        content=json.dumps(json_payload, indent=2),
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="e-rakshak_{case_id}_export.json"'},
+    )
+
+
+@router.get(
+    "/api/cases/{case_id}/export/json",
+    status_code=status.HTTP_200_OK,
+    summary="Export localization fixes as structured Forensic JSON",
+)
+async def export_json_endpoint(
+    case_id: str,
+    start: str | None = Query(None, description="ISO datetime start"),
+    end: str | None = Query(None, description="ISO datetime end"),
+    req: Request = None,
+    officer: OfficerModel = Depends(get_current_officer),
+    db: AsyncSession = Depends(get_db_session),
+) -> Response:
+    return await _handle_export_json(case_id, start, end, req, officer, db)
+
+
+@router.get(
+    "/api/case/{case_id}/export/json",
+    status_code=status.HTTP_200_OK,
+    summary="Export localization fixes as structured Forensic JSON (alias)",
+)
+async def export_json_alias_endpoint(
+    case_id: str,
+    start: str | None = Query(None, description="ISO datetime start"),
+    end: str | None = Query(None, description="ISO datetime end"),
+    req: Request = None,
+    officer: OfficerModel = Depends(get_current_officer),
+    db: AsyncSession = Depends(get_db_session),
+) -> Response:
+    return await _handle_export_json(case_id, start, end, req, officer, db)
+
