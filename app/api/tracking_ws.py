@@ -70,7 +70,24 @@ async def tracking_ws(websocket: WebSocket, case_id: str) -> None:
     token = websocket.query_params.get("token")
 
     if not await _authorize_websocket(token, case_id):
-        await websocket.close(code=4401)  # 4401 = unauthorised, mirrors WS 401
+        # Deny with an explicit error frame. NOTE: close-before-accept degrades
+        # to an empty HTTP 403 (no close code reaches browsers or proxies —
+        # vite logs it as "socket hang up" and the client retries blindly).
+        # Accept, signal the reason, then close so 4401 is actually observable.
+        try:
+            await websocket.accept()
+        except Exception:
+            return
+        try:
+            await websocket.send_json(
+                {"type": "unauthorized", "payload": {"code": 4401, "message": "Invalid or expired token"}}
+            )
+        except Exception:
+            pass
+        try:
+            await websocket.close(code=4401)
+        except Exception:
+            pass
         return
 
     # Case access (assignment / creator) is re-checked by the regular HTTP
