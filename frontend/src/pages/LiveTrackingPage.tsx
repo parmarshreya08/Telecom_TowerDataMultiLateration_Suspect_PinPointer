@@ -1,218 +1,443 @@
-import { useState, useEffect } from 'react'
-import { Navigation, Play, Square, MapPin, AlertCircle, Copy, Check } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { Navigation, Play, Square, MapPin, AlertCircle, Copy, Check, Plus, Radio } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
-import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
+import { Card } from '@/components/ui/Card'
 import { socketService } from '@/services/socket'
-import { liveTrackingApi } from '@/services/api'
+import { investigationApi, liveTrackingApi } from '@/services/api'
 import { InvestigationMap } from '@/components/map/InvestigationMap'
-import type { GeoJSONFeatureCollection } from '@/types'
+import { useMapTheme } from '@/hooks/useMapTheme'
+import { generateCaseNumber, extractErrorMessage, cn } from '@/utils'
+import type { GeoJSONFeatureCollection, Investigation } from '@/types'
 import { copyToClipboard } from '@/utils'
 
+interface LiveFix {
+  lat: number
+  lng: number
+  timestamp: string
+  state: 'MOVING' | 'STATIONARY'
+  imsi?: string
+}
+
+const digitsOnly = (v: string) => v.replace(/\D/g, '')
+
 export default function LiveTrackingPage() {
-  const [imsi, setImsi] = useState('')
-  const [isTracking, setIsTracking] = useState(false)
-  const [loading, setLoading] = useState(false)
+  const [cases, setCases] = useState<Investigation[]>([])
+  const [loadingCases, setLoadingCases] = useState(true)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [activeId, setActiveId] = useState<string | null>(null)
+  const [fixes, setFixes] = useState<LiveFix[]>([])
+  const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [demoLink, setDemoLink] = useState<string | null>(null)
-  const [fixes, setFixes] = useState<any[]>([])
   const [copied, setCopied] = useState(false)
-  
-  // Use a derived geojson object for the map
-  const geojson: GeoJSONFeatureCollection | null = fixes.length > 0 ? {
-    type: 'FeatureCollection',
-    features: fixes.map((f, i) => ({
-      type: 'Feature',
-      id: String(i),
-      geometry: { type: 'Point', coordinates: [f.lng, f.lat] },
-      properties: {
-        timestamp: f.timestamp,
-        subscriber_identifier: f.imsi,
-        confidence_radius_meters: 50,
-      }
-    }))
-  } : null
+  const [showNew, setShowNew] = useState(false)
+  const [newNumber, setNewNumber] = useState('')
+  const [newName, setNewName] = useState('')
+  const [creating, setCreating] = useState(false)
 
-  // Connect WebSocket when tracking
+  // Satellite basemap while on this page (Image 1 look); restore on leave.
+  const { themeId, setMapTheme } = useMapTheme()
+  const prevTheme = useRef<string | null>(null)
   useEffect(() => {
-    if (!isTracking || !imsi) return
-    const caseId = `LIVE-${imsi}`
-    socketService.connect(caseId)
-    
-    const unsub = socketService.on<any>('tracking:fix', (payload) => {
-      if (payload) {
-        setFixes(prev => [...prev, payload])
+    prevTheme.current = themeId
+    setMapTheme('satellite')
+    return () => {
+      if (prevTheme.current) setMapTheme(prevTheme.current)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const fetchCases = useCallback(async () => {
+    setLoadingCases(true)
+    try {
+      const data = await investigationApi.list({ page_size: 100 })
+      setCases(data.items ?? [])
+    } catch (err) {
+      setError(extractErrorMessage(err))
+    } finally {
+      setLoadingCases(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchCases()
+  }, [fetchCases])
+
+  // Refresh per-case live status once cases load.
+  useEffect(() => {
+    if (cases.length === 0) return
+    let cancelled = false
+    ;(async () => {
+      for (const c of cases) {
+        try {
+          const st = await liveTrackingApi.getStatus(c.id)
+          if (!cancelled && st.active.length > 0) {
+            setActiveId(c.id)
+            setSelectedId((s) => s ?? c.id)
+            setDemoLink(null)
+            break
+          }
+        } catch {
+          // backend may be unreachable — ignore per-case
+        }
       }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [cases])
+
+  const selected = useMemo(
+    () => cases.find((c) => c.id === selectedId) ?? null,
+    [cases, selectedId]
+  )
+  const selectedDigits = selected ? digitsOnly(selected.mobile_number ?? '') : ''
+
+  // Live fixes for the active case.
+  const geojson: GeoJSONFeatureCollection | null = useMemo(() => {
+    if (fixes.length === 0) return null
+    return {
+      type: 'FeatureCollection',
+      features: fixes.map((f, i) => ({
+        type: 'Feature',
+        id: String(i),
+        geometry: { type: 'Point', coordinates: [f.lng, f.lat] },
+        properties: {
+          timestamp: f.timestamp,
+          subscriber_identifier: f.imsi ?? selectedDigits,
+          confidence_radius_meters: 50,
+        },
+      })),
+    }
+  }, [fixes, selectedDigits])
+
+  // WebSocket for the active case only.
+  useEffect(() => {
+    if (!activeId) return
+    socketService.connect(activeId)
+    const unsub = socketService.on<Record<string, unknown>>('tracking:fix', (payload) => {
+      if (!payload || payload.case_id !== activeId) return
+      const lat = Number(payload.lat)
+      const lng = Number(payload.lng)
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return
+      setFixes((prev) =>
+        [
+          ...prev.slice(-499),
+          {
+            lat,
+            lng,
+            timestamp: String(payload.timestamp ?? new Date().toISOString()),
+            state: payload.state === 'MOVING' ? 'MOVING' : 'STATIONARY',
+            imsi: typeof payload.imsi === 'string' ? payload.imsi : undefined,
+          },
+        ]
+      )
     })
-    
     return () => {
       unsub()
       socketService.disconnect()
     }
-  }, [isTracking, imsi])
+  }, [activeId])
 
-  const handleStart = async () => {
-    if (!imsi) return
-    setLoading(true)
+  const handleSelect = (id: string) => {
+    if (id === activeId) return
+    setSelectedId(id)
+  }
+
+  const handleToggle = async (c: Investigation, on: boolean) => {
+    setBusy(true)
     setError(null)
-    setFixes([])
     try {
-      const res = await liveTrackingApi.startTracking(imsi)
-      setDemoLink(res.demo_link)
-      setIsTracking(true)
-    } catch (err: any) {
-      setError(err?.response?.data?.detail || err.message || 'Failed to start tracking')
+      if (on) {
+        if (activeId && activeId !== c.id) {
+          try {
+            await liveTrackingApi.stopTracking(activeId)
+          } catch {
+            // best-effort
+          }
+        }
+        const res = await liveTrackingApi.startTracking(c.id)
+        setActiveId(c.id)
+        setSelectedId(c.id)
+        setFixes([])
+        setDemoLink(res.demo_link)
+      } else {
+        await liveTrackingApi.stopTracking(c.id)
+        if (activeId === c.id) {
+          setActiveId(null)
+          socketService.disconnect()
+        }
+        setDemoLink(null)
+      }
+    } catch (err: unknown) {
+      setError(extractErrorMessage(err))
     } finally {
-      setLoading(false)
+      setBusy(false)
     }
   }
 
-  const handleStop = async () => {
-    if (!imsi) return
-    setLoading(true)
+  const handleCreateAndTrack = async () => {
+    const digits = digitsOnly(newNumber)
+    if (digits.length < 10) {
+      setError('Enter a valid 10-digit mobile number.')
+      return
+    }
+    setCreating(true)
+    setError(null)
     try {
-      await liveTrackingApi.stopTracking(imsi)
-      setIsTracking(false)
-    } catch (err: any) {
-      setError(err?.response?.data?.detail || err.message || 'Failed to stop tracking')
+      const created = await investigationApi.create({
+        case_name: newName.trim() || `Live Trace ${digits}`,
+        case_number: generateCaseNumber(),
+        suspect_name: newName.trim(),
+        mobile_number: digits,
+        description: `Live tracking case for ${digits}.`,
+      })
+      await fetchCases()
+      setNewNumber('')
+      setNewName('')
+      setShowNew(false)
+      await handleToggle(created, true)
+    } catch (err: unknown) {
+      setError(extractErrorMessage(err))
     } finally {
-      setLoading(false)
+      setCreating(false)
     }
   }
 
   const handleCopyLink = () => {
     if (demoLink) {
-      const fullUrl = `${window.location.origin}${demoLink}`
-      copyToClipboard(fullUrl).then(ok => {
+      copyToClipboard(`${window.location.origin}${demoLink}`).then((ok) => {
         if (ok) {
           setCopied(true)
-          setTimeout(() => setCopied(false), 2000)
+          window.setTimeout(() => setCopied(false), 2000)
         }
       })
     }
   }
 
-  const currentFix = fixes.length > 0 ? fixes[fixes.length - 1] : null
-
   return (
     <div className="flex h-[calc(100vh-4rem)] flex-col lg:flex-row bg-surface-50 dark:bg-surface-900">
-      {/* Left Sidebar */}
-      <div className="w-full lg:w-[350px] border-b lg:border-b-0 lg:border-r border-surface-200 dark:border-surface-800 bg-white dark:bg-surface-800 p-4 flex flex-col gap-4 z-10 shadow-sm">
-        <div className="flex items-center gap-2 mb-2">
+      {/* Left panel — investigations with per-case live toggle */}
+      <div className="w-full lg:w-[380px] shrink-0 border-b lg:border-b-0 lg:border-r border-surface-200 dark:border-surface-800 bg-white dark:bg-surface-950 p-4 flex flex-col gap-4 overflow-y-auto">
+        <div className="flex items-center gap-2">
           <Navigation className="h-5 w-5 text-primary-500" />
           <h2 className="text-lg font-bold text-surface-900 dark:text-surface-100">Live Tracking</h2>
+          {activeId && (
+            <span className="ml-auto rounded bg-green-500/15 px-2 py-0.5 text-[11px] font-bold text-green-600 dark:text-green-400">
+              LIVE
+            </span>
+          )}
         </div>
 
         {error && (
-          <div className="bg-red-50 text-red-600 p-3 rounded-md text-sm border border-red-200 flex items-start gap-2">
+          <div className="bg-red-50 text-red-600 p-3 rounded-md text-sm border border-red-200 flex items-start gap-2 dark:bg-red-900/20 dark:border-red-800 dark:text-red-300">
             <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
             <span>{error}</span>
           </div>
         )}
 
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm">Target IMSI</CardTitle>
-          </CardHeader>
-          <div className="px-4 pb-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-semibold uppercase tracking-wider text-surface-500">
+            Investigations
+          </span>
+          <button
+            onClick={() => setShowNew((v) => !v)}
+            className="flex items-center gap-1 text-xs font-semibold text-primary-600 hover:text-primary-500"
+          >
+            <Plus className="h-3.5 w-3.5" /> New number
+          </button>
+        </div>
+
+        {showNew && (
+          <Card className="p-3 space-y-2">
+            <p className="text-xs text-surface-500">
+              Enter the fugitive&apos;s mobile number — a case is created for it, like the
+              normal CDR flow, then live tracking starts on that case.
+            </p>
+            <input
+              type="tel"
+              value={newNumber}
+              onChange={(e) => setNewNumber(e.target.value)}
+              placeholder="e.g. 9876543210"
+              className="w-full rounded-md border border-surface-300 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-900"
+            />
             <input
               type="text"
-              value={imsi}
-              onChange={(e) => setImsi(e.target.value)}
-              disabled={isTracking || loading}
-              placeholder="e.g. 404450123456789"
-              className="w-full rounded-md border border-surface-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="Suspect name (optional)"
+              className="w-full rounded-md border border-surface-300 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-900"
             />
-            
-            {!isTracking ? (
-              <Button
-                variant="primary"
-                className="w-full justify-center"
-                onClick={handleStart}
-                disabled={!imsi || loading}
-                loading={loading}
-                icon={<Play className="h-4 w-4" />}
-              >
-                Start Tracking
-              </Button>
-            ) : (
+            <Button
+              variant="primary"
+              className="w-full justify-center"
+              loading={creating}
+              onClick={handleCreateAndTrack}
+            >
+              Create case & start tracking
+            </Button>
+          </Card>
+        )}
+
+        {loadingCases ? (
+          <p className="text-sm text-surface-500">Loading investigations…</p>
+        ) : cases.length === 0 ? (
+          <p className="text-sm text-surface-500">
+            No investigations yet. Create one from a mobile number above.
+          </p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {cases.map((c) => {
+              const isActive = c.id === activeId
+              const isSelected = c.id === (selectedId ?? activeId)
+              const hasNumber = digitsOnly(c.mobile_number ?? '').length >= 10
+              return (
+                <div
+                  key={c.id}
+                  className={cn(
+                    'rounded-lg border p-3 transition-colors',
+                    isActive
+                      ? 'border-green-500/50 bg-green-50/50 dark:bg-green-900/10'
+                      : isSelected
+                        ? 'border-primary-500/50'
+                        : 'border-surface-200 dark:border-surface-800'
+                  )}
+                >
+                  <button
+                    onClick={() => handleSelect(c.id)}
+                    className="w-full text-left"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold text-surface-900 dark:text-surface-100 truncate">
+                        {c.case_name || c.case_number || c.id}
+                      </span>
+                      {isActive && <Radio className="h-3.5 w-3.5 text-green-500 animate-pulse" />}
+                    </div>
+                    <div className="mt-0.5 text-xs text-surface-500 truncate">
+                      {[c.case_number, c.suspect_name, c.mobile_number].filter(Boolean).join(' · ')}
+                    </div>
+                  </button>
+                  <div className="mt-2 flex items-center justify-between gap-2">
+                    <Link
+                      to={`/investigations/${c.id}`}
+                      className="text-xs text-primary-600 hover:text-primary-500"
+                    >
+                      Open investigation
+                    </Link>
+                    <label className="flex items-center gap-2 text-xs font-medium text-surface-600 dark:text-surface-300">
+                      <span>{isActive ? 'Live on' : 'Live off'}</span>
+                      <button
+                        role="switch"
+                        aria-checked={isActive}
+                        aria-label={`Live tracking for ${c.case_name || c.id}`}
+                        disabled={busy || (!hasNumber && !isActive)}
+                        title={!hasNumber ? 'Case needs a mobile number' : undefined}
+                        onClick={() => handleToggle(c, !isActive)}
+                        className={cn(
+                          'relative h-6 w-11 rounded-full transition-colors disabled:opacity-40',
+                          isActive ? 'bg-green-500' : 'bg-surface-300 dark:bg-surface-700'
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            'absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all',
+                            isActive ? 'left-[22px]' : 'left-0.5'
+                          )}
+                        />
+                      </button>
+                    </label>
+                  </div>
+                  {!hasNumber && !isActive && (
+                    <p className="mt-1 text-[11px] text-surface-400">
+                      Add a mobile number to this case to enable live tracking.
+                    </p>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {/* Active-case controls (Image 1 left card) */}
+        {selected && (
+          <Card className="p-4 space-y-3">
+            <div className="text-xs font-semibold uppercase tracking-wider text-surface-500">
+              Target number
+            </div>
+            <div className="rounded-md border border-surface-300 dark:border-surface-700 bg-surface-50 dark:bg-surface-900 px-3 py-2 text-sm font-mono">
+              {selectedDigits || '—'}
+            </div>
+            {activeId === selected.id ? (
               <Button
                 variant="danger"
                 className="w-full justify-center"
-                onClick={handleStop}
-                disabled={loading}
-                loading={loading}
+                loading={busy}
+                onClick={() => handleToggle(selected, false)}
                 icon={<Square className="h-4 w-4" />}
               >
                 Stop Tracking
               </Button>
+            ) : (
+              <Button
+                variant="primary"
+                className="w-full justify-center"
+                loading={busy}
+                disabled={!selectedDigits}
+                onClick={() => handleToggle(selected, true)}
+                icon={<Play className="h-4 w-4" />}
+              >
+                Start Tracking
+              </Button>
             )}
-          </div>
-        </Card>
-
-        {isTracking && demoLink && (
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Ground Officer Link</CardTitle>
-            </CardHeader>
-            <div className="px-4 pb-4 space-y-2 text-xs">
-              <p className="text-surface-500">Share this link with field officers for a distraction-free view.</p>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  readOnly
-                  value={`${window.location.origin}${demoLink}`}
-                  className="flex-1 rounded-md border border-surface-300 px-2 py-1.5 bg-surface-50 text-surface-600 dark:bg-surface-900 dark:border-surface-700 dark:text-surface-300 truncate"
-                />
-                <Button size="sm" variant="secondary" onClick={handleCopyLink}>
-                  {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
-                </Button>
+            {activeId === selected.id && demoLink && (
+              <div className="space-y-1">
+                <div className="text-xs text-surface-500">
+                  Ground-officer link <span className="text-surface-400">(lightweight field view)</span>
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    readOnly
+                    value={`${window.location.origin}${demoLink}`}
+                    className="flex-1 min-w-0 rounded-md border border-surface-300 px-2 py-1.5 text-xs bg-surface-50 truncate dark:bg-surface-900 dark:border-surface-700"
+                  />
+                  <Button size="sm" variant="secondary" onClick={handleCopyLink}>
+                    {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                  </Button>
+                </div>
               </div>
-            </div>
+            )}
           </Card>
         )}
 
-        {isTracking && (
-          <Card className="flex-1 flex flex-col min-h-0">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Recent Fixes ({fixes.length})</CardTitle>
-            </CardHeader>
-            <div className="px-4 pb-4 flex-1 overflow-y-auto space-y-2">
-              {fixes.slice().reverse().map((fix, idx) => (
-                <div key={idx} className="bg-surface-50 dark:bg-surface-900 border border-surface-100 dark:border-surface-700 p-2 rounded text-xs flex gap-3 items-start">
-                  <div className="mt-0.5"><MapPin className="h-3.5 w-3.5 text-primary-500" /></div>
-                  <div>
-                    <div className="font-semibold">{new Date(fix.timestamp).toLocaleTimeString()}</div>
-                    <div className="text-surface-500">Lat: {fix.lat.toFixed(6)}</div>
-                    <div className="text-surface-500">Lng: {fix.lng.toFixed(6)}</div>
-                    <div className="text-surface-400 mt-1 capitalize text-[10px]">State: {fix.state}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Card>
+        {activeId && fixes.length > 0 && (
+          <div className="text-xs text-surface-500 flex items-center gap-1">
+            <MapPin className="h-3.5 w-3.5" /> {fixes.length} live fixes
+          </div>
         )}
       </div>
 
-      {/* Map Area */}
+      {/* Map area — InvestigationMap chrome (Path / Rogue / Ellipse / Sectors / Heatmap) */}
       <div className="flex-1 relative bg-surface-100 dark:bg-surface-900 min-h-[500px] lg:min-h-0">
         <InvestigationMap
-          geojson={geojson}
-          heatPoints={[]}
+          pathPoints={fixes.map((f) => ({
+            latitude: f.lat,
+            longitude: f.lng,
+            timestamp: f.timestamp,
+            accuracy_meters: 50,
+            algorithm: 'Multilateration',
+          }))}
           towers={[]}
-          centerOn={
-            currentFix ? { latitude: currentFix.lat, longitude: currentFix.lng } : undefined
-          }
+          onCenterRequest={() => {}}
+          centerTrigger={false}
+          geojson={geojson ?? undefined}
         />
-        
-        {isTracking && (
-          <div className="absolute top-4 right-4 z-[400] bg-white/90 dark:bg-surface-800/90 backdrop-blur px-3 py-1.5 rounded-full shadow-sm border border-surface-200 dark:border-surface-700 flex items-center gap-2">
-            <span className="relative flex h-2.5 w-2.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500"></span>
-            </span>
-            <span className="text-xs font-semibold text-surface-700 dark:text-surface-200">
-              Live Connected
-            </span>
+        {!activeId && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="rounded-lg bg-black/60 px-4 py-2 text-sm text-white backdrop-blur">
+              Select an investigation and toggle live tracking on
+            </div>
           </div>
         )}
       </div>

@@ -26,6 +26,11 @@ class ErakshakSocketService {
       return
     }
 
+    // Never open a WS with an empty path: that upgrades `/` on the vite dev
+    // server (no proxy match, no handler) and surfaces as
+    // "[vite] ws proxy error: socket hang up".
+    if (!investigationId) return
+
     this.investigationId = investigationId
 
     const token = localStorage.getItem(TOKEN_KEY)

@@ -58,6 +58,22 @@ npm run dev
 | `scripts/generate_demo_data.py` | Create `demo_data/*.csv` for UI dev (tower dump, CDR, spot dump) |
 | `scripts/verify_accuracy.py --generate` | Create synthetic ground-truth in `demo_data/validation/` |
 | `scripts/verify_accuracy.py --case <ID>` | Compare DB fixes vs ground truth (MAE, RMSE, containment) |
+| `python -m scripts.benchmark_postgis` | Benchmark PostGIS radius/KNN queries vs Python haversine fallback |
+
+---
+
+## PostGIS spatial queries
+
+Tower and fix tables carry `geometry(Point, 4326)` columns maintained by
+`BEFORE INSERT OR UPDATE` triggers (migration `7f3a9c2d4e5b`), with GiST
+indexes on the geography cast. `TelecomRepository.find_towers_within_radius`
+(`ST_DWithin`) and `find_nearest_towers` (KNN `<->`) serve radius and
+nearest-tower lookups, exposed at `GET /api/towers/nearby`, with a
+pure-Python haversine fallback (`_haversine_m`) when PostGIS is unavailable.
+Measured on the 3,046-row Surat catalog: indexed radius query ~1.2 s,
+KNN nearest-5 ~0.1 s, full-catalog Python scan ~5.3 s; a synthetic 1M-row
+table answers the same 3 km radius query in ~0.3 s, which is the path for
+national-scale catalogs.
 
 ---
 

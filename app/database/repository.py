@@ -99,10 +99,11 @@ class TelecomRepository:
                 LiveTrackingFixModel,
             )
             await self.session.execute(
+                delete(LiveTrackingFixModel).where(LiveTrackingFixModel.case_id == case_id)
+            )
+            await self.session.execute(
                 delete(LiveTrackingSession).where(LiveTrackingSession.case_id == case_id)
             )
-            # Fixes are keyed by imsi only; best-effort: leave global fixes intact
-            # (no case FK) to avoid deleting other cases' anchors.
         except Exception:
             pass
         await self.session.delete(case)

@@ -98,11 +98,24 @@ class MockTSPService:
             logger.warning(f"Already tracking IMSI: {imsi} in case {case_id}")
             return
 
-        # Register the session in the DB
+        # Register the session in the DB (upsert on composite key so a
+        # re-enabled toggle for the same case does not PK-conflict).
         try:
+            from sqlalchemy import select as _select
+
             async with async_session_maker() as session:
-                new_session = LiveTrackingSession(imsi=imsi, case_id=case_id, is_active=True)
-                session.add(new_session)
+                existing = (
+                    await session.execute(
+                        _select(LiveTrackingSession).where(
+                            LiveTrackingSession.case_id == case_id,
+                            LiveTrackingSession.imsi == imsi,
+                        )
+                    )
+                ).scalar_one_or_none()
+                if existing is None:
+                    session.add(LiveTrackingSession(imsi=imsi, case_id=case_id, is_active=True))
+                else:
+                    existing.is_active = True
                 await session.commit()
         except Exception as e:
             logger.error(f"Failed to create LiveTrackingSession for {imsi}: {e}")

@@ -39,10 +39,11 @@ export function useFileUpload({ caseId, onComplete, onError }: UseFileUploadOpti
 
   useEffect(() => {
     const timers = pollingRef.current
+    const inFlight = inFlightRef.current
     return () => {
       timers.forEach((t) => clearInterval(t))
       timers.clear()
-      inFlightRef.current.clear()
+      inFlight.clear()
     }
   }, [])
 

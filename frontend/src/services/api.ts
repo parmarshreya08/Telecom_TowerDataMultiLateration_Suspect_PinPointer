@@ -224,10 +224,12 @@ export const investigationApi = {
 }
 
 export const liveTrackingApi = {
-  startTracking: (imsi: string) =>
-    apiClient.post<{ status: string; message: string; demo_link: string; token: string }>('/api/v1/live-tracking/start', { imsi }).then(r => r.data),
-  stopTracking: (imsi: string) =>
-    apiClient.post<{ status: string; message: string }>('/api/v1/live-tracking/stop', { imsi }).then(r => r.data),
+  startTracking: (caseId: string, imsi?: string) =>
+    apiClient.post<{ status: string; message: string; demo_link: string; token: string; case_id: string; imsi: string }>(`/api/v1/live-tracking/${caseId}/start`, { imsi: imsi ?? null }).then(r => r.data),
+  stopTracking: (caseId: string, imsi?: string) =>
+    apiClient.post<{ status: string; message: string }>(`/api/v1/live-tracking/${caseId}/stop`, { imsi: imsi ?? null }).then(r => r.data),
+  getStatus: (caseId: string) =>
+    apiClient.get<{ case_id: string; active: Array<{ imsi: string; authorized_at: string }> }>(`/api/v1/live-tracking/${caseId}/status`).then(r => r.data),
 }
 
 // Tracking / Localization

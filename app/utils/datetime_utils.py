@@ -68,6 +68,7 @@ def parse_telecom_datetime(value: Any) -> datetime:
         # ISO / Jio format
         "%Y-%m-%dT%H:%M:%S%z",
         "%Y-%m-%dT%H:%M:%SZ",
+        "%Y-%m-%dT%H:%M:%S",
         "%Y-%m-%d %H:%M:%S",
         # Airtel / Vi format
         "%d/%m/%Y %H:%M:%S",

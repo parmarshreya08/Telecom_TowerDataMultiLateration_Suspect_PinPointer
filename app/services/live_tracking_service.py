@@ -1,7 +1,7 @@
 import math
-from datetime import datetime, timezone
 from typing import Dict, Any, Tuple
 from app.core.logging import logger
+from app.utils.datetime_utils import now_ist, parse_telecom_datetime
 from app.services.alert_service import alert_service
 from app.services.ws_manager import connection_manager
 from app.core.config import settings
@@ -106,19 +106,20 @@ class LiveTrackingService:
             logger.info(f"IMSI {imsi}: Initial location fix.")
             is_significant = True
 
-        # If movement is significant, we persist it (Cost Optimization)
+        # DB timestamp columns are naive (IST wall-clock); an aware datetime
+        # crashes asyncpg at bind time ("can't subtract offset-naive and
+        # offset-aware datetimes"). parse_telecom_datetime normalizes to naive.
         timestamp_str = payload.get("timestamp")
         try:
-            dt_timestamp = datetime.fromisoformat(timestamp_str) if timestamp_str else datetime.now(timezone.utc)
+            dt_timestamp = parse_telecom_datetime(timestamp_str) if timestamp_str else now_ist()
         except (ValueError, TypeError):
-            dt_timestamp = datetime.now(timezone.utc)
-        if dt_timestamp.tzinfo is None:
-            dt_timestamp = dt_timestamp.replace(tzinfo=timezone.utc)
+            dt_timestamp = now_ist()
         
         if is_significant:
             try:
                 async with async_session_maker() as session:
                     fix = LiveTrackingFixModel(
+                        case_id=case_id,
                         imsi=imsi,
                         timestamp=dt_timestamp,
                         latitude=current_lat,

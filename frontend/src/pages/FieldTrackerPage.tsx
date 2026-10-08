@@ -3,6 +3,8 @@ import { useParams } from 'react-router-dom'
 import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet'
 import { Loader2, Navigation, AlertTriangle } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
+import { apiClient } from '@/services/api'
+import { DEFAULT_MAP_CENTER } from '@/constants'
 import 'leaflet/dist/leaflet.css'
 import { useMapTheme } from '@/hooks/useMapTheme'
 import { MapThemeSwitcher } from '@/components/map/MapThemeSwitcher'
@@ -27,17 +29,18 @@ export default function FieldTrackerPage() {
   const wsRef = useRef<WebSocket | null>(null)
 
   useEffect(() => {
-    // 1. Resolve token
+    // 1. Resolve token (relative URL → vite proxy in dev, same-origin in prod).
     const resolveToken = async () => {
+      if (!token) {
+        setError('Missing tracking link.')
+        setIsValidating(false)
+        return
+      }
       try {
-        const response = await fetch(`${import.meta.env.VITE_API_URL}/api/v1/live-tracking/resolve-token/${token}`)
-        if (!response.ok) {
-          throw new Error('Invalid or expired tracking link')
-        }
-        const data = await response.json()
+        const { data } = await apiClient.get(`/api/v1/live-tracking/resolve-token/${encodeURIComponent(token)}`)
         setCaseId(data.case_id)
-      } catch (err: any) {
-        setError(err.message || 'Failed to validate tracking link')
+      } catch {
+        setError('Invalid or expired tracking link.')
       } finally {
         setIsValidating(false)
       }
@@ -49,14 +52,15 @@ export default function FieldTrackerPage() {
   useEffect(() => {
     if (!caseId || !token) return
 
-    // 2. Connect to WebSocket
-    // Remove http:// or https:// from API URL to get ws:// or wss://
+    // 2. Connect to WebSocket (same-origin → vite proxy in dev).
+    // Token is encoded: raw JWT interpolation breaks the query on odd chars.
     const pageIsHttps = window.location.protocol === 'https:'
     const wsUrlBase =
-      import.meta.env.VITE_API_URL?.replace(/^https?:\/\//, pageIsHttps ? 'wss://' : 'ws://') ||
       (pageIsHttps ? 'wss://' : 'ws://') + window.location.host
-    const ws = new WebSocket(`${wsUrlBase}/api/ws/tracking/${caseId}?token=${token}`)
-    
+    const ws = new WebSocket(
+      `${wsUrlBase}/api/ws/tracking/${encodeURIComponent(caseId)}?token=${encodeURIComponent(token)}`
+    )
+
     ws.onopen = () => {
       console.log('Connected to live tracking')
     }
@@ -64,14 +68,15 @@ export default function FieldTrackerPage() {
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data)
-        if (data.type === 'live_location_update') {
+        if (data.type === 'live_location_update' && data.case_id === caseId) {
           const newLoc: LocationUpdate = {
             lat: data.lat,
             lng: data.lng,
             timestamp: data.timestamp,
             state: data.state
           }
-          setLocations(prev => [...prev, newLoc])
+          // Bounded buffer — an unbounded trail freezes the field phone.
+          setLocations(prev => [...prev.slice(-499), newLoc])
           setCurrentState(data.state)
         }
       } catch (e) {
@@ -120,9 +125,9 @@ export default function FieldTrackerPage() {
   }
 
   const latestLocation = locations[locations.length - 1]
-  const center: [number, number] = latestLocation 
-    ? [latestLocation.lat, latestLocation.lng] 
-    : [28.6139, 77.2090] // Default to New Delhi if no data yet
+  const center: [number, number] = latestLocation
+    ? [latestLocation.lat, latestLocation.lng]
+    : [...DEFAULT_MAP_CENTER] // Surat operating area
 
   return (
     <div className="flex h-screen w-full flex-col bg-white">
