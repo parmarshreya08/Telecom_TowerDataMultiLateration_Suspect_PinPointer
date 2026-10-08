@@ -19,6 +19,7 @@ class ErakshakSocketService {
   private investigationId?: string
   private reconnectAttempts = 0
   private reconnectTimer: number | null = null
+  private authFailed = false
   private readonly maxReconnectAttempts = 5
 
   connect(investigationId?: string): void {
@@ -32,6 +33,7 @@ class ErakshakSocketService {
     if (!investigationId) return
 
     this.investigationId = investigationId
+    this.authFailed = false
 
     const token = localStorage.getItem(TOKEN_KEY)
     if (!token) return // not signed in — stay disconnected
@@ -55,6 +57,7 @@ class ErakshakSocketService {
     this.ws = null
     this.listeners.clear()
     this.reconnectAttempts = 0
+    this.authFailed = false
   }
 
   on<T = unknown>(event: SocketEventType, callback: EventCallback<T>): () => void {
@@ -96,6 +99,11 @@ class ErakshakSocketService {
       try {
         const msg = JSON.parse(evt.data)
         if (msg && typeof msg.type === 'string') {
+          // Backend signals auth denial explicitly (browsers/proxies never
+          // deliver the raw 4401 close code on a denied handshake).
+          if (msg.type === 'unauthorized') {
+            this.authFailed = true
+          }
           this.dispatch(msg.type, msg.payload)
         }
       } catch {
@@ -107,7 +115,8 @@ class ErakshakSocketService {
       this.ws = null
       this.dispatch('disconnect', undefined)
       // 4401 = unauthorised (expired/revoked token) — do not retry.
-      if (evt.code !== 4401 && this.investigationId && this.reconnectAttempts < this.maxReconnectAttempts) {
+      // authFailed covers proxies/browsers that mask the close code.
+      if (!this.authFailed && evt.code !== 4401 && this.investigationId && this.reconnectAttempts < this.maxReconnectAttempts) {
         this.reconnectAttempts++
         this.reconnectTimer = window.setTimeout(() => {
           this.connect(this.investigationId)

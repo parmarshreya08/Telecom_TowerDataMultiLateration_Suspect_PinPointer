@@ -58,6 +58,7 @@ class JPLTrilateration:
         max_iterations: int = 10,
         tol: float = 1e-3,
         nlos_threshold: float = 80.0,
+        min_pseudorange_m: float = 1.0,
     ) -> dict:
         """
         Iteratively estimate target location P = [x, y, b] given measured pseudoranges.
@@ -69,9 +70,14 @@ class JPLTrilateration:
         :param max_iterations: Maximum convergence iterations.
         :param tol: Convergence tolerance in meters.
         :param nlos_threshold: Base residual threshold in meters for Huber robust weighting.
+        :param min_pseudorange_m: Lower clamp applied to each pseudorange before solving.
+                                  Guards against zero/negative ranges. Must stay well below the
+                                  smallest legitimate range of the deployment (e.g. 1.0 m for
+                                  indoor RTT/UWB; cellular TA bands are >=78 m so any small
+                                  value is safe there).
         :return: dict containing position [x, y], clock_bias b, residual_rms, gdop, and uncertainties.
         """
-        pseudoranges = np.maximum(np.asarray(pseudoranges, dtype=np.float64), 10.0)
+        pseudoranges = np.maximum(np.asarray(pseudoranges, dtype=np.float64), min_pseudorange_m)
 
         if uncertainties is not None:
             uncertainties = np.asarray(uncertainties, dtype=np.float64)

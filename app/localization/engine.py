@@ -113,13 +113,24 @@ class LocalizationEngine:
     Orchestrates trilateration + tracking across a case's measurement frames.
     """
 
-    def __init__(self, utm_zone: int = 0, target_type: str = "pedestrian") -> None:
+    def __init__(
+        self,
+        utm_zone: int = 0,
+        target_type: str = "pedestrian",
+        min_pseudorange_m: float = 1.0,
+    ) -> None:
         """
         :param utm_zone: Fixed UTM zone; 0 (default) auto-derives per frame.
         :param target_type: "pedestrian" or "vehicle" Kalman noise profile.
+        :param min_pseudorange_m: Lower clamp for pseudoranges passed to the JPL solver.
+                                  1.0 m default: safe for indoor RTT/UWB (ranges can be
+                                  sub-10 m) while still guarding against zero/negative
+                                  ranges. Cellular TA bands are >=78 m, so any small
+                                  value is safe there too.
         """
         self.utm_zone = utm_zone
         self.target_type = target_type
+        self.min_pseudorange_m = min_pseudorange_m
 
     def _frame_solve(
         self,
@@ -211,6 +222,7 @@ class LocalizationEngine:
             result = solver.estimate_position(
                 np.array(pseudoranges, dtype=np.float64),
                 uncertainties=np.array(uncertainties, dtype=np.float64),
+                min_pseudorange_m=self.min_pseudorange_m,
             )
 
             return {
