@@ -87,7 +87,11 @@ app = FastAPI(
     lifespan=app_lifespan
 )
 
-# Configure CORS for frontend access
+# Cross-cutting HTTP middleware (Starlette wraps in reverse order of addition: last added is outermost).
+app.add_middleware(RequestContextMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
+
+# Configure CORS for frontend access (outermost so CORS headers apply to all responses and error handlers)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.effective_cors_origins,
@@ -96,12 +100,6 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["X-Request-ID"],
 )
-
-# Cross-cutting HTTP middleware (order matters: outermost first).
-# Security headers wrap request-context so the request ID is still attached
-# to responses even if an inner layer raises.
-app.add_middleware(SecurityHeadersMiddleware)
-app.add_middleware(RequestContextMiddleware)
 
 
 @app.exception_handler(Exception)

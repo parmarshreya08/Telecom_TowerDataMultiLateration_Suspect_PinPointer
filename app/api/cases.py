@@ -518,6 +518,8 @@ async def get_case_localization_geojson(
                 covariance_json=f.covariance_json,
                 geocoded_address=addr,
                 created_at=f.created_at,
+                fix_method=getattr(f, "fix_method", "multilateration") or "multilateration",
+                n_towers=getattr(f, "n_towers", 3) or 3,
             )
         )
     engine = LocalizationEngine(utm_zone=settings.UTM_ZONE, target_type="pedestrian")
@@ -658,6 +660,8 @@ async def get_forensic_report(
             ta_inner_m=f.ta_inner_m,
             ta_outer_m=f.ta_outer_m,
             rss_i_dbm=f.rss_i_dbm,
+            fix_method=getattr(f, "fix_method", "multilateration") or "multilateration",
+            n_towers=getattr(f, "n_towers", 3) or 3,
         )
         for f in fixes
     ]

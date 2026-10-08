@@ -128,43 +128,62 @@ class EventLocalizationEngine:
         sigmas: list[float] = []
         utm_zone = 0
 
+        tower_objs: list[dict[str, Any]] = []
+
         for r in rows:
             raw = r.raw_fields or {}
             cgi = str(raw.get("cell_global_id") or r.cgi)
             coords = None
+            azimuth = None
+            beamwidth = None
             lookup = await self.tower_lookup.find_by_cgi(cgi)
             if lookup is not None:
                 coords = (lookup.latitude, lookup.longitude)
+                azimuth = lookup.azimuth
+                beamwidth = lookup.beamwidth
             elif r.tower_latitude is not None and r.tower_longitude is not None:
                 coords = (r.tower_latitude, r.tower_longitude)
 
-            mtype = str(raw.get("measurement_type", "radio_rtt")).strip().lower()
-            mvalue = raw.get("measurement_value") or r.rtt
-            try:
-                mvalue = float(mvalue)
-            except (TypeError, ValueError):
-                steps["ignored"].append({"cgi": cgi, "reason": "missing/invalid measurement_value"})
-                continue
-            munit = str(raw.get("measurement_unit", "us")).strip()
-            msigma = raw.get("measurement_sigma")
-            try:
-                msigma = float(msigma) if msigma not in (None, "") else None
-            except (TypeError, ValueError):
-                msigma = None
+            mtype = str(raw.get("measurement_type") or ("timing_advance" if r.timing_advance is not None else "radio_rtt")).strip().lower()
+            distance: Optional[float] = None
+            sigma: float = 37.5
 
-            if mtype != "radio_rtt":
-                steps["ignored"].append({"cgi": cgi, "reason": f"unsupported measurement_type: {mtype}"})
-                continue
+            if r.timing_advance is not None or mtype in ("timing_advance", "ta"):
+                ta_val = r.timing_advance if r.timing_advance is not None else raw.get("measurement_value")
+                try:
+                    ta_num = float(ta_val)
+                    distance = max(ta_num * 78.12, 10.0)
+                    sigma = 39.06  # half TA band
+                    steps["tower_observations"].append(
+                        {"cgi": cgi, "ta": ta_num, "distance_m": round(distance, 1), "sigma_m": round(sigma, 1)}
+                    )
+                except (TypeError, ValueError):
+                    pass
 
-            distance = _rtt_to_distance(mvalue, munit)
             if distance is None:
-                steps["ignored"].append({"cgi": cgi, "reason": f"unknown unit: {munit}"})
-                continue
+                mvalue = raw.get("measurement_value") or r.rtt
+                try:
+                    mvalue = float(mvalue)
+                except (TypeError, ValueError):
+                    steps["ignored"].append({"cgi": cgi, "reason": "missing/invalid measurement_value"})
+                    continue
+                munit = str(raw.get("measurement_unit", "us")).strip()
+                msigma = raw.get("measurement_sigma")
+                try:
+                    msigma = float(msigma) if msigma not in (None, "") else None
+                except (TypeError, ValueError):
+                    msigma = None
 
-            sigma = _sigma_to_metres(msigma, munit)
-            steps["tower_observations"].append(
-                {"cgi": cgi, "rtt": mvalue, "unit": munit, "distance_m": round(distance, 1), "sigma_m": round(sigma, 1)}
-            )
+                distance = _rtt_to_distance(mvalue, munit)
+                if distance is None:
+                    steps["ignored"].append({"cgi": cgi, "reason": f"unknown unit: {munit}"})
+                    continue
+
+                sigma = _sigma_to_metres(msigma, munit)
+                steps["tower_observations"].append(
+                    {"cgi": cgi, "rtt": mvalue, "unit": munit, "distance_m": round(distance, 1), "sigma_m": round(sigma, 1)}
+                )
+
             if coords is None:
                 steps["ignored"].append({"cgi": cgi, "reason": "no tower coordinates"})
                 continue
@@ -176,19 +195,84 @@ class EventLocalizationEngine:
             distances.append(distance)
             sigmas.append(sigma)
             circles.append({"cgi": cgi, "radius_m": round(distance, 1), "sigma_m": round(sigma, 1)})
+            tower_objs.append({
+                "cgi": cgi,
+                "e": e,
+                "n": n,
+                "distance": distance,
+                "sigma": sigma,
+                "azimuth": azimuth,
+                "beamwidth": beamwidth,
+                "ta": r.timing_advance,
+                "rtt": r.rtt,
+            })
 
         event_ts = rows[0].timestamp.isoformat() if rows else ""
 
-        if len(tower_points) < 3:
-            reasons.append(f"Need at least 3 towers with usable RTT+coordinates. Found {len(tower_points)}.")
+        if len(tower_points) == 0:
+            reasons.append("No towers with usable distance observations or coordinates.")
             return EventResult(event_key, event_ts, "insufficient_data", circles=circles, reasons=reasons, steps=steps)
 
+        # 1 Tower: Single-Sector Annular Wedge centroid
+        if len(tower_points) == 1:
+            from app.localization.single_tower import SingleTowerResolver
+            t0 = tower_objs[0]
+            res_single = SingleTowerResolver.resolve(
+                center_x=t0["e"],
+                center_y=t0["n"],
+                timing_advance=t0.get("ta"),
+                pseudorange_meters=t0["distance"],
+                rtt=t0.get("rtt"),
+                azimuth_deg=t0.get("azimuth"),
+                beamwidth_deg=t0.get("beamwidth"),
+            )
+            reasons.append(f"Single-sector fix: centroid of antenna wedge (±{round(res_single['confidence_radius'])}m).")
+            steps.update({"fix_method": "single_sector", "confidence_radius_m": round(res_single["confidence_radius"], 1)})
+            pos_utm = (float(res_single["position"][0]), float(res_single["position"][1]))
+            return EventResult(
+                event_key, event_ts, "resolved",
+                position=pos_utm, covariance=res_single["covariance"],
+                circles=circles, reasons=reasons, steps=steps, utm_zone=utm_zone
+            )
+
+        # 2 Towers: Two-Tower Circle-Circle Intersection with Sector Wedge Disambiguation
+        if len(tower_points) == 2:
+            from app.localization.two_tower import TwoTowerResolver
+            t0, t1 = tower_objs[0], tower_objs[1]
+            res_two = TwoTowerResolver.resolve(
+                c1=np.array([t0["e"], t0["n"]], dtype=np.float64),
+                r1=t0["distance"],
+                unc1=t0["sigma"],
+                az1=t0.get("azimuth"),
+                bw1=t0.get("beamwidth"),
+                c2=np.array([t1["e"], t1["n"]], dtype=np.float64),
+                r2=t1["distance"],
+                unc2=t1["sigma"],
+                az2=t1.get("azimuth"),
+                bw2=t1.get("beamwidth"),
+            )
+            reasons.append(f"2-tower circle intersection fix (±{round(res_two['confidence_radius'])}m).")
+            steps.update({
+                "fix_method": "two_tower",
+                "confidence_radius_m": round(res_two["confidence_radius"], 1),
+                "disambiguation": res_two.get("disambiguation_reason"),
+            })
+            pos_utm = (float(res_two["position"][0]), float(res_two["position"][1]))
+            return EventResult(
+                event_key, event_ts, "resolved",
+                position=pos_utm, covariance=res_two["covariance"],
+                circles=circles, reasons=reasons, steps=steps, utm_zone=utm_zone
+            )
+
+        # 3+ Towers: Weighted Least-Squares Trilateration
         pos, cov, fit_steps = self._solve_weighted_ls(tower_points, distances, sigmas)
         steps.update(fit_steps)
 
         status = "resolved" if (fit_steps["residual_rms_m"] <= max(50.0, 3 * float(np.mean(sigmas))) and fit_steps["gdop"] < 8.0) else "uncertain"
         if status != "resolved":
             reasons.append("Residual or geometry quality is poor; treat position as uncertain.")
+        else:
+            reasons.append(f"Multilateration fix: {len(tower_points)} towers (RMS {fit_steps['residual_rms_m']}m).")
 
         return EventResult(event_key, event_ts, status, position=pos, covariance=cov, circles=circles, reasons=reasons, steps=steps, utm_zone=utm_zone)
 
