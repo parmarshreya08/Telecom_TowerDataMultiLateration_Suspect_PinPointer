@@ -29,6 +29,7 @@ import { useThemeContext } from '@/hooks/useThemeContext'
 import { Logo } from '@/components/ui/Logo'
 import { getStoredOfficer, hasValidSession } from '@/services/auth'
 import { LiveEngineTester } from '@/components/landing/LiveEngineTester'
+import { BtsDetectorTester } from '@/components/landing/BtsDetectorTester'
 import { RfCorroborationTester } from '@/components/landing/RfCorroborationTester'
 import { SuratTowerCoverage } from '@/components/landing/SuratTowerCoverage'
 import { cn } from '@/utils'
@@ -129,7 +130,7 @@ export default function LandingPage() {
   const { isDark, toggleTheme } = useThemeContext()
 
   const [session, setSession] = useState<{ name: string } | null>(null)
-  const [activePlaygroundTab, setActivePlaygroundTab] = useState<'multilateration' | 'rf'>('multilateration')
+  const [activePlaygroundTab, setActivePlaygroundTab] = useState<'multilateration' | 'bts' | 'rf'>('multilateration')
   const [activeTechPillar, setActiveTechPillar] = useState<string>('trilateration')
 
   // Live operational telemetry loaded from backend
@@ -611,7 +612,8 @@ export default function LandingPage() {
             <div className="inline-flex p-1.5 rounded-2xl bg-white dark:bg-slate-900 border border-surface-200 dark:border-slate-800 shadow-sm gap-1.5 max-w-full overflow-x-auto">
               {[
                 { id: 'multilateration', label: '1. Multilateration & Trajectory', icon: Crosshair, badge: 'Live Map' },
-                { id: 'rf', label: '2. RF Ground-Truth Verification', icon: ShieldCheck, badge: '3GPP Physics' },
+                { id: 'bts', label: '2. Rogue BTS Sentinel', icon: Radio, badge: 'Cell Audit' },
+                { id: 'rf', label: '3. RF Ground-Truth Verification', icon: ShieldCheck, badge: '3GPP Physics' },
               ].map((tab) => {
                 const Icon = tab.icon
                 const isActive = activePlaygroundTab === tab.id
@@ -656,6 +658,18 @@ export default function LandingPage() {
                   transition={{ duration: 0.25 }}
                 >
                   <LiveEngineTester isDark={isDark} />
+                </motion.div>
+              )}
+
+              {activePlaygroundTab === 'bts' && (
+                <motion.div
+                  key="bts"
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -12 }}
+                  transition={{ duration: 0.25 }}
+                >
+                  <BtsDetectorTester isDark={isDark} />
                 </motion.div>
               )}
 

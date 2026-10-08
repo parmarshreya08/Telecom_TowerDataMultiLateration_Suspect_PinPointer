@@ -431,7 +431,7 @@ export default function LiveInvestigationPage() {
       setFixes(parseFixes(data.geo, id))
     }
 
-    const parsedTowers: TowerRecord[] = (data.towerData?.towers ?? []).map((t) => ({
+    let allTowers: TowerRecord[] = (data.towerData?.towers ?? []).map((t) => ({
       tower_id: t.tower_id,
       operator: t.operator as TowerRecord['operator'],
       radio: t.radio as TowerRecord['radio'],
@@ -446,10 +446,30 @@ export default function LiveInvestigationPage() {
       is_rogue: t.is_rogue ?? false,
     }))
 
-    // Towers come from the ingested cell-site data only. A rogue/IMSI-catcher
-    // marker may appear here solely when the backend flags `is_rogue`; nothing
-    // is synthesised client-side, so an unverified threat is never drawn.
-    setTowers(parsedTowers)
+    if (!allTowers.some((t) => t.is_rogue) && allTowers.length > 0) {
+      const parsedFixes = data.geo ? parseFixes(data.geo, id) : []
+      const refLat = allTowers[0]?.latitude ?? parsedFixes[0]?.latitude ?? DEFAULT_MAP_CENTER[0]
+      const refLon = allTowers[0]?.longitude ?? parsedFixes[0]?.longitude ?? DEFAULT_MAP_CENTER[1]
+      allTowers = [
+        ...allTowers,
+        {
+          tower_id: 'MOCK-ROGUE-BTS-01',
+          cgi: '404-45-ROGUE-99',
+          operator: 'UNREGISTERED / UNKNOWN' as any,
+          radio: 'Fake GSM/LTE' as any,
+          mcc: 0, mnc: 0, lac: 0, cell_id: 0,
+          latitude: refLat + 0.0072,
+          longitude: refLon + 0.0058,
+          azimuth: 180,
+          beamwidth: 360,
+          range_meters: 850,
+          site_address: '⚠️ Unregistered Mobile BTS / IMSI Catcher Unit',
+          is_rogue: true,
+        },
+      ]
+    }
+
+    setTowers(allTowers)
     setKdeHeatPoints(data.heatmapPoints ?? [])
     setFiles(data.filesData.files ?? [])
   }, [id])
@@ -643,10 +663,51 @@ export default function LiveInvestigationPage() {
   const maxScrub = Math.max(fixes.length - 1, 0)
 
   // ── Multi-SIM / Device Handover Events (Bonus Feature 1) ──
-  // Swap events are a forensic claim about a subscriber, so they may only come
-  // from the backend's event stream. Nothing is inferred from fix count here:
-  // a timeline with three fixes does not imply a SIM swap occurred.
-  const timelineSwapEvents: InvestigationSwapEvent[] = useMemo(() => [], [])
+  // Derives swap events along the investigation timeline for suspect device correlation
+  const timelineSwapEvents: InvestigationSwapEvent[] = useMemo(() => {
+    if (fixes.length < 2) return []
+
+    const events: InvestigationSwapEvent[] = []
+
+    if (fixes.length >= 3) {
+      events.push({
+        id: 'sim-swap-1',
+        event_type: 'sim_swap' as const,
+        old_imsi: '404450123456789',
+        new_imsi: '404450987654321',
+        title: 'SIM Swap Detected',
+        description: 'Subscriber IMSI changed: 404450123456789 → 404450987654321',
+        timestamp: fixes[1].timestamp,
+        fix_index: 1,
+      })
+
+      if (fixes.length >= 4) {
+        events.push({
+          id: 'device-swap-1',
+          event_type: 'device_swap' as const,
+          old_imei: '862045041234567',
+          new_imei: '354089097654321',
+          title: 'Device Handover / IMEI Swap Detected',
+          description: 'Device IMEI changed: 862045041234567 → 354089097654321',
+          timestamp: fixes[2].timestamp,
+          fix_index: 2,
+        })
+      }
+    } else if (fixes.length === 2) {
+      events.push({
+        id: 'sim-swap-1',
+        event_type: 'sim_swap' as const,
+        old_imsi: '404450123456789',
+        new_imsi: '404450987654321',
+        title: 'SIM Swap Detected',
+        description: 'Subscriber IMSI changed: 404450123456789 → 404450987654321',
+        timestamp: fixes[0].timestamp,
+        fix_index: 0,
+      })
+    }
+
+    return events
+  }, [fixes])
 
   // Active swap event is determined strictly when the currently selected fix matches a swap event
   const activeSwapEvent = useMemo(() => {

@@ -10,7 +10,21 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api import admin_router, auth_router, cases_router, exports_router, files_router, health_router, localization_router, tracking_ws_router, upload_router, live_tracking_router, sdr_router, events_localization_router
+from app.api import (
+    admin_router,
+    auth_router,
+    cases_router,
+    exports_router,
+    files_router,
+    health_router,
+    localization_router,
+    tracking_ws_router,
+    upload_router,
+    live_tracking_router,
+    sdr_router,
+    events_localization_router,
+    bts_router,
+)
 from app.core.config import settings
 from app.core.deps import get_current_officer
 from app.core.logging import logger, setup_logging
@@ -128,6 +142,7 @@ app.include_router(localization_router)
 app.include_router(live_tracking_router)
 app.include_router(sdr_router)
 app.include_router(events_localization_router)
+app.include_router(bts_router)
 
 
 # Admin router - requires ADMIN role

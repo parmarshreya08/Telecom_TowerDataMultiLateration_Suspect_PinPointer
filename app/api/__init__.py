@@ -15,6 +15,8 @@ from app.api.live_tracking import router as live_tracking_router
 from app.api.sdr import router as sdr_router
 from app.api.events_localization import router as events_localization_router
 
+from app.api.bts import router as bts_router
+
 __all__ = [
     "admin_router",
     "auth_router",
@@ -28,5 +30,6 @@ __all__ = [
     "live_tracking_router",
     "sdr_router",
     "events_localization_router",
+    "bts_router",
 ]
 

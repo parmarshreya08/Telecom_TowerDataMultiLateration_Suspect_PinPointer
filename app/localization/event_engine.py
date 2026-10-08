@@ -161,27 +161,32 @@ class EventLocalizationEngine:
                     pass
 
             if distance is None:
-                mvalue = raw.get("measurement_value") or r.rtt
-                try:
-                    mvalue = float(mvalue)
-                except (TypeError, ValueError):
-                    steps["ignored"].append({"cgi": cgi, "reason": "missing/invalid measurement_value"})
-                    continue
-                munit = str(raw.get("measurement_unit", "us")).strip()
-                msigma = raw.get("measurement_sigma")
-                try:
-                    msigma = float(msigma) if msigma not in (None, "") else None
-                except (TypeError, ValueError):
-                    msigma = None
+                mvalue = raw.get("measurement_value") if raw.get("measurement_value") is not None else r.rtt
+                if mvalue is not None:
+                    try:
+                        mvalue = float(mvalue)
+                        munit = str(raw.get("measurement_unit", "ms" if r.rtt is not None else "us")).strip()
+                        distance = _rtt_to_distance(mvalue, munit)
+                        if distance is not None:
+                            msigma = raw.get("measurement_sigma")
+                            try:
+                                msigma = float(msigma) if msigma not in (None, "") else None
+                            except (TypeError, ValueError):
+                                msigma = None
+                            sigma = _sigma_to_metres(msigma, munit)
+                            steps["tower_observations"].append(
+                                {"cgi": cgi, "rtt": mvalue, "unit": munit, "distance_m": round(distance, 1), "sigma_m": round(sigma, 1)}
+                            )
+                    except (TypeError, ValueError):
+                        pass
 
-                distance = _rtt_to_distance(mvalue, munit)
-                if distance is None:
-                    steps["ignored"].append({"cgi": cgi, "reason": f"unknown unit: {munit}"})
-                    continue
-
-                sigma = _sigma_to_metres(msigma, munit)
+            if distance is None:
+                # Fallback to tower catalog coverage range or default 1200m
+                default_range = float(lookup.range_meters) if lookup and lookup.range_meters else 1200.0
+                distance = default_range
+                sigma = default_range * 0.35
                 steps["tower_observations"].append(
-                    {"cgi": cgi, "rtt": mvalue, "unit": munit, "distance_m": round(distance, 1), "sigma_m": round(sigma, 1)}
+                    {"cgi": cgi, "estimated_range_m": round(distance, 1), "sigma_m": round(sigma, 1)}
                 )
 
             if coords is None:
