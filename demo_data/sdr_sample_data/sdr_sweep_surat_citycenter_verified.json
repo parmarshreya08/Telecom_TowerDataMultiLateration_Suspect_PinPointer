@@ -1,0 +1,42 @@
+{
+  "fix_latitude": 21.1702,
+  "fix_longitude": 72.8311,
+  "carrier_frequency_mhz": 1800.0,
+  "tx_power_dbm": 43.0,
+  "path_loss_exponent": 2.8,
+  "description": "Ground SDR RF verification in Surat Ring Road / Majura Gate area",
+  "towers": [
+    {
+      "cgi": "404-20-101-5401",
+      "latitude": 21.1715,
+      "longitude": 72.8325,
+      "measured_rssi_dbm": -45.0,
+      "timing_advance_meters": 200.0,
+      "azimuth_deg": 45.0
+    },
+    {
+      "cgi": "404-20-101-5402",
+      "latitude": 21.1685,
+      "longitude": 72.8290,
+      "measured_rssi_dbm": -49.2,
+      "timing_advance_meters": 280.0,
+      "azimuth_deg": 120.0
+    },
+    {
+      "cgi": "404-20-101-5403",
+      "latitude": 21.1730,
+      "longitude": 72.8280,
+      "measured_rssi_dbm": -54.0,
+      "timing_advance_meters": 440.0,
+      "azimuth_deg": 240.0
+    },
+    {
+      "cgi": "404-20-101-5404",
+      "latitude": 21.1660,
+      "longitude": 72.8340,
+      "measured_rssi_dbm": -55.8,
+      "timing_advance_meters": 550.0,
+      "azimuth_deg": 300.0
+    }
+  ]
+}

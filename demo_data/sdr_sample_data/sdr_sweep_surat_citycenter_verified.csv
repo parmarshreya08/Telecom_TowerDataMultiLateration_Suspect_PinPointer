@@ -1,0 +1,5 @@
+cgi,latitude,longitude,measured_rssi_dbm,frequency_mhz,azimuth_deg,site_address
+404-20-101-5401,21.1715,72.8325,-45.0,1800.0,45.0,Ring Road Tower North Surat
+404-20-101-5402,21.1685,72.8290,-49.2,1800.0,120.0,Majura Gate Junction Surat
+404-20-101-5403,21.1730,72.8280,-54.0,1800.0,240.0,Athwa Lines Post Office Surat
+404-20-101-5404,21.1660,72.8340,-55.8,1800.0,300.0,Khatodara Industrial GIDC Surat

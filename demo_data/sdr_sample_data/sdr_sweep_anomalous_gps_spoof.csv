@@ -1,0 +1,5 @@
+cgi,latitude,longitude,measured_rssi_dbm,frequency_mhz,azimuth_deg,site_address
+405-867-1002-10001,21.16151,72.78314,-112.0,1800.0,257.8,Plot 63 Near SVNIT Central Library Piplod Surat
+405-867-1001-10002,21.16721,72.78796,-108.5,1800.0,0.0,Plot 7 Near Iscon Mall Dumas Road Piplod Surat
+404-10-2025-10005,21.16818,72.78911,-115.0,1800.0,0.0,Plot 89 Near Gaurav Path Expressway Piplod Surat
+404-20-3030-10008,21.16388,72.78784,-110.2,1800.0,0.0,Plot 59 Near Ichchanath Mahadev Temple Circle Surat

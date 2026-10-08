@@ -1,0 +1,42 @@
+{
+  "fix_latitude": 21.2205,
+  "fix_longitude": 72.7815,
+  "carrier_frequency_mhz": 1800.0,
+  "tx_power_dbm": 43.0,
+  "path_loss_exponent": 2.8,
+  "description": "Ground SDR RF verification in Surat Jahangirpura / Rander Road sector",
+  "towers": [
+    {
+      "cgi": "404-98-8290-241660674",
+      "latitude": 21.2185,
+      "longitude": 72.7792,
+      "measured_rssi_dbm": -52.0,
+      "timing_advance_meters": 330.0,
+      "azimuth_deg": 0.0
+    },
+    {
+      "cgi": "404-98-8290-216060674",
+      "latitude": 21.2190,
+      "longitude": 72.7801,
+      "measured_rssi_dbm": -47.1,
+      "timing_advance_meters": 220.0,
+      "azimuth_deg": 120.0
+    },
+    {
+      "cgi": "404-98-8290-241660679",
+      "latitude": 21.2210,
+      "longitude": 72.7830,
+      "measured_rssi_dbm": -43.0,
+      "timing_advance_meters": 165.0,
+      "azimuth_deg": 240.0
+    },
+    {
+      "cgi": "405-857-3150-507905",
+      "latitude": 21.2201,
+      "longitude": 72.7812,
+      "measured_rssi_dbm": -31.5,
+      "timing_advance_meters": 55.0,
+      "azimuth_deg": 45.0
+    }
+  ]
+}

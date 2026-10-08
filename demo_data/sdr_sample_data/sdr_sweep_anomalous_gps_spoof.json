@@ -1,0 +1,42 @@
+{
+  "fix_latitude": 21.1650,
+  "fix_longitude": 72.7850,
+  "carrier_frequency_mhz": 1800.0,
+  "tx_power_dbm": 43.0,
+  "path_loss_exponent": 2.8,
+  "description": "Anomalous SDR sweep where measured signal levels contradict claimed suspect location (GPS spoofing/jammer detection)",
+  "towers": [
+    {
+      "cgi": "405-867-1002-10001",
+      "latitude": 21.16151,
+      "longitude": 72.78314,
+      "measured_rssi_dbm": -112.0,
+      "timing_advance_meters": 430.0,
+      "azimuth_deg": 257.8
+    },
+    {
+      "cgi": "405-867-1001-10002",
+      "latitude": 21.16721,
+      "longitude": 72.78796,
+      "measured_rssi_dbm": -108.5,
+      "timing_advance_meters": 390.0,
+      "azimuth_deg": 0.0
+    },
+    {
+      "cgi": "404-10-2025-10005",
+      "latitude": 21.16818,
+      "longitude": 72.78911,
+      "measured_rssi_dbm": -115.0,
+      "timing_advance_meters": 540.0,
+      "azimuth_deg": 0.0
+    },
+    {
+      "cgi": "404-20-3030-10008",
+      "latitude": 21.16388,
+      "longitude": 72.78784,
+      "measured_rssi_dbm": -110.2,
+      "timing_advance_meters": 320.0,
+      "azimuth_deg": 0.0
+    }
+  ]
+}
