@@ -204,7 +204,11 @@ export default function LoginPage() {
         </div>
 
         {/* Footer links */}
-        <div className="mt-5 flex flex-col items-center gap-3">
+        <div className="mt-5 flex flex-col items-center gap-2.5">
+          <p className="text-xs text-slate-400 text-center">
+            Forgot password or need clearance?{' '}
+            <span className="text-slate-300 font-medium">Contact Cyber Cell Duty Admin</span>
+          </p>
           <p className="text-sm text-slate-500">
             No account yet?{' '}
             <Link to="/register" className="font-semibold text-primary-400 hover:text-primary-300 transition-colors">

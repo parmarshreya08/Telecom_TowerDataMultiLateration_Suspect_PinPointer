@@ -898,9 +898,15 @@ export default function LandingPage() {
               </p>
             </div>
           </div>
-          <p className="text-xs text-surface-400 dark:text-slate-500 font-mono text-center sm:text-right">
-            Section 65B Indian Evidence Act Compliant · All Actions Audited
-          </p>
+          <div className="flex flex-col sm:items-end gap-1 text-xs text-center sm:text-right">
+            <div className="inline-flex items-center gap-2 text-surface-700 dark:text-slate-300 font-medium justify-center sm:justify-end">
+              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span>Credential Reset &amp; Access: <strong className="text-surface-900 dark:text-white">Contact Duty Admin</strong></span>
+            </div>
+            <span className="text-surface-400 dark:text-slate-500 font-mono text-[11px]">
+              Cyber Crime Control Room · 24/7 Monitored &amp; Audited
+            </span>
+          </div>
         </div>
       </footer>
 
