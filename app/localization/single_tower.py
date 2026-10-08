@@ -147,7 +147,8 @@ class SingleTowerResolver:
         has_ta_band = False
 
         if timing_advance is not None and timing_advance >= 0:
-            ta = float(timing_advance)
+            # Cap absurd TA (LTE max 1282 ≈ 100km) to avoid 100km wedges / heatmap DoS.
+            ta = min(float(timing_advance), 63.0)
             r_in = max(0.0, (ta - 0.5) * ta_step_meters)
             r_out = (ta + 0.5) * ta_step_meters
             has_ta_band = True
@@ -158,7 +159,8 @@ class SingleTowerResolver:
             r_out = pr + half_step
             has_ta_band = True
         elif rtt is not None and rtt > 0:
-            one_way_m = (float(rtt) * 1000.0) / 2.0
+            # rtt is milliseconds: distance = c * t / 2 (was 300x short).
+            one_way_m = max(float(rtt) * 1e-3 * 299792458.0 / 2.0, 10.0)
             half_step = ta_step_meters / 2.0
             r_in = max(0.0, one_way_m - half_step)
             r_out = one_way_m + half_step
@@ -168,14 +170,36 @@ class SingleTowerResolver:
             r_in = 0.0
             r_out = max(max_range_meters, 500.0)
 
+        # Clamp degenerate beamwidths; full-circle handled as 360.
+        try:
+            bw_f = float(beamwidth)
+        except (TypeError, ValueError):
+            bw_f = 65.0
+        if bw_f < 1.0 or bw_f > 360.0:
+            bw_f = 65.0
+        beamwidth = bw_f
+
         # Build Polygon & Centroid
         poly = make_annular_sector_polygon(center_x, center_y, r_in, r_out, azimuth, beamwidth)
         centroid = poly.centroid
-        centroid_pos = np.array([centroid.x, centroid.y], dtype=np.float64)
+        # Wide-beam annular centroid can fall inside the r_in hole (excluded region).
+        try:
+            if not poly.contains(centroid):
+                mid_r = (r_in + r_out) / 2.0
+                az_rad = math.radians(90.0 - azimuth)
+                centroid_pos = np.array(
+                    [center_x + mid_r * math.cos(az_rad), center_y + mid_r * math.sin(az_rad)],
+                    dtype=np.float64,
+                )
+            else:
+                centroid_pos = np.array([centroid.x, centroid.y], dtype=np.float64)
+        except Exception:
+            centroid_pos = np.array([centroid.x, centroid.y], dtype=np.float64)
 
         # Compute honest 95% confidence radius
         conf_radius = compute_annular_confidence_radius(
-            center_x, center_y, centroid.x, centroid.y, r_in, r_out, azimuth, beamwidth, percentile=0.95
+            center_x, center_y, float(centroid_pos[0]), float(centroid_pos[1]),
+            r_in, r_out, azimuth, beamwidth, percentile=0.95
         )
         conf_radius = max(conf_radius, 40.0)
 

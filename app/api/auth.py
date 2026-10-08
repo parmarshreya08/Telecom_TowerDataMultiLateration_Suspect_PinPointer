@@ -8,7 +8,7 @@ from typing import Any
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -61,8 +61,34 @@ class AuthResponse(BaseModel):
 
 
 class PreferencesUpdateRequest(BaseModel):
-    map_theme: str | None = None
+    map_theme: str | None = Field(default=None, max_length=32)
     preferences: dict[str, Any] | None = None
+
+    @field_validator("map_theme")
+    @classmethod
+    def validate_theme(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        allowed = {"dark", "light", "satellite", "terrain", "navy", "night"}
+        if v not in allowed:
+            raise ValueError(f"Invalid map_theme. Allowed: {sorted(allowed)}.")
+        return v
+
+    @field_validator("preferences")
+    @classmethod
+    def validate_preferences(cls, v: dict[str, Any] | None) -> dict[str, Any] | None:
+        if v is None:
+            return v
+        if len(v) > 32:
+            raise ValueError("Too many preference keys (max 32).")
+        for k, val in v.items():
+            if len(str(k)) > 64:
+                raise ValueError("Preference key too long.")
+            if isinstance(val, str) and len(val) > 512:
+                raise ValueError("Preference value too long.")
+            if not isinstance(val, (str, int, float, bool, type(None))):
+                raise ValueError("Preference values must be JSON scalars.")
+        return v
 
 
 def _to_officer_response(officer: OfficerModel) -> OfficerResponse:
@@ -106,7 +132,13 @@ async def register_officer(
         )
 
     # Create officer with default role INSPECTOR
-    password_hash = hash_password(body.password)
+    try:
+        password_hash = hash_password(body.password)
+    except ValueError as ve:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(ve),
+        )
     officer = OfficerModel(
         officer_id=uuid4(),
         officer_name=body.officer_name.strip(),

@@ -129,7 +129,10 @@ class JPLTrilateration:
 
             adaptive_threshold = base_nlos * (uncertainties / np.median(uncertainties))
             abs_residuals = np.abs(d)
-            weights = np.where(abs_residuals > adaptive_threshold, adaptive_threshold / abs_residuals, 1.0)
+            weights = np.ones_like(abs_residuals)
+            _nz = abs_residuals > adaptive_threshold
+            np.divide(adaptive_threshold, abs_residuals, out=weights, where=_nz)
+            weights[~_nz] = 1.0
 
             # Combine Huber robust weights with uncertainty weighting (fix: apply on top of WA, not raw A)
             WA_weighted = weights[:, None] * WA

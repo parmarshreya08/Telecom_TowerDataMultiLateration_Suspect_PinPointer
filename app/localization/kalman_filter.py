@@ -124,7 +124,14 @@ class KalmanTracker:
             innovation_norm = np.linalg.norm(z_trilat - predicted_pos)
 
             # Adaptive Process Noise Q_k (scale up Q if suspect makes sudden sharp turn/maneuver)
-            q_scale = max(1.0, (innovation_norm / 50.0) ** 2)
+            # Capped: uncapped q_scale explodes P on spoof jumps (10km -> 40000x).
+            try:
+                innov_f = float(innovation_norm)
+            except (TypeError, ValueError):
+                innov_f = 0.0
+            if innov_f != innov_f or innov_f < 0:
+                innov_f = 0.0
+            q_scale = min(max(1.0, (innov_f / 50.0) ** 2), 25.0)
             Q_k = self._get_process_noise_Q(self.base_q_var * q_scale)
 
             # 2. Predict Step
@@ -140,13 +147,26 @@ class KalmanTracker:
         R_k = self.R_base * total_r_scale
 
         # 4. Measurement Update Step with Mahalanobis gating
+        # Gate on the uninflated base noise first: gating on the inflated S lets
+        # spoofed outliers shrink their own statistic and never get rejected.
         y = z_trilat - (self.H @ self.x)
-        S = self.H @ self.P @ self.H.T + R_k
+        try:
+            S_base = self.H @ self.P @ self.H.T + self.R_base
+            S_base_inv = np.linalg.pinv(S_base)
+            mahal_base = float((y.T @ S_base_inv @ y).item())
+        except Exception:
+            return {
+                "position": np.array([self.x[0, 0], self.x[1, 0]]),
+                "velocity": np.array([self.x[2, 0], self.x[3, 0]]),
+                "covariance": self.P[:2, :2],
+                "adaptive_R_scale": 1.0,
+                "initialized": True,
+                "rejected": True,
+            }
 
         # Mahalanobis distance gating: reject outlier measurements (chi2, 2 DOF, 99%)
         from scipy.stats import chi2 as _chi2
-        mahal_sq = (y.T @ np.linalg.inv(S) @ y).item()
-        if mahal_sq > _chi2.ppf(0.99, 2):
+        if mahal_base > _chi2.ppf(0.99, 2):
             return {
                 "position": np.array([self.x[0, 0], self.x[1, 0]]),
                 "velocity": np.array([self.x[2, 0], self.x[3, 0]]),
@@ -156,7 +176,21 @@ class KalmanTracker:
                 "rejected": True,
             }
 
-        K = self.P @ self.H.T @ np.linalg.inv(S)
+        try:
+            S = self.H @ self.P @ self.H.T + R_k
+            if not np.all(np.isfinite(S)):
+                raise ValueError("non-finite innovation covariance")
+            S_inv = np.linalg.pinv(S)
+            K = self.P @ self.H.T @ S_inv
+        except Exception:
+            return {
+                "position": np.array([self.x[0, 0], self.x[1, 0]]),
+                "velocity": np.array([self.x[2, 0], self.x[3, 0]]),
+                "covariance": self.P[:2, :2],
+                "adaptive_R_scale": total_r_scale,
+                "initialized": True,
+                "rejected": True,
+            }
 
         self.x = self.x + (K @ y)
         I = np.eye(4, dtype=np.float64)

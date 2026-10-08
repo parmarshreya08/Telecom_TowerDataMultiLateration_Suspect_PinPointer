@@ -5,36 +5,43 @@
  * Auth logic is unchanged.
  */
 
-import { lazy, Suspense, useState, type FormEvent } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
 import { UserPlus, Eye, EyeOff, ShieldCheck } from 'lucide-react'
 import { Logo }   from '@/components/ui/Logo'
 import { authApi, setToken, setStoredOfficer } from '@/services/auth'
-import type { AxiosError } from 'axios'
+import { resetLoginRedirect } from '@/services/api'
+import { extractErrorMessage, extractFieldErrors } from '@/utils'
 
 const TechBackground = lazy(() =>
   import('@/components/landing/TechBackground').then((m) => ({ default: m.TechBackground }))
 )
 
-function errorMessage(err: unknown): string {
-  const e = err as AxiosError<{ detail?: string | Array<Record<string, unknown>> }>
-  const detail = e?.response?.data?.detail
-  if (typeof detail === 'string') return detail
-  if (Array.isArray(detail) && detail.length > 0) {
-    const first = detail[0] as { msg?: string }
-    return first?.msg ?? 'Validation failed.'
-  }
-  return 'Something went wrong. Please try again.'
-}
+const schema = z
+  .object({
+    officer_name: z.string().trim().min(2, 'Enter officer name.').max(255, 'Name is too long.'),
+    email: z.string().trim().min(1, 'Email is required.').email('Enter a valid email address.'),
+    password: z.string().min(8, 'Password must be at least 8 characters.').max(72, 'Password is too long.'),
+    confirm: z.string().min(1, 'Please confirm your password.'),
+  })
+  .refine((d) => d.password === d.confirm, {
+    message: 'Passwords do not match.',
+    path: ['confirm'],
+  })
+
+type FormData = z.infer<typeof schema>
 
 function Field({
-  label, type = 'text', value, onChange, placeholder, autoComplete, required = false,
-  rightEl,
+  label, type = 'text', placeholder, autoComplete, error,
+  rightEl, registration,
 }: {
-  label: string; type?: string; value: string
-  onChange: (v: string) => void; placeholder?: string
-  autoComplete?: string; required?: boolean
+  label: string; type?: string; placeholder?: string
+  autoComplete?: string; error?: string
   rightEl?: React.ReactNode
+  registration: Record<string, unknown>
 }) {
   return (
     <div className="flex flex-col gap-1.5">
@@ -44,47 +51,64 @@ function Field({
       <div className="relative">
         <input
           type={type}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
           autoComplete={autoComplete}
-          required={required}
+          aria-invalid={!!error}
           className="w-full rounded-lg border border-white/10 bg-white/5 px-3.5 py-2.5 text-sm text-white placeholder-slate-500 backdrop-blur-sm transition focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 pr-10"
+          {...(registration as object)}
         />
         {rightEl && (
           <div className="absolute right-3 top-1/2 -translate-y-1/2">{rightEl}</div>
         )}
       </div>
+      {error && (
+        <p className="text-xs text-red-300" role="alert">{error}</p>
+      )}
     </div>
   )
 }
 
 export default function RegisterPage() {
   const navigate = useNavigate()
-  const [name,     setName]     = useState('')
-  const [email,    setEmail]    = useState('')
-  const [password, setPassword] = useState('')
-  const [confirm,  setConfirm]  = useState('')
   const [showPw,   setShowPw]   = useState(false)
-  const [error,    setError]    = useState<string | null>(null)
+  const [serverError, setServerError] = useState<string | null>(null)
   const [loading,  setLoading]  = useState(false)
 
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault()
-    setError(null)
-    const trimmedPassword = password.trim()
-    const trimmedConfirm  = confirm.trim()
-    if (trimmedPassword !== trimmedConfirm) { setError('Passwords do not match.'); return }
-    if (trimmedPassword.length < 8)  { setError('Password must be at least 8 characters.'); return }
+  const { register, handleSubmit, setError, formState: { errors } } = useForm<FormData>({
+    resolver: zodResolver(schema),
+    defaultValues: { officer_name: '', email: '', password: '', confirm: '' },
+  })
 
+  async function onSubmit(data: FormData) {
+    setServerError(null)
     setLoading(true)
     try {
-      const res = await authApi.register({ officer_name: name.trim(), email: email.trim(), password: trimmedPassword })
+      const res = await authApi.register({
+        officer_name: data.officer_name.trim(),
+        email: data.email.trim(),
+        // Never trim passwords: spaces are valid characters; trimming locks users out.
+        password: data.password,
+      })
       setToken(res.access_token)
       setStoredOfficer(res.officer)
+      resetLoginRedirect()
       navigate('/dashboard', { replace: true })
     } catch (err) {
-      setError(errorMessage(err))
+      const fieldErrors = extractFieldErrors(err)
+      let mapped = false
+      for (const [field, message] of Object.entries(fieldErrors)) {
+        if (field === 'officer_name' || field === 'email' || field === 'password') {
+          setError(field, { type: 'server', message })
+          mapped = true
+        }
+      }
+      const msg = extractErrorMessage(err)
+      // 409 duplicate-email arrives as a string detail — pin it to the email field.
+      if (!mapped && /already exists/i.test(msg)) {
+        setError('email', { type: 'server', message: msg })
+      }
+      // When a field already shows the message, keep the banner clear to avoid duplication.
+      setServerError(mapped ? null : msg)
     } finally {
       setLoading(false)
     }
@@ -140,51 +164,47 @@ export default function RegisterPage() {
           className="rounded-2xl border border-white/10 bg-white/5 p-7 backdrop-blur-md"
           style={{ boxShadow: '0 8px 40px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.06)' }}
         >
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4" noValidate>
             <Field
               label="Officer Name"
-              value={name}
-              onChange={setName}
               placeholder="Inspector A. Verma"
               autoComplete="name"
-              required
+              error={errors.officer_name?.message}
+              registration={register('officer_name')}
             />
             <Field
               label="Email"
               type="email"
-              value={email}
-              onChange={setEmail}
               placeholder="officer@police.gov.in"
               autoComplete="email"
-              required
+              error={errors.email?.message}
+              registration={register('email')}
             />
             <Field
               label="Password"
               type={showPw ? 'text' : 'password'}
-              value={password}
-              onChange={setPassword}
               placeholder="At least 8 characters"
               autoComplete="new-password"
-              required
+              error={errors.password?.message}
               rightEl={pwToggle}
+              registration={register('password')}
             />
             <Field
               label="Confirm Password"
               type={showPw ? 'text' : 'password'}
-              value={confirm}
-              onChange={setConfirm}
               placeholder="Re-enter your password"
               autoComplete="new-password"
-              required
+              error={errors.confirm?.message}
+              registration={register('confirm')}
             />
 
-            {error && (
+            {serverError && (
               <div
                 className="flex items-start gap-2 rounded-lg border border-red-500/20 bg-red-500/10 px-3.5 py-2.5 text-sm text-red-300"
                 role="alert"
               >
                 <span className="shrink-0 mt-0.5">⚠</span>
-                <span>{error}</span>
+                <span>{serverError}</span>
               </div>
             )}
 

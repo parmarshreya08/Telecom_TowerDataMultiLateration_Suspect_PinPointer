@@ -19,12 +19,18 @@ from app.services.opencellid import OpenCellIDService
 _catalog_cache: dict[str, TowerRecord] = {}
 
 
+def _normalize_cgi(cgi: str) -> str:
+    """Normalize CGI for cache keys: strip whitespace/zero-pad-safe lowercase."""
+    return str(cgi).strip()
+
+
 def invalidate_catalog_cache(cgis: list[str]) -> None:
     """
     Drop cached catalog entries so a tower-dump re-upload never leaves stale
     tower_ids behind (stale IDs break measurement_towers FK inserts).
     """
     for cgi in cgis:
+        _catalog_cache.pop(_normalize_cgi(cgi), None)
         _catalog_cache.pop(cgi, None)
 
 
@@ -58,12 +64,15 @@ class TowerLookupService:
         if not cgi:
             return None
 
-        if cgi in _catalog_cache:
-            return _catalog_cache[cgi]
+        key = _normalize_cgi(cgi)
+        if key in _catalog_cache:
+            return _catalog_cache[key]
 
         tower = await self.repo.get_tower_by_cgi(cgi)
+        if tower is None and key != cgi:
+            tower = await self.repo.get_tower_by_cgi(key)
         if tower:
-            _catalog_cache[cgi] = tower
+            _catalog_cache[key] = tower
             return tower
 
         # OpenCellID fallback (NOT part of the authoritative whitelist)
@@ -99,10 +108,50 @@ class TowerLookupService:
         Whitelist membership test: is this CGI present in the authoritative
         ``tower_records`` DB catalog? OpenCellID fallbacks do not count.
         """
-        if cgi in _catalog_cache:
+        key = _normalize_cgi(cgi)
+        if key in _catalog_cache:
             return True
         tower = await self.repo.get_tower_by_cgi(cgi)
+        if tower is None and key != cgi:
+            tower = await self.repo.get_tower_by_cgi(key)
         if tower:
-            _catalog_cache[cgi] = tower
+            _catalog_cache[key] = tower
             return True
         return False
+
+    async def find_many_by_cgi(self, cgis: list[str]) -> dict[str, Optional[TowerRecord]]:
+        """Batch variant to avoid N+1 SELECTs during frame building."""
+        uniq = [_normalize_cgi(c) for c in dict.fromkeys([c for c in cgis if c])]
+        out: dict[str, Optional[TowerRecord]] = {}
+        missing: list[str] = []
+        for original, key in zip([c for c in dict.fromkeys([c for c in cgis if c])], uniq):
+            if key in _catalog_cache:
+                out[original] = _catalog_cache[key]
+            else:
+                missing.append(original)
+        if missing:
+            batch = await self.repo.get_towers_by_cgis(missing)
+            for original in missing:
+                tower = batch.get(original) or batch.get(_normalize_cgi(original))
+                if tower:
+                    _catalog_cache[_normalize_cgi(original)] = tower
+                out[original] = tower
+        return out
+
+    async def find_within_radius(
+        self, lat: float, lon: float, radius_meters: float
+    ) -> list[TowerRecord]:
+        """
+        All catalog towers within ``radius_meters`` of a point. PostGIS
+        ``ST_DWithin`` with an in-memory haversine fallback.
+        """
+        return await self.repo.find_towers_within_radius(lat, lon, radius_meters)
+
+    async def find_nearest(
+        self, lat: float, lon: float, k: int = 5
+    ) -> list[TowerRecord]:
+        """
+        The ``k`` nearest catalog towers to a point (PostGIS KNN ``<->``,
+        haversine fallback).
+        """
+        return await self.repo.find_nearest_towers(lat, lon, k)

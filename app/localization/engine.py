@@ -41,6 +41,9 @@ from app.utils.datetime_utils import now_ist
 from scipy.stats import chi2
 
 _TA_METERS = 78.12
+_C_LIGHT = 299792458.0
+_MAX_DT_S = 60.0
+_MAX_TA_INDEX = 1282
 
 
 def _tower_pseudorange(tower: MeasurementTower) -> Optional[tuple[float, float]]:
@@ -57,7 +60,12 @@ def _tower_pseudorange(tower: MeasurementTower) -> Optional[tuple[float, float]]
         return (pr, unc)
 
     if tower.timing_advance is not None:
-        ta = float(tower.timing_advance)
+        try:
+            ta = float(tower.timing_advance)
+        except (TypeError, ValueError):
+            return None
+        if not (0 <= ta <= _MAX_TA_INDEX):
+            return None
         inner = max(0.0, (ta - 0.5) * _TA_METERS)
         outer = (ta + 0.5) * _TA_METERS
         pr = (inner + outer) / 2.0
@@ -65,11 +73,28 @@ def _tower_pseudorange(tower: MeasurementTower) -> Optional[tuple[float, float]]
         return (max(pr, 10.0), max(unc, 1.0))
 
     if tower.rtt is not None:
-        one_way_m = max((tower.rtt * 1000.0) / 2.0, 10.0)
+        try:
+            rtt_ms = float(tower.rtt)
+        except (TypeError, ValueError):
+            return None
+        if not (0 < rtt_ms < 10000):
+            return None
+        one_way_m = max(rtt_ms * 1e-3 * _C_LIGHT / 2.0, 10.0)
         unc = one_way_m * 0.15  # 15% uncertainty for RTT-derived ranges
         return (one_way_m, unc)
 
     return None
+
+
+def _is_rssi_ta_spoof(tower: MeasurementTower, pr_m: float) -> bool:
+    """Physics gate: strong RSSI implies proximity; huge TA range contradicts it."""
+    try:
+        rssi = tower.signal_strength
+        if rssi is None:
+            return False
+        return float(rssi) > -45.0 and float(pr_m) > 1000.0
+    except (TypeError, ValueError):
+        return False
 
 
 def _rss_i_weight(rss_i_dbm: Optional[float]) -> float:
@@ -124,6 +149,26 @@ class LocalizationEngine:
                 frame_id=str(frame.frame_id),
                 subscriber=frame.subscriber_identifier,
             )
+            return None
+
+        # Physics gate: quarantine RSSI/TA spoof towers (strong signal + huge range).
+        quarantined: list[str] = []
+        filtered_catalog: list[MeasurementTower] = []
+        for t in catalog_towers:
+            pr_unc = _tower_pseudorange(t)
+            if pr_unc is not None and _is_rssi_ta_spoof(t, pr_unc[0]):
+                quarantined.append(t.cgi)
+                continue
+            filtered_catalog.append(t)
+        if quarantined:
+            rogue_cgis = rogue_cgis + quarantined
+            logger.warning(
+                "localization_rssi_ta_spoof_quarantined",
+                frame_id=str(frame.frame_id),
+                cgis=quarantined,
+            )
+        catalog_towers = filtered_catalog
+        if not catalog_towers:
             return None
 
         # Resolve ranges for catalog towers
@@ -300,15 +345,41 @@ class LocalizationEngine:
             dt = 1.0
             if len(sub_frames) >= 2:
                 gap = (sub_frames[1].timestamp - sub_frames[0].timestamp).total_seconds()
-                dt = max(gap, 1.0)
+                try:
+                    gap_f = float(gap)
+                except (TypeError, ValueError):
+                    gap_f = 1.0
+                if gap_f != gap_f or gap_f < 0:  # NaN / negative guard
+                    gap_f = 1.0
+                dt = min(max(gap_f, 1.0), _MAX_DT_S)
 
             tracker = KalmanTracker(dt=dt, target_type=self.target_type)
+            locked_zone = self.utm_zone  # 0 = auto; lock to first fix zone per subscriber
+            prev_ts = None
 
             for frame in sub_frames:
+                # Per-frame dt update (capped) so a 3h gap cannot blow up Q/P.
+                if prev_ts is not None:
+                    try:
+                        gap_f = (frame.timestamp - prev_ts).total_seconds()
+                    except Exception:
+                        gap_f = 1.0
+                    if gap_f != gap_f or gap_f < 0:
+                        gap_f = 1.0
+                    capped = min(max(float(gap_f), 1.0), _MAX_DT_S)
+                    tracker.dt = capped
+                    tracker.F[0, 2] = capped
+                    tracker.F[1, 3] = capped
+                prev_ts = frame.timestamp
+
+                # Lock UTM zone to first successful fix to avoid 43/44 false-easting jumps.
+                self.utm_zone = locked_zone
                 predicted_pos = tracker.predicted_position
                 outcome = self._frame_solve(frame, predicted_pos=predicted_pos)
                 if outcome is None:
                     continue
+                if locked_zone == 0:
+                    locked_zone = outcome["zone"]
 
                 self.rogue_cgis.update(outcome.get("rogue_cgis", []))
 
@@ -333,8 +404,16 @@ class LocalizationEngine:
                         frame_id=str(frame.frame_id),
                         subscriber=subscriber,
                     )
-                    # Kinematic rejection: the frame's CGIs are physically implausible
-                    self.rogue_cgis.update(t.cgi for t in frame.towers)
+                    # Kinematic rejection: flag only the most uncertain tower,
+                    # not every tower in the frame (previous code poisoned good towers).
+                    try:
+                        worst = max(
+                            frame.towers,
+                            key=lambda t: (_tower_pseudorange(t) or (0.0, 0.0))[1],
+                        )
+                        self.rogue_cgis.add(worst.cgi)
+                    except Exception:
+                        pass
                     continue
 
                 smoothed_pos = kf_result["position"]

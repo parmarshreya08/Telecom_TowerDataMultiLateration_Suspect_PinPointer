@@ -15,6 +15,8 @@ import {
   subscribeEngine,
 } from '@/engine/engine'
 import { trackingApi } from '@/services/api'
+import { socketService } from '@/services/socket'
+import { useToast } from '@/components/ui/Toast'
 import type {
   LocalizationResult,
   PathPoint,
@@ -36,6 +38,7 @@ interface RealtimeTrackingState {
 
 
 export function useRealtimeTracking(investigationId: string) {
+  const { toast } = useToast()
   const [state, setState] = useState<RealtimeTrackingState>({
     currentLocation:  null,
     path:             [],
@@ -52,25 +55,59 @@ export function useRealtimeTracking(investigationId: string) {
   useEffect(() => {
     initializeEngine(investigationId)
 
-    // Subscribe to real-time location updates from engine
-    // TODO: These will fire once backend WebSocket is implemented
-    const unsubLocation = subscribeEngine('tracking:location_update', (data) => {
-      const loc = data as LocalizationResult
+    // Subscribe to real-time location updates from backend WS
+    const unsubLocation = socketService.on<{
+      lat: number;
+      lng: number;
+      timestamp: string;
+      state: string;
+      is_significant_anchor: boolean;
+      imsi: string;
+    }>('live_location_update', (data) => {
+      const loc: LocalizationResult = {
+        latitude: data.lat,
+        longitude: data.lng,
+        raw_latitude: data.lat,
+        raw_longitude: data.lng,
+        velocity_m_s: data.state === 'MOVING' ? 1 : 0,
+        clock_bias_meters: 0,
+        residual_rms: 0,
+        gdop: 0,
+        adaptive_R_scale: 1,
+        adaptive_Q_scale: 1,
+        geojson_heatmap: undefined,
+        timestamp: data.timestamp,
+        accuracy_meters: 50,
+        algorithm_used: 'Multilateration',
+        confidence: 0.95,
+      }
+      
       setState((s) => ({
         ...s,
         currentLocation: loc,
         lastUpdated: new Date().toISOString(),
+        // Bounded buffer: live WS path previously grew unbounded (freeze after hours).
         path: [
-          ...s.path,
+          ...s.path.slice(-499),
           {
-            latitude:        loc.latitude,
-            longitude:       loc.longitude,
-            timestamp:       loc.timestamp,
+            latitude: loc.latitude,
+            longitude: loc.longitude,
+            timestamp: loc.timestamp,
             accuracy_meters: loc.accuracy_meters,
-            algorithm:       loc.algorithm_used,
+            algorithm: loc.algorithm_used,
           },
         ],
       }))
+
+      if (data.is_significant_anchor && data.state === 'MOVING') {
+         // Notify officer on significant movement jump
+         // In production, we'd check if notifications are enabled via a context
+         toast({
+           title: 'Movement Detected',
+           description: `Target (IMSI: ${data.imsi}) has shifted significantly.`,
+           variant: 'error'
+         })
+      }
     })
 
     const unsubTower      = subscribeEngine('tracking:tower_change', () => {

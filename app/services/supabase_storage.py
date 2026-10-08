@@ -68,7 +68,14 @@ class SupabaseStorageService:
         files = self.client.storage.from_(self._bucket).list(folder_prefix)
         if not files:
             return 0
-        paths = [f["name"] for f in files]
+        # list() returns bare names: prefix them or nested deletes miss.
+        paths = [
+            f"{folder_prefix.rstrip('/')}/{f['name']}"
+            for f in files
+            if f.get("name")
+        ]
+        if not paths:
+            return 0
         self.client.storage.from_(self._bucket).remove(paths)
         logger.info("storage_delete_folder_complete", folder=folder_prefix, count=len(paths))
         return len(paths)

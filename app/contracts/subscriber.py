@@ -207,3 +207,19 @@ class SubscriberEventRecord(BaseModel):
             if val < 0:
                 raise ValueError("LAC and Cell ID codes must be non-negative integers (>=0).")
         return val
+
+    @field_validator("timing_advance")
+    @classmethod
+    def validate_timing_advance(cls, val: Optional[int]) -> Optional[int]:
+        """TA is an LTE index 0..1282; negatives/huge values abort framing."""
+        if val is not None and not (0 <= val <= 1282):
+            raise ValueError("Timing Advance must be between 0 and 1282.")
+        return val
+
+    @field_validator("rtt")
+    @classmethod
+    def validate_rtt(cls, val: Optional[float]) -> Optional[float]:
+        """RTT in ms; rejects negative/absurd values before range conversion."""
+        if val is not None and not (0 < val < 10000):
+            raise ValueError("RTT must be between 0 and 10000 ms.")
+        return val

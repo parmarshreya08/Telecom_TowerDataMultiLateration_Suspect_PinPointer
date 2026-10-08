@@ -92,6 +92,9 @@ class Settings(BaseSettings):
     # OpenCellID Fallback Settings
     OPENCELLID_API_KEY: str = Field(default="", description="OpenCellID API key for tower geolocation fallback")
 
+    # Live Tracking Settings
+    LIVE_TRACKING_MOVEMENT_THRESHOLD_M: int = Field(default=50, description="Movement threshold in meters to trigger an anchor save")
+
     @property
     def allowed_extensions_list(self) -> list[str]:
         """Returns the allowed extensions string parsed into a list."""

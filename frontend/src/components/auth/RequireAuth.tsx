@@ -1,5 +1,5 @@
 import { Navigate, useLocation, Link } from 'react-router-dom'
-import { getToken, getStoredOfficer } from '@/services/auth'
+import { getToken, getStoredOfficer, isTokenExpired, clearAuth } from '@/services/auth'
 import { ShieldAlert, ArrowLeft } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import type { ReactNode } from 'react'
@@ -14,12 +14,14 @@ export function RequireAuth({ children, requiredRole }: RequireAuthProps) {
   const token = getToken()
   const officer = getStoredOfficer()
 
-  if (!token) {
+  // Fail closed: no token or expired/unreadable token never renders protected UI.
+  if (!token || isTokenExpired(token)) {
+    clearAuth()
     return <Navigate to="/login" replace state={{ from: location.pathname }} />
   }
 
-  // Check role authorization
-  if (requiredRole && officer && officer.role !== requiredRole) {
+  // Check role authorization (deny when officer missing or role mismatches).
+  if (requiredRole && officer?.role !== requiredRole) {
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center p-6 text-center">
         <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-danger-500/10 text-danger-500 mb-4 ring-8 ring-danger-500/5">

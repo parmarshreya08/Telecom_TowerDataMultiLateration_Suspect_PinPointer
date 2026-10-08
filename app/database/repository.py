@@ -5,6 +5,7 @@ Converts between Pydantic contracts and SQLAlchemy database models.
 """
 
 from datetime import datetime
+from math import asin, cos, radians, sin, sqrt
 from typing import Any, Optional
 from uuid import UUID
 
@@ -28,6 +29,13 @@ from app.database.models.telecom import (
     TowerRecordModel,
     UploadMetadataModel,
 )
+
+
+def _haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Great-circle distance in metres (pure-Python PostGIS fallback)."""
+    dlat, dlon = radians(lat2 - lat1), radians(lon2 - lon1)
+    a = sin(dlat / 2) ** 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon / 2) ** 2
+    return 2 * 6371000.0 * asin(sqrt(a))
 
 
 class TelecomRepository:
@@ -67,13 +75,36 @@ class TelecomRepository:
 
     async def delete_case(self, case_id: str) -> bool:
         """
-        Deletes a case after removing uploads, pipeline data, and localization fixes.
+        Deletes a case after removing uploads, pipeline data, localization fixes,
+        assignments and live-tracking state. Audit rows are preserved for
+        chain-of-custody (they reference case_id as plain text).
         """
         case = await self.get_case_by_id(case_id)
         if not case:
             return False
         await self.delete_uploads_by_case(case_id)
         await self.delete_localization_fixes_by_case(case_id)
+        # Explicit cleanup: these tables have no ORM-level cascade here and
+        # would otherwise orphan (assignments) or leak tracking state.
+        try:
+            from app.database.models import CaseAssignmentModel  # type: ignore
+            await self.session.execute(
+                delete(CaseAssignmentModel).where(CaseAssignmentModel.case_id == case_id)
+            )
+        except Exception:
+            pass
+        try:
+            from app.database.models.live_tracking import (  # type: ignore
+                LiveTrackingSession,
+                LiveTrackingFixModel,
+            )
+            await self.session.execute(
+                delete(LiveTrackingSession).where(LiveTrackingSession.case_id == case_id)
+            )
+            # Fixes are keyed by imsi only; best-effort: leave global fixes intact
+            # (no case FK) to avoid deleting other cases' anchors.
+        except Exception:
+            pass
         await self.session.delete(case)
         await self.session.flush()
         return True
@@ -89,8 +120,18 @@ class TelecomRepository:
     async def get_upload_by_hash(self, file_hash: str) -> Optional[UploadMetadataModel]:
         """
         Retrieves upload metadata by file checksum hash (SHA-256).
+        Legacy global lookup; prefer get_upload_by_case_hash for scoped dedup.
         """
         stmt = select(UploadMetadataModel).where(UploadMetadataModel.sha256 == file_hash)
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def get_upload_by_case_hash(self, case_id: str, file_hash: str) -> Optional[UploadMetadataModel]:
+        """Scoped dedup: same bytes in a different case must not be rejected."""
+        stmt = select(UploadMetadataModel).where(
+            UploadMetadataModel.case_id == case_id,
+            UploadMetadataModel.sha256 == file_hash,
+        )
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
@@ -128,7 +169,7 @@ class TelecomRepository:
         model = result.scalar_one_or_none()
         if not model:
             return None
-            
+
         return TowerRecord(
             tower_id=model.tower_id,
             operator=Operator(model.operator),
@@ -145,6 +186,36 @@ class TelecomRepository:
             range_meters=model.range_meters,
             site_address=model.site_address
         )
+
+    async def get_towers_by_cgis(self, cgis: list[str]) -> dict[str, TowerRecord]:
+        """Batch lookup to avoid per-CGI N+1 round trips during framing."""
+        uniq = list(dict.fromkeys([c for c in cgis if c]))
+        if not uniq:
+            return {}
+        stmt = select(TowerRecordModel).where(TowerRecordModel.cgi.in_(uniq))
+        result = await self.session.execute(stmt)
+        out: dict[str, TowerRecord] = {}
+        for model in result.scalars().all():
+            try:
+                out[model.cgi] = TowerRecord(
+                    tower_id=model.tower_id,
+                    operator=Operator(model.operator),
+                    radio=RadioTechnology(model.radio),
+                    mcc=model.mcc,
+                    mnc=model.mnc,
+                    lac=model.lac,
+                    cell_id=model.cell_id,
+                    cgi=model.cgi,
+                    latitude=model.latitude,
+                    longitude=model.longitude,
+                    azimuth=model.azimuth,
+                    beamwidth=model.beamwidth,
+                    range_meters=model.range_meters,
+                    site_address=model.site_address,
+                )
+            except Exception:
+                continue
+        return out
 
     async def save_tower_records(self, towers: list[TowerRecord]) -> None:
         """
@@ -416,40 +487,111 @@ class TelecomRepository:
         self, lat: float, lon: float, radius_meters: float
     ) -> list[TowerRecord]:
         """
-        Finds towers within a radius of a point using PostGIS spatial query.
+        Finds towers within a radius of a point using PostGIS spatial query,
+        falling back to an in-memory haversine scan when PostGIS is unavailable
+        (extension missing, geometry NULL, or offline catalog).
         """
-        from sqlalchemy import text
+        try:
+            from sqlalchemy import text
 
-        stmt = text(
-            "SELECT tower_id, operator, radio, mcc, mnc, lac, cell_id, cgi, "
-            "latitude, longitude, azimuth, beamwidth, range_meters, site_address "
-            "FROM tower_records "
-            "WHERE ST_DWithin(geometry::geography, "
-            "ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography, :radius)"
-        )
-        result = await self.session.execute(
-            stmt, {"lat": lat, "lon": lon, "radius": radius_meters}
-        )
-        rows = result.fetchall()
-        return [
-            TowerRecord(
-                tower_id=row[0],
-                operator=Operator(row[1]),
-                radio=RadioTechnology(row[2]),
-                mcc=row[3],
-                mnc=row[4],
-                lac=row[5],
-                cell_id=row[6],
-                cgi=row[7],
-                latitude=row[8],
-                longitude=row[9],
-                azimuth=row[10],
-                beamwidth=row[11],
-                range_meters=row[12],
-                site_address=row[13],
+            stmt = text(
+                "SELECT tower_id, operator, radio, mcc, mnc, lac, cell_id, cgi, "
+                "latitude, longitude, azimuth, beamwidth, range_meters, site_address "
+                "FROM tower_records "
+                "WHERE ST_DWithin(geometry::geography, "
+                "ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography, :radius)"
             )
-            for row in rows
+            result = await self.session.execute(
+                stmt, {"lat": lat, "lon": lon, "radius": radius_meters}
+            )
+            rows = result.fetchall()
+            if rows:
+                return [self._tower_record_from_row(row) for row in rows]
+        except Exception:
+            pass
+        # Fallback: haversine scan over the catalog (same signature).
+        return [
+            t
+            for t in await self.get_all_tower_records()
+            if _haversine_m(lat, lon, t.latitude, t.longitude) <= radius_meters
         ]
+
+    async def find_nearest_towers(
+        self, lat: float, lon: float, k: int = 5
+    ) -> list[TowerRecord]:
+        """
+        Returns the k nearest catalog towers to a point (PostGIS KNN ``<->``
+        operator, haversine fallback). Used to find adjacent towers for a
+        suspect's last known position.
+        """
+        try:
+            from sqlalchemy import text
+
+            stmt = text(
+                "SELECT tower_id, operator, radio, mcc, mnc, lac, cell_id, cgi, "
+                "latitude, longitude, azimuth, beamwidth, range_meters, site_address "
+                "FROM tower_records "
+                "WHERE geometry IS NOT NULL "
+                "ORDER BY geometry::geography <-> "
+                "ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography "
+                "LIMIT :k"
+            )
+            result = await self.session.execute(stmt, {"lat": lat, "lon": lon, "k": k})
+            rows = result.fetchall()
+            if rows:
+                return [self._tower_record_from_row(row) for row in rows]
+        except Exception:
+            pass
+        scored = sorted(
+            await self.get_all_tower_records(),
+            key=lambda t: _haversine_m(lat, lon, t.latitude, t.longitude),
+        )
+        return scored[:k]
+
+    async def get_all_tower_records(self) -> list[TowerRecord]:
+        """Loads the full tower catalog (used by the haversine fallback)."""
+        result = await self.session.execute(
+            select(TowerRecordModel).order_by(TowerRecordModel.cgi)
+        )
+        return [self._tower_record_from_model(m) for m in result.scalars().all()]
+
+    @staticmethod
+    def _tower_record_from_model(model: TowerRecordModel) -> TowerRecord:
+        return TowerRecord(
+            tower_id=model.tower_id,
+            operator=Operator(model.operator),
+            radio=RadioTechnology(model.radio),
+            mcc=model.mcc,
+            mnc=model.mnc,
+            lac=model.lac,
+            cell_id=model.cell_id,
+            cgi=model.cgi,
+            latitude=model.latitude,
+            longitude=model.longitude,
+            azimuth=model.azimuth,
+            beamwidth=model.beamwidth,
+            range_meters=model.range_meters,
+            site_address=model.site_address,
+        )
+
+    @staticmethod
+    def _tower_record_from_row(row: Any) -> TowerRecord:
+        return TowerRecord(
+            tower_id=row[0],
+            operator=Operator(row[1]),
+            radio=RadioTechnology(row[2]),
+            mcc=row[3],
+            mnc=row[4],
+            lac=row[5],
+            cell_id=row[6],
+            cgi=row[7],
+            latitude=row[8],
+            longitude=row[9],
+            azimuth=row[10],
+            beamwidth=row[11],
+            range_meters=row[12],
+            site_address=row[13],
+        )
 
     async def find_fixes_within_radius(
         self, case_id: str, lat: float, lon: float, radius_meters: float

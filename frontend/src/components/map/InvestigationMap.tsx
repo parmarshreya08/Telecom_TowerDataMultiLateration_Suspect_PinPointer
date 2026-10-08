@@ -299,19 +299,30 @@ function HeatLayer({ points, visible }: HeatLayerProps) {
       layerRef.current = null
       return
     }
+    // Guard: leaflet.heat chunk may fail to register under Vite code-splitting.
+    const heatFactory = (L as unknown as { heatLayer?: typeof L.heatLayer }).heatLayer
+    if (typeof heatFactory !== 'function') return
+    // Clamp weights to [0,1]: near-zero confidence_radius otherwise saturates red.
+    const clamped = points.map(([lat, lng, w]) => [lat, lng, Math.min(1, Math.max(0, w))] as [number, number, number])
     if (!layerRef.current) {
-      layerRef.current = L.heatLayer(points, {
+      layerRef.current = heatFactory(clamped, {
         radius: 25,
         blur: 15,
         maxZoom: 17,
+        minOpacity: 0.3,
+        max: 1.0,
         gradient: { 0.4: '#3b82f6', 0.65: '#facc15', 1: '#ef4444' },
       }).addTo(map)
     } else {
-      layerRef.current.setLatLngs(points)
+      layerRef.current.setLatLngs(clamped)
+    }
+    return () => {
+      layerRef.current?.remove()
+      layerRef.current = null
     }
   }, [points, visible, map])
 
-  useEffect(() => () => { layerRef.current?.remove() }, [])
+  useEffect(() => () => { layerRef.current?.remove(); layerRef.current = null }, [map])
   return null
 }
 

@@ -113,6 +113,20 @@ class MeasurementTower(BaseModel):
             if val <= 0.0:
                 raise ValueError("Pseudorange distance must be a positive number greater than 0.")
         return val
+
+    @field_validator("timing_advance")
+    @classmethod
+    def validate_timing_advance(cls, val: Optional[int]) -> Optional[int]:
+        if val is not None and not (0 <= val <= 1282):
+            raise ValueError("Timing Advance must be between 0 and 1282.")
+        return val
+
+    @field_validator("rtt")
+    @classmethod
+    def validate_rtt(cls, val: Optional[float]) -> Optional[float]:
+        if val is not None and not (0 < val < 10000):
+            raise ValueError("RTT must be between 0 and 10000 ms.")
+        return val
         
 
 class MeasurementFrame(BaseModel):

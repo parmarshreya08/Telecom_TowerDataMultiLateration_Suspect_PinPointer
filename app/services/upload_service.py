@@ -35,29 +35,58 @@ from app.utils.file_utils import (
 
 def _assert_public_url(url: str) -> None:
     """
-    Blocks SSRF: only http(s) to public IPs. Rejects loopback, private,
-    link-local, reserved, and multicast destinations (incl. DNS-resolved).
+    Blocks SSRF: only http(s) to globally-routable IPs. Rejects loopback,
+    private, link-local, reserved, multicast AND unspecified (0.0.0.0/::).
+    Note: caller must fetch without following redirects (or re-validate each
+    hop) and ideally pin the resolved IP; DNS rebinding between check and
+    fetch remains a residual risk mitigated by no-redirect + short timeout.
     """
+    import re
+
     parsed = urllib.parse.urlsplit(url)
     if parsed.scheme not in ("http", "https"):
         raise ValueError(f"Blocked URL scheme: '{parsed.scheme}'. Only http(s) allowed.")
     host = parsed.hostname
     if not host:
         raise ValueError("URL must include a hostname.")
+    if len(url) > 2048:
+        raise ValueError("URL too long.")
 
     try:
         ips = [ipaddress.ip_address(host)]
     except ValueError:
         try:
-            ips = [ipaddress.ip_address(addr[4][0]) for addr in socket.getaddrinfo(host, None)]
+            # getaddrinfo may return duplicates / mixed families; dedupe.
+            infos = socket.getaddrinfo(host, None)
+            seen: set[str] = set()
+            ips = []
+            for addr in infos:
+                ip_str = addr[4][0]
+                if ip_str in seen:
+                    continue
+                seen.add(ip_str)
+                ips.append(ipaddress.ip_address(ip_str))
         except OSError as e:
             raise ValueError(f"Could not resolve URL host '{host}'.") from e
 
     if not ips:
         raise ValueError(f"Could not resolve URL host '{host}'.")
     for ip in ips:
-        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+        # Allowlist style: only globally reachable addresses pass.
+        if not ip.is_global or ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast or ip.is_unspecified:
             raise ValueError(f"Blocked URL host '{host}' (non-public address {ip}).")
+
+
+_CASE_ID_RE = None
+
+
+def _assert_safe_case_id(case_id: str) -> str:
+    """Whitelist case_id charset to prevent storage key escape / log injection."""
+    import re
+
+    if not case_id or len(case_id) > 64 or not re.fullmatch(r"[A-Za-z0-9_-]+", case_id):
+        raise ValueError("Invalid case_id.")
+    return case_id
 
 
 class UploadService:
@@ -101,16 +130,63 @@ class UploadService:
 
         logger.info("url_upload_start", url=url, filename=filename, case_id=case_id)
 
-        # SSRF guard: only http(s) to public IPs
+        # SSRF guard: only http(s) to public IPs; validate case_id for storage key.
+        _assert_safe_case_id(case_id)
         _assert_public_url(url)
 
-        # Download from URL
+        # Download from URL (streamed with caps: no full-body buffering, no redirect hops).
+        max_bytes = settings.MAX_CONTENT_LENGTH_MB * 1024 * 1024
+        temp_path = ""
+        with tempfile.NamedTemporaryFile(delete=False) as tmp:
+            temp_path = tmp.name
+        downloaded = 0
         try:
-            async with httpx.AsyncClient(timeout=30) as client:
-                response = await client.get(url)
-                response.raise_for_status()
+            async with httpx.AsyncClient(timeout=10, follow_redirects=False) as client:
+                async with client.stream("GET", url) as response:
+                    if response.status_code in (301, 302, 303, 307, 308):
+                        raise ValueError("URL redirects are not allowed.")
+                    response.raise_for_status()
+                    clen = response.headers.get("content-length")
+                    if clen is not None:
+                        try:
+                            if int(clen) > max_bytes:
+                                raise ValueError(
+                                    f"Remote file too large ({int(clen)} bytes); limit is {max_bytes} bytes."
+                                )
+                        except ValueError as ve:
+                            if "too large" in str(ve):
+                                raise
+                    with open(temp_path, "wb") as f:
+                        async for chunk in response.aiter_bytes(chunk_size=65536):
+                            if not chunk:
+                                continue
+                            downloaded += len(chunk)
+                            if downloaded > max_bytes:
+                                raise ValueError(
+                                    f"File size exceeds the maximum limit of {settings.MAX_CONTENT_LENGTH_MB} MB."
+                                )
+                            f.write(chunk)
+        except ValueError:
+            try:
+                if temp_path and os.path.exists(temp_path):
+                    os.remove(temp_path)
+            except OSError:
+                pass
+            raise
         except Exception as e:
+            try:
+                if temp_path and os.path.exists(temp_path):
+                    os.remove(temp_path)
+            except OSError:
+                pass
             raise ValueError(f"Failed to download file from URL: {e}")
+        if downloaded == 0:
+            try:
+                if temp_path and os.path.exists(temp_path):
+                    os.remove(temp_path)
+            except OSError:
+                pass
+            raise ValueError("Downloaded file is empty.")
 
         # Use provided filename or extract from URL (basename only — no path traversal)
         if not filename:
@@ -124,19 +200,14 @@ class UploadService:
                 f"Unsupported file format. Supported: CSV, XLSX, XLS, TSV"
             )
 
-        # Save to temp file
-        ext = FileConverter.get_extension(filename)
-        temp_path = ""
+        # Save to temp file (already streamed above into temp_path)
         csv_path = ""
+        raw_path = temp_path
+        temp_path = ""  # ownership transferred to raw_path; finally cleans both
 
         try:
-            with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
-                tmp.write(response.content)
-                temp_path = tmp.name
-
             # Validate size
-            file_size = os.path.getsize(temp_path)
-            max_bytes = settings.MAX_CONTENT_LENGTH_MB * 1024 * 1024
+            file_size = os.path.getsize(raw_path)
             if file_size > max_bytes:
                 raise ValueError(
                     f"File size ({file_size / 1024 / 1024:.1f} MB) exceeds "
@@ -147,26 +218,27 @@ class UploadService:
                 raise ValueError("Downloaded file is empty.")
 
             # Generate hash
-            sha256_hash = generate_sha256(temp_path)
+            sha256_hash = generate_sha256(raw_path)
 
-            # Duplicate check
-            existing = await self.repo.get_upload_by_hash(sha256_hash)
+            # Duplicate check (scoped to this case)
+            existing = await self.repo.get_upload_by_case_hash(case_id, sha256_hash)
             if existing:
                 return {
                     "upload_id": None,
                     "filename": filename,
                     "status": "rejected",
-                    "reason": "Duplicate file already exists",
+                    "reason": "Duplicate file already exists in this case",
                 }
 
             # Convert to CSV if needed
             with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as csv_tmp:
                 csv_path = csv_tmp.name
-            FileConverter.convert_to_csv(temp_path, csv_path)
+            FileConverter.convert_to_csv(raw_path, csv_path)
 
-            # Upload to Supabase
+            # Upload to Supabase (sanitized filename + case key)
             upload_id = uuid4()
-            supabase_path = f"{case_id}/{upload_id}-{filename}"
+            safe_name = safe_filename(filename)
+            supabase_path = f"{case_id}/{upload_id}-{safe_name}"
             supabase_url = storage_service.upload_file(csv_path, supabase_path)
 
             # Persist metadata
@@ -177,7 +249,7 @@ class UploadService:
                 source_type=SourceType.UNKNOWN,
                 operator=Operator.UNKNOWN,
                 original_filename=filename,
-                stored_filename=filename,
+                stored_filename=safe_name,
                 sha256=sha256_hash,
                 mime_type="text/csv",
                 file_size_bytes=file_size,
@@ -190,8 +262,16 @@ class UploadService:
                 file_source="url",
             )
 
-            await self.repo.create_upload_metadata(metadata)
-            await self.db_session.commit()
+            try:
+                await self.repo.create_upload_metadata(metadata)
+                await self.db_session.commit()
+            except Exception:
+                # Compensate: DB failed after storage put → remove orphan blob.
+                try:
+                    storage_service.delete_file(supabase_path)
+                except Exception:
+                    pass
+                raise
 
             # Enqueue background ingestion
             await ingest_queue.enqueue(upload_id, case_id, supabase_path)
@@ -204,9 +284,12 @@ class UploadService:
             }
 
         finally:
-            for path in [temp_path, csv_path]:
+            for path in [raw_path, csv_path]:
                 if path and os.path.exists(path):
-                    os.remove(path)
+                    try:
+                        os.remove(path)
+                    except OSError:
+                        pass
 
     async def _process_single_file(
         self, file: Any, case_id: str, uploaded_by: str
@@ -215,6 +298,15 @@ class UploadService:
         Processes a single file upload through the full pipeline.
         """
         logger.info("upload_started", filename=file.filename, case_id=case_id)
+        try:
+            _assert_safe_case_id(case_id)
+        except ValueError as e:
+            return {
+                "upload_id": None,
+                "filename": getattr(file, "filename", "unknown"),
+                "status": "rejected",
+                "reason": str(e),
+            }
 
         try:
             # 1. Validate file constraints
@@ -239,14 +331,14 @@ class UploadService:
             # 3. Generate SHA-256 hash
             sha256_hash = generate_sha256(temp_path)
 
-            # 4. Duplicate check
-            existing = await self.repo.get_upload_by_hash(sha256_hash)
+            # 4. Duplicate check (scoped to this case)
+            existing = await self.repo.get_upload_by_case_hash(case_id, sha256_hash)
             if existing:
                 return {
                     "upload_id": None,
                     "filename": file.filename,
                     "status": "rejected",
-                    "reason": "Duplicate file already exists",
+                    "reason": "Duplicate file already exists in this case",
                 }
 
             # 5. Convert to CSV if needed
@@ -281,8 +373,15 @@ class UploadService:
                 file_source="local",
             )
 
-            await self.repo.create_upload_metadata(metadata)
-            await self.db_session.commit()
+            try:
+                await self.repo.create_upload_metadata(metadata)
+                await self.db_session.commit()
+            except Exception:
+                try:
+                    storage_service.delete_file(supabase_path)
+                except Exception:
+                    pass
+                raise
 
             # 8. Enqueue background ingestion
             await ingest_queue.enqueue(upload_id, case_id, supabase_path)

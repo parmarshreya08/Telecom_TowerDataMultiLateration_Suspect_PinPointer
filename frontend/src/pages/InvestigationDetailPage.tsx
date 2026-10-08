@@ -289,7 +289,7 @@ export default function InvestigationDetailPage() {
             Refresh
           </Button>
           <Button size="sm" variant="primary" icon={<MapPin className="h-4 w-4" />} onClick={() => navigate(`/investigations/${currentInv.id}/live`)}>
-            Live Map & Multilateration
+            Multilateration Map
           </Button>
         </div>
       </motion.div>
@@ -368,15 +368,7 @@ export default function InvestigationDetailPage() {
                   />
                 </div>
               </div>
-              <div>
-                <p className="text-2xs text-surface-400 mb-0.5">Tracking Status</p>
-                <p className={cn('text-sm font-medium pt-1', TRACKING_STATUS_COLORS[currentInv.tracking_status || 'Idle'] || 'text-surface-700')}>
-                  {currentInv.tracking_status === 'Live' && (
-                    <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-green-400 animate-ping-slow" />
-                  )}
-                  {currentInv.tracking_status || 'Idle'}
-                </p>
-              </div>
+
             </div>
             {currentInv.description && (
               <div className="mt-4 pt-4 border-t border-surface-100 dark:border-surface-700">

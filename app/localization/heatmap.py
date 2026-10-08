@@ -9,6 +9,7 @@ then converted back to WGS84 latitude/longitude for Leaflet.
 """
 
 from typing import Any, Optional
+import math
 import numpy as np
 
 from app.localization.gis_utils import GISUtils
@@ -33,24 +34,24 @@ def compute_heatmap(
         return {"type": "FeatureCollection", "features": [], "metadata": {"count": 0}}
 
     # Step 1: Project WGS84 to metric UTM coordinates and calculate centroid/origin
-    pts_utm = []
-    zones = []
-    
+    # Keep (fix, easting, northing, zone) paired so a failed geocode never
+    # misaligns later fixes (previous enumerate-index bug).
+    paired: list[tuple[Any, float, float, int]] = []
+
     for f in fixes:
         try:
             e, n, zone = GISUtils.latlon_to_utm(f.latitude, f.longitude)
-            pts_utm.append([e, n])
-            zones.append(zone)
+            paired.append((f, e, n, zone))
         except Exception:
             continue
 
-    if not pts_utm:
+    if not paired:
         return {"type": "FeatureCollection", "features": [], "metadata": {"count": 0}}
 
-    pts_utm = np.array(pts_utm, dtype=np.float64)
+    pts_utm = np.array([[e, n] for _, e, n, _ in paired], dtype=np.float64)
     # Origin is the mean centroid of all fixes
     origin = np.mean(pts_utm, axis=0)
-    zone = zones[0]
+    zone = paired[0][3]
 
     # Check if points are collinear/degenerate to set fallback metadata for test compatibility
     is_collinear = False
@@ -68,14 +69,15 @@ def compute_heatmap(
 
 
     processed_fixes = []
-    for i, f in enumerate(fixes):
+    for f, e, n in [(pf[0], pf[1], pf[2]) for pf in paired]:
         try:
             # Shift UTM coordinates to be centered relative to the origin for numerical precision
-            e, n = pts_utm[i]
             local_pos = np.array([e - origin[0], n - origin[1]])
 
             # Step 2: Determine covariance matrix in metric units
-            r = max(30.0, float(f.confidence_radius_meters))
+            # Cap confidence radius: Kalman blow-up (inf) would otherwise
+            # produce an unbounded grid (arange(-inf, inf) hang / OOM).
+            r = min(max(30.0, float(f.confidence_radius_meters)), 2000.0)
             sample_points = getattr(f, "sample_points", None)
 
             if sample_points is not None and len(sample_points) > 0:

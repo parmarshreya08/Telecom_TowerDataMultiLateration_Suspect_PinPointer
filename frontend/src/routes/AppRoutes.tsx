@@ -14,10 +14,10 @@ const NewInvestigationPage    = lazy(() => import('@/pages/NewInvestigationPage'
 const InvestigationDetailPage = lazy(() => import('@/pages/InvestigationDetailPage'))
 const ProcessingPage          = lazy(() => import('@/pages/ProcessingPage'))
 const LiveInvestigationPage   = lazy(() => import('@/pages/LiveInvestigationPage'))
+const LiveTrackingPage        = lazy(() => import('@/pages/LiveTrackingPage'))
 const ReportsPage             = lazy(() => import('@/pages/ReportsPage'))
 const SettingsPage            = lazy(() => import('@/pages/SettingsPage'))
 const NotFoundPage            = lazy(() => import('@/pages/NotFoundPage'))
-const LiveRedirectPage        = lazy(() => import('@/pages/LiveRedirectPage'))
 const UserManagementPage      = lazy(() => import('@/pages/UserManagementPage'))
 const AuditLogsPage           = lazy(() => import('@/pages/AuditLogsPage'))
 const FieldTrackerPage        = lazy(() => import('@/pages/FieldTrackerPage'))
@@ -42,7 +42,7 @@ export function AppRoutes() {
           <Route path="/investigations/:id/processing" element={<ProcessingPage />} />
           <Route path="/investigations/:id/live" element={<LiveInvestigationPage />} />
           <Route path="/reports" element={<ReportsPage />} />
-          <Route path="/live" element={<LiveRedirectPage />} />
+          <Route path="/live" element={<LiveTrackingPage />} />
           <Route path="/settings" element={<SettingsPage />} />
 
           {/* Admin-only Routes */}

@@ -57,8 +57,8 @@ export function isTokenExpired(token: string | null = getToken()): boolean {
   if (!token) return true
   const payload = decodeJwtPayload(token)
   const exp = payload?.exp
-  // If we can't read an expiry, assume valid and let the API decide.
-  if (typeof exp !== 'number') return false
+  // Fail closed: unreadable/missing expiry never counts as a live session.
+  if (typeof exp !== 'number') return true
   return Date.now() >= exp * 1000
 }
 

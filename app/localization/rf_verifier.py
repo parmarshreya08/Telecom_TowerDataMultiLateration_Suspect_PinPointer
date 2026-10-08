@@ -67,7 +67,9 @@ def destination_point(lat: float, lon: float, bearing_deg: float, distance_m: fl
     lat1 = radians(lat)
     lon1 = radians(lon)
 
-    lat2 = asin(sin(lat1) * cos(d_ratio) + cos(lat1) * sin(d_ratio) * cos(bearing))
+    _arg = sin(lat1) * cos(d_ratio) + cos(lat1) * sin(d_ratio) * cos(bearing)
+    _arg = min(1.0, max(-1.0, _arg))
+    lat2 = asin(_arg)
     lon2 = lon1 + atan2(
         sin(bearing) * sin(d_ratio) * cos(lat1),
         cos(d_ratio) - sin(lat1) * sin(lat2),
@@ -162,10 +164,36 @@ def verify_scans(scans: list[RfScan]) -> RfVerificationResult:
         return RfVerificationResult(method="log_distance_path_loss", skipped_scan_count=skipped)
 
     if len(usable) >= 2 and len({(s.latitude, s.longitude) for s in usable}) >= 2:
-        lat, lon = _bearing_intersection(usable)
-        distances = [path_loss_distance(s.rssi_dbm) for s in usable]
-        est_distance = sum(distances) / len(distances)
-        method = "bearing_intersection"
+        # Require a real baseline and angular separation: a 2m baseline with
+        # near-parallel bearings intersects ~100m away with false confidence.
+        from math import radians as _rad, sin as _sin, cos as _cos, sqrt as _sqrt, atan2 as _atan2
+        _R = 6371000.0
+        _ok = False
+        try:
+            a0, b0 = usable[0], usable[1]
+            _dlat = _rad(b0.latitude - a0.latitude)
+            _dlon = _rad(b0.longitude - a0.longitude)
+            _h = _sin(_dlat / 2.0) ** 2 + _cos(_rad(a0.latitude)) * _cos(_rad(b0.latitude)) * _sin(_dlon / 2.0) ** 2
+            _baseline = 2 * _R * _atan2(_sqrt(_h), _sqrt(max(0.0, 1 - _h)))
+            _ang = abs(((float(b0.bearing_deg or 0.0) - float(a0.bearing_deg or 0.0) + 540.0) % 360.0) - 180.0)
+            _ang = 180.0 - _ang  # inter-bearing angle 0..180
+            _ok = _baseline >= 20.0 and 10.0 <= _ang <= 170.0
+        except Exception:
+            _ok = False
+        if _ok:
+            lat, lon = _bearing_intersection(usable)
+            distances = [path_loss_distance(s.rssi_dbm) for s in usable]
+            est_distance = sum(distances) / len(distances)
+            method = "bearing_intersection"
+        else:
+            best = max(usable, key=lambda s: s.rssi_dbm)
+            est_distance = path_loss_distance(best.rssi_dbm)
+            lat, lon = destination_point(
+                best.latitude, best.longitude,
+                _normalize_bearing(best.bearing_deg or 0.0),  # type: ignore[arg-type]
+                est_distance,
+            )
+            method = "single_bearing_path_loss"
     else:
         best = max(usable, key=lambda s: s.rssi_dbm)
         est_distance = path_loss_distance(best.rssi_dbm)

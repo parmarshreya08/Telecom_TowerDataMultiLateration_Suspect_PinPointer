@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { fileApi, uploadApi, formatDeleteError } from '@/services/api'
 import { extractErrorMessage } from '@/utils'
 import { POLL_INTERVAL } from '@/constants'
@@ -34,7 +34,17 @@ export function useFileUpload({ caseId, onComplete, onError }: UseFileUploadOpti
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
-  const pollingRef = useRef<NodeJS.Timeout | null>(null)
+  const pollingRef = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map())
+  const inFlightRef = useRef<Set<string>>(new Set())
+
+  useEffect(() => {
+    const timers = pollingRef.current
+    return () => {
+      timers.forEach((t) => clearInterval(t))
+      timers.clear()
+      inFlightRef.current.clear()
+    }
+  }, [])
 
   const fetchFiles = useCallback(async () => {
     try {
@@ -45,14 +55,26 @@ export function useFileUpload({ caseId, onComplete, onError }: UseFileUploadOpti
     }
   }, [caseId])
 
-  const pollFileStatus = useCallback((uploadId: string) => {
-    if (pollingRef.current) clearInterval(pollingRef.current)
+  const stopPolling = useCallback((uploadId: string) => {
+    const t = pollingRef.current.get(uploadId)
+    if (t) {
+      clearInterval(t)
+      pollingRef.current.delete(uploadId)
+    }
+    inFlightRef.current.delete(uploadId)
+  }, [])
 
-    pollingRef.current = setInterval(async () => {
+  const pollFileStatus = useCallback((uploadId: string) => {
+    if (pollingRef.current.has(uploadId)) return
+
+    const timer = setInterval(async () => {
+      // Skip overlapping ticks when a status request is slower than the interval.
+      if (inFlightRef.current.has(uploadId)) return
+      inFlightRef.current.add(uploadId)
       try {
         const status = await fileApi.getFileStatus(uploadId)
         if (status.upload_status === 'completed' || status.upload_status === 'failed') {
-          if (pollingRef.current) clearInterval(pollingRef.current)
+          stopPolling(uploadId)
           await fetchFiles()
           if (status.upload_status === 'completed') {
             onComplete?.()
@@ -61,10 +83,13 @@ export function useFileUpload({ caseId, onComplete, onError }: UseFileUploadOpti
           }
         }
       } catch {
-        if (pollingRef.current) clearInterval(pollingRef.current)
+        // Transient error: keep polling; do not abandon on one 500/401.
+      } finally {
+        inFlightRef.current.delete(uploadId)
       }
     }, POLL_INTERVAL)
-  }, [fetchFiles, onComplete, onError])
+    pollingRef.current.set(uploadId, timer)
+  }, [fetchFiles, onComplete, onError, stopPolling])
 
   const uploadFiles = useCallback(async (newFiles: File[]) => {
     setIsLoading(true)

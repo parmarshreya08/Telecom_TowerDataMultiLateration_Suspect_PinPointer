@@ -8,7 +8,7 @@ from typing import Any
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -54,6 +54,27 @@ class CreateCaseRequest(BaseModel):
     mobile_number: str = Field(default="", max_length=20)
     description: str = Field(default="", max_length=2000)
     officer_notes: str = Field(default="", max_length=2000)
+
+    @field_validator("mobile_number")
+    @classmethod
+    def validate_mobile_number(cls, v: str) -> str:
+        """Empty allowed for legacy callers; non-empty must be a valid Indian MSISDN."""
+        import re
+
+        if not v:
+            return v
+        clean = re.sub(r"\D", "", v)
+        if len(clean) == 10:
+            ok = bool(re.match(r"^[6-9]\d{9}$", clean))
+        elif len(clean) == 12 and clean.startswith("91"):
+            ok = bool(re.match(r"^91[6-9]\d{9}$", clean))
+        else:
+            ok = False
+        if not ok:
+            raise ValueError(
+                "Invalid MSISDN structure. Must be a 10-digit Indian phone number or prefixed with 91."
+            )
+        return v
 
 
 def _fixes_to_geojson(fixes: list[Any]) -> dict[str, Any]:
@@ -218,6 +239,53 @@ async def list_towers(
             for m in models
         ],
         "total": len(models),
+    }
+
+
+@router.get(
+    "/api/towers/nearby",
+    status_code=status.HTTP_200_OK,
+    summary="Find catalog towers near a point (PostGIS)",
+)
+async def towers_nearby(
+    lat: float,
+    lon: float,
+    radius_m: float = 3000.0,
+    limit: int = 20,
+    db: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    """
+    Returns catalog towers within ``radius_m`` metres of (lat, lon), nearest
+    first. Backed by PostGIS ``ST_DWithin`` with a haversine fallback.
+    """
+    from app.services.tower_lookup import TowerLookupService
+
+    service = TowerLookupService(db)
+    towers = await service.find_within_radius(lat, lon, radius_m)
+    towers = sorted(
+        towers,
+        key=lambda t: ((t.latitude - lat) ** 2 + (t.longitude - lon) ** 2),
+    )[:limit]
+    return {
+        "latitude": lat,
+        "longitude": lon,
+        "radius_m": radius_m,
+        "towers": [
+            {
+                "tower_id": str(t.tower_id),
+                "operator": t.operator.value,
+                "radio": t.radio.value,
+                "cgi": t.cgi,
+                "latitude": t.latitude,
+                "longitude": t.longitude,
+                "azimuth": t.azimuth,
+                "beamwidth": t.beamwidth,
+                "range_meters": t.range_meters,
+                "site_address": t.site_address,
+            }
+            for t in towers
+        ],
+        "total": len(towers),
     }
 
 

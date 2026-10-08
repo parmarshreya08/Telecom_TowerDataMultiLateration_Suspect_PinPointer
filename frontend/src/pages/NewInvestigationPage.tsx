@@ -15,7 +15,15 @@ const schema = z.object({
   case_name:     z.string().min(3, 'Case name is required'),
   case_number:   z.string().min(5, 'Case number is required'),
   suspect_name:  z.string().min(2, 'Suspect name is required'),
-  mobile_number: z.string().min(10, 'Enter a valid mobile number'),
+  mobile_number: z.string().trim().min(1, 'Mobile number is required.').refine(
+    (v) => {
+      const clean = v.replace(/\D/g, '')
+      if (clean.length === 10) return /^[6-9]\d{9}$/.test(clean)
+      if (clean.length === 12 && clean.startsWith('91')) return /^91[6-9]\d{9}$/.test(clean)
+      return false
+    },
+    { message: 'Invalid MSISDN structure. Must be a 10-digit Indian phone number or prefixed with 91.' },
+  ),
   description:   z.string().min(10, 'Provide a brief description'),
   officer_notes: z.string().optional(),
 })

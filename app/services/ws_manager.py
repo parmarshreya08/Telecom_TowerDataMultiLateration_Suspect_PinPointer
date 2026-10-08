@@ -15,10 +15,12 @@ from fastapi import WebSocket
 class ConnectionManager:
     def __init__(self) -> None:
         self._rooms: dict[str, set[WebSocket]] = {}
+        self._lock = asyncio.Lock()
 
     async def connect(self, case_id: str, websocket: WebSocket) -> None:
         await websocket.accept()
-        self._rooms.setdefault(case_id, set()).add(websocket)
+        async with self._lock:
+            self._rooms.setdefault(case_id, set()).add(websocket)
 
     def disconnect(self, case_id: str, websocket: WebSocket) -> None:
         room = self._rooms.get(case_id)
@@ -42,11 +44,19 @@ class ConnectionManager:
         message = json.dumps(
             {"type": event_type, "payload": payload}, default=str
         )
-        for ws in list(room):
+        async def _send(ws: WebSocket) -> None:
             try:
-                await ws.send_text(message)
+                await asyncio.wait_for(ws.send_text(message), timeout=5)
             except Exception:
-                room.discard(ws)
+                async with self._lock:
+                    room = self._rooms.get(case_id)
+                    if room is not None:
+                        room.discard(ws)
+        # Snapshot under lock, send concurrently so one wedged client cannot
+        # head-of-line-block the whole room.
+        async with self._lock:
+            targets = list(room)
+        await asyncio.gather(*(_send(ws) for ws in targets), return_exceptions=True)
 
     async def broadcast_many(
         self, case_ids: set[str], event_type: str, payload: Any

@@ -22,9 +22,13 @@ def hash_password(password: str) -> str:
     """
     Hash a password using bcrypt with cost factor 12.
     Returns the hash as a UTF-8 string.
+    Enforces the 72-byte bcrypt limit up front (returns 422 upstream).
     """
+    pw_bytes = password.encode("utf-8")
+    if len(pw_bytes) > 72:
+        raise ValueError("Password must be at most 72 bytes.")
     salt = bcrypt.gensalt(rounds=12)
-    hashed = bcrypt.hashpw(password.encode("utf-8"), salt)
+    hashed = bcrypt.hashpw(pw_bytes, salt)
     return hashed.decode("utf-8")
 
 

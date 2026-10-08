@@ -1,77 +1,141 @@
 import asyncio
 import random
+import math
 from datetime import datetime, timezone
-from typing import Dict, Any, List
+from typing import Dict, Any
 
 from app.core.logging import logger
+from app.services.live_tracking_service import LiveTrackingService
+from app.database.session import async_session_maker
+from app.database.models.live_tracking import LiveTrackingSession
 
 class MockTSPService:
     def __init__(self):
         self.active_trackings: Dict[str, asyncio.Task] = {}
+        # Stores (case_id, imsi) -> {lat, lng, mode: 'lingering' | 'traveling'}
+        self.target_states: Dict[str, Dict[str, Any]] = {}
+
+    @staticmethod
+    def _track_key(case_id: str, imsi: str) -> str:
+        return f"{case_id}::{imsi}"
+
+    def _generate_step(self, current_lat: float, current_lon: float, mode: str) -> tuple[float, float]:
+        """Generate a random offset based on the movement mode"""
+        # Roughly 1 degree lat is ~111km. 1 meter is ~0.000009 degrees.
+        METER_DEGREE = 0.000009
         
-    async def _tsp_worker(self, case_id: str, msisdn: str):
-        logger.info(f"Started Mock TSP Worker for case_id: {case_id}, msisdn: {msisdn}")
+        if mode == 'lingering':
+            # Move 1 to 5 meters
+            dist = random.uniform(1, 5)
+        else: # traveling
+            # Move 20 to 100 meters (simulate a car/running)
+            dist = random.uniform(20, 100)
+            
+        angle = random.uniform(0, 2 * math.pi)
         
-        # Base coordinates for simulation (e.g., somewhere in India)
-        base_lat = 28.6139
-        base_lon = 77.2090
+        d_lat = (dist * math.cos(angle)) * METER_DEGREE
+        d_lon = (dist * math.sin(angle)) * METER_DEGREE
         
-        step_index = 0
-        
+        return current_lat + d_lat, current_lon + d_lon
+
+    async def _tsp_worker(self, case_id: str, imsi: str):
+        logger.info(f"Started Mock TSP Worker for IMSI: {imsi} (Case: {case_id})")
+
+        track_key = self._track_key(case_id, imsi)
+        # Initialize random starting position (center of Surat roughly)
+        if track_key not in self.target_states:
+            self.target_states[track_key] = {
+                "lat": 21.1702 + random.uniform(-0.02, 0.02),
+                "lon": 72.8311 + random.uniform(-0.02, 0.02),
+                "mode": "lingering",
+                "ticks": 0
+            }
+            
         try:
             while True:
-                # Simulate moving around slowly
-                # In real scenario, we get CGI, TA, NMR data.
-                # Since we have an engine, we will generate fake NMR data that localizes to slightly moving lat/lng
-                # But actually, the engine expects NMR data and then computes lat/lng.
-                # For this mock, we can just send "raw" TSP payload and the backend will process it.
+                state = self.target_states[track_key]
                 
-                # We'll just generate some synthetic payload. The actual localization engine takes NMR.
-                # To make this easy, maybe we just mock the TSP payload. 
-                # If we want the localization engine to give changing lat/long, we need to change the NMR data's CGI or TA.
+                # Randomly switch modes to test cost-optimization
+                state["ticks"] += 1
+                if state["mode"] == "lingering" and state["ticks"] > random.randint(5, 10):
+                    state["mode"] = "traveling"
+                    state["ticks"] = 0
+                elif state["mode"] == "traveling" and state["ticks"] > random.randint(3, 8):
+                    state["mode"] = "lingering"
+                    state["ticks"] = 0
+                    
+                # Generate new position
+                new_lat, new_lon = self._generate_step(state["lat"], state["lon"], state["mode"])
+                state["lat"] = new_lat
+                state["lon"] = new_lon
                 
                 payload = {
                     "event_id": f"tsp_ping_{random.randint(1000, 9999)}",
                     "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "msisdn": msisdn,
+                    "imsi": imsi,
+                    "msisdn": imsi, # For backward compat with any older payload formats
+                    "lat": new_lat,
+                    "lng": new_lon,
                     "serving_cell": {
-                        "cgi": "404-45-5201-14021",
-                        "timing_advance": 10 + step_index % 5 # Change TA to simulate movement
-                    },
-                    "neighbor_cells": [
-                        {"cgi": "404-45-5201-14022", "rssi_dbm": -75},
-                        {"cgi": "404-45-5201-14023", "rssi_dbm": -88}
-                    ]
+                        "cgi": f"404-45-5201-{random.randint(100, 200)}",
+                        "rxlev": random.randint(-90, -60)
+                    }
                 }
                 
-                logger.info(f"Mock TSP generated payload for {case_id}: {payload['event_id']}")
+                await LiveTrackingService.process_tsp_payload(imsi, case_id, payload)
                 
-                # Import here to avoid circular imports if needed
-                from app.services.live_tracking_service import LiveTrackingService
-                await LiveTrackingService.process_tsp_payload(case_id, payload)
-                
-                step_index += 1
-                # Wait for 10 seconds for demo purposes (Architecture says 3-5 mins, but for hackathon 10s is better for live demo)
+                # Wait for 10 seconds per ping
                 await asyncio.sleep(10)
         except asyncio.CancelledError:
-            logger.info(f"Mock TSP Worker cancelled for case_id: {case_id}")
+            logger.info(f"Mock TSP Worker cancelled for IMSI: {imsi}")
             raise
         except Exception as e:
-            logger.error(f"Error in Mock TSP Worker for case_id {case_id}: {e}")
+            logger.error(f"Error in Mock TSP Worker for IMSI {imsi}: {e}")
 
-    def start_tracking(self, case_id: str, msisdn: str):
-        if case_id in self.active_trackings:
-            logger.warning(f"Already tracking case_id: {case_id}")
+    async def start_tracking(self, case_id: str, imsi: str):
+        track_key = self._track_key(case_id, imsi)
+        if track_key in self.active_trackings:
+            logger.warning(f"Already tracking IMSI: {imsi} in case {case_id}")
             return
-            
-        task = asyncio.create_task(self._tsp_worker(case_id, msisdn))
-        self.active_trackings[case_id] = task
-        logger.info(f"Spawned TSP background task for case {case_id}")
 
-    def stop_tracking(self, case_id: str):
-        if case_id in self.active_trackings:
-            self.active_trackings[case_id].cancel()
-            del self.active_trackings[case_id]
-            logger.info(f"Stopped TSP background task for case {case_id}")
+        # Register the session in the DB
+        try:
+            async with async_session_maker() as session:
+                new_session = LiveTrackingSession(imsi=imsi, case_id=case_id, is_active=True)
+                session.add(new_session)
+                await session.commit()
+        except Exception as e:
+            logger.error(f"Failed to create LiveTrackingSession for {imsi}: {e}")
+
+        task = asyncio.create_task(self._tsp_worker(case_id, imsi))
+        self.active_trackings[track_key] = task
+        logger.info(f"Spawned TSP background task for IMSI {imsi}")
+
+    async def stop_tracking(self, case_id: str, imsi: str):
+        track_key = self._track_key(case_id, imsi)
+        task = self.active_trackings.pop(track_key, None)
+        if task is not None:
+            task.cancel()
+            try:
+                await asyncio.wait_for(asyncio.shield(task), timeout=5)
+            except (asyncio.CancelledError, asyncio.TimeoutError):
+                pass
+            except Exception:
+                pass
+            
+            try:
+                async with async_session_maker() as session:
+                    # Deactivate in DB (scoped to this case, not all cases with same IMSI)
+                    from sqlalchemy import update
+                    await session.execute(
+                        update(LiveTrackingSession)
+                        .where(LiveTrackingSession.imsi == imsi, LiveTrackingSession.case_id == case_id)
+                        .values(is_active=False)
+                    )
+                    await session.commit()
+            except Exception as e:
+                logger.error(f"Failed to deactivate LiveTrackingSession for {imsi}: {e}")
+                
+            logger.info(f"Stopped TSP background task for IMSI {imsi}")
 
 mock_tsp_service = MockTSPService()

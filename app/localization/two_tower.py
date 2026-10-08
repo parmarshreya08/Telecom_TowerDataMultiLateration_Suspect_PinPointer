@@ -72,8 +72,8 @@ def circle_circle_intersection(
         # Proportional point along baseline scaled by range ratio
         ratio = r1 / (r1 + r2)
         p = c1 + (r1 + gap * ratio) * u
-        # Inflate uncertainty by the non-intersection gap
-        effective_unc = base_unc + gap
+        # Inflate uncertainty by the non-intersection gap (capped to avoid 100km conf).
+        effective_unc = min(base_unc + gap, 5000.0)
         gdop = max(3.0, 1.0 + (gap / 100.0))
         return {
             "status": "disjoint",
@@ -91,7 +91,7 @@ def circle_circle_intersection(
             p = c1 + (r1 - gap / 2.0) * u
         else:
             p = c2 - (r2 - gap / 2.0) * u
-        effective_unc = base_unc + gap
+        effective_unc = min(base_unc + gap, 5000.0)
         gdop = max(3.0, 1.0 + (gap / 100.0))
         return {
             "status": "nested",

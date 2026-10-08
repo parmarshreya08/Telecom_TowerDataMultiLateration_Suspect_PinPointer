@@ -17,8 +17,11 @@ class AlertService:
         self.twilio_account_sid = os.environ.get("TWILIO_ACCOUNT_SID")
         self.twilio_auth_token = os.environ.get("TWILIO_AUTH_TOKEN")
         self.twilio_from_number = os.environ.get("TWILIO_FROM_NUMBER")
-        
+
         self.is_configured = bool(self.twilio_account_sid and self.twilio_auth_token and self.twilio_from_number)
+        # Idempotency: (to_number, message-hash) -> last sent timestamp (cooldown).
+        self._last_sent: dict[tuple[str, str], datetime] = {}
+        self._cooldown_s = 300
 
     def generate_tracking_token(self, case_id: str, expires_in_hours: int = 2) -> str:
         """
@@ -36,9 +39,19 @@ class AlertService:
         return token
 
     def send_sms(self, to_number: str, message: str) -> bool:
+        import hashlib
+
         if not TWILIO_AVAILABLE or not self.is_configured:
-            logger.warning(f"[MOCK SMS] To: {to_number} | Message: {message}")
+            logger.warning(f"[MOCK SMS not sent — Twilio unconfigured] To: {to_number}")
+            return False
+
+        key = (to_number, hashlib.sha256(message.encode()).hexdigest()[:16])
+        now = datetime.now(timezone.utc)
+        last = self._last_sent.get(key)
+        if last is not None and (now - last).total_seconds() < self._cooldown_s:
+            logger.info("sms_deduped_cooldown", to=to_number)
             return True
+        self._last_sent[key] = now
             
         try:
             client = Client(self.twilio_account_sid, self.twilio_auth_token)

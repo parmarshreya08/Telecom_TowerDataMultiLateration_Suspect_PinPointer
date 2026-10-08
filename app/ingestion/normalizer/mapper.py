@@ -297,6 +297,13 @@ class OperatorMapper:
         lac = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else 0
         cell_id = int(parts[3]) if len(parts) > 3 and parts[3].isdigit() else 0
 
+        lat = OperatorMapper._safe_float(raw.get("latitude"))
+        lon = OperatorMapper._safe_float(raw.get("longitude"))
+        if lat is None or lon is None:
+            raise ValueError("TowerDump row missing latitude/longitude; refusing (0,0) default.")
+        if not (-90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0):
+            raise ValueError(f"TowerDump coordinates out of range: ({lat}, {lon}).")
+
         return TowerRecord(
             tower_id=uuid4(),
             operator=operator,
@@ -306,8 +313,8 @@ class OperatorMapper:
             lac=lac,
             cell_id=cell_id,
             cgi=cgi,
-            latitude=OperatorMapper._safe_float(raw.get("latitude")) or 0.0,
-            longitude=OperatorMapper._safe_float(raw.get("longitude")) or 0.0,
+            latitude=lat,
+            longitude=lon,
             azimuth=azimuth,
             beamwidth=beam,
             range_meters=range_m,

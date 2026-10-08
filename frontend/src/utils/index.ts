@@ -136,7 +136,9 @@ export function getConfidenceColor(confidence: number): string {
 // ── Validation ─────────────────────────────────────────────
 export function isValidPhoneNumber(phone: string): boolean {
   const clean = phone.replace(/\D/g, '')
-  return clean.length >= 10 && clean.length <= 15
+  if (clean.length === 10) return /^[6-9]\d{9}$/.test(clean)
+  if (clean.length === 12 && clean.startsWith('91')) return /^91[6-9]\d{9}$/.test(clean)
+  return false
 }
 
 export function isValidEmail(email: string): boolean {
@@ -144,9 +146,101 @@ export function isValidEmail(email: string): boolean {
 }
 
 // ── Error Handling ─────────────────────────────────────────
+type BackendDetailItem = {
+  loc?: Array<string | number>
+  msg?: string
+  message?: string
+}
+
+function backendDetailToMessage(detail: unknown): string | null {
+  if (detail == null) return null
+  if (typeof detail === 'string') {
+    const trimmed = detail.trim()
+    return trimmed ? trimmed : null
+  }
+  if (Array.isArray(detail)) {
+    for (const item of detail) {
+      if (typeof item === 'string' && item.trim()) return item.trim()
+      if (item && typeof item === 'object') {
+        const rec = item as BackendDetailItem
+        if (typeof rec.msg === 'string' && rec.msg.trim()) return rec.msg.trim()
+        if (typeof rec.message === 'string' && rec.message.trim()) return rec.message.trim()
+      }
+    }
+    return null
+  }
+  if (typeof detail === 'object') {
+    const rec = detail as Record<string, unknown>
+    // FastAPI sometimes returns {"detail": {"message": "..."}} — surface it.
+    for (const key of ['message', 'msg', 'error']) {
+      const v = rec[key]
+      if (typeof v === 'string' && v.trim()) return v.trim()
+    }
+  }
+  return null
+}
+
+/** Map a FastAPI 422 `detail` array to `{ fieldName: message }` for setError. */
+export function extractFieldErrors(err: unknown): Record<string, string> {
+  const out: Record<string, string> = {}
+  if (err == null || typeof err !== 'object') return out
+  const response = (err as { response?: { data?: { detail?: unknown } } }).response
+  const detail = response?.data?.detail
+  if (!Array.isArray(detail)) return out
+  for (const item of detail) {
+    if (item && typeof item === 'object') {
+      const rec = item as BackendDetailItem
+      const loc = Array.isArray(rec.loc) ? rec.loc : []
+      // FastAPI loc is like ["body", "email"] — last segment is the field.
+      const field = [...loc].reverse().find((s) => typeof s === 'string' && s !== 'body' && s !== 'query' && s !== 'path')
+      const msg =
+        (typeof rec.msg === 'string' && rec.msg.trim() ? rec.msg.trim() : null) ??
+        (typeof rec.message === 'string' && rec.message.trim() ? rec.message.trim() : null)
+      if (typeof field === 'string' && msg) {
+        // Backend uses officer_name / case_name / mobile_number — matches form keys.
+        if (!(field in out)) out[field] = msg
+      }
+    }
+  }
+  return out
+}
+
 export function extractErrorMessage(err: unknown): string {
   if (err == null) return 'An unknown error occurred'
-  if (typeof err === 'string') return err
+  if (typeof err === 'string') {
+    const trimmed = err.trim()
+    return trimmed ? trimmed : 'An unknown error occurred'
+  }
+  if (typeof err === 'object') {
+    const rec = err as {
+      response?: { data?: { detail?: unknown; message?: unknown }; status?: number }
+      code?: string
+      message?: unknown
+    }
+    // Axios / fetch-style backend error — prefer server `detail` over generic message.
+    const fromBackend =
+      backendDetailToMessage(rec.response?.data?.detail) ??
+      (typeof rec.response?.data?.message === 'string' && rec.response.data.message.trim()
+        ? rec.response.data.message.trim()
+        : null)
+    if (fromBackend) return fromBackend
+    // Network failure (no response from backend).
+    if (!rec.response && (rec.code === 'ERR_NETWORK' || rec.code === 'ECONNABORTED')) {
+      return 'Could not connect to the backend. Check your connection and try again.'
+    }
+    if (typeof rec.message === 'string' && rec.message.trim()) {
+      // Hide raw Axios "Request failed with status code 401" — not user-facing.
+      if (/^request failed with status code \d+$/i.test(rec.message.trim())) {
+        const status = rec.response?.status
+        if (status === 401) return 'Invalid email or password.'
+        if (status === 409) return 'This record already exists.'
+        if (typeof status === 'number' && status >= 500) return 'Server error. Please try again later.'
+        if (typeof status === 'number') return 'Request failed. Please check your input and try again.'
+        return 'Something went wrong. Please try again.'
+      }
+      return rec.message.trim()
+    }
+  }
   if (err instanceof Error) return err.message
   if (typeof err === 'object' && 'message' in err) return String((err as { message: unknown }).message)
   return 'An unknown error occurred'

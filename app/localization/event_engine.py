@@ -188,7 +188,7 @@ class EventLocalizationEngine:
                 steps["ignored"].append({"cgi": cgi, "reason": "no tower coordinates"})
                 continue
 
-            e, n, z = GISUtils.latlon_to_utm(coords[0], coords[1])
+            e, n, z = GISUtils.latlon_to_utm(coords[0], coords[1], zone=utm_zone or 0)
             if not utm_zone:
                 utm_zone = z
             tower_points.append((e, n))
@@ -268,7 +268,7 @@ class EventLocalizationEngine:
         pos, cov, fit_steps = self._solve_weighted_ls(tower_points, distances, sigmas)
         steps.update(fit_steps)
 
-        status = "resolved" if (fit_steps["residual_rms_m"] <= max(50.0, 3 * float(np.mean(sigmas))) and fit_steps["gdop"] < 8.0) else "uncertain"
+        status = "resolved" if (fit_steps["residual_rms_m"] <= max(50.0, 2 * float(np.mean(sigmas))) and fit_steps["gdop"] < 8.0) else "uncertain"
         if status != "resolved":
             reasons.append("Residual or geometry quality is poor; treat position as uncertain.")
         else:

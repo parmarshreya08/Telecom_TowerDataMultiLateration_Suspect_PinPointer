@@ -62,16 +62,25 @@ export function formatDeleteError(err: unknown, resource: 'file' | 'investigatio
   return extractErrorMessage(err)
 }
 
-// Response interceptor — on 401 (except auth endpoints), clear session + go to login
+// Response interceptor — on 401 clear session + go to login.
+// Only login/register are exempt (they must surface 401s inline); me/logout/
+// preferences 401s mean revocation and must clear the shell.
 let redirectingToLogin = false
 
+export function resetLoginRedirect(): void {
+  redirectingToLogin = false
+}
+
 apiClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    return response
+  },
   (error) => {
     const status = error?.response?.status
     const url = error?.config?.url ?? ''
-    const isAuthCall = url.startsWith('/api/auth/')
-    if (status === 401 && !isAuthCall && !url.endsWith('/login')) {
+    const isLoginOrRegister =
+      url.startsWith('/api/auth/login') || url.startsWith('/api/auth/register')
+    if (status === 401 && !isLoginOrRegister) {
       localStorage.removeItem('erakshak_access_token')
       localStorage.removeItem('erakshak_officer')
       // Guard against a burst of concurrent 401s each firing a redirect.
@@ -212,6 +221,13 @@ export const investigationApi = {
 
   getQualityReport: (caseId: string): Promise<QualityReport> =>
     apiClient.get(`/api/case/${caseId}/quality-report`).then((r) => r.data),
+}
+
+export const liveTrackingApi = {
+  startTracking: (imsi: string) =>
+    apiClient.post<{ status: string; message: string; demo_link: string; token: string }>('/api/v1/live-tracking/start', { imsi }).then(r => r.data),
+  stopTracking: (imsi: string) =>
+    apiClient.post<{ status: string; message: string }>('/api/v1/live-tracking/stop', { imsi }).then(r => r.data),
 }
 
 // Tracking / Localization

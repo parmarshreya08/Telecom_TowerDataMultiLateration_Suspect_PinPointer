@@ -72,13 +72,21 @@ class TelecomIngestionPipeline:
         upload_id = uuid4()
         start_time = datetime.now()
 
-        # Step 1: Checksum Hashing & Uniqueness verification
+        # Step 0: Case existence check (avoids FK violation mid-ingest / race with delete).
+        from app.database.models.telecom import CaseModel
+        from sqlalchemy import select as _select
+
+        _case = await self.db_session.execute(_select(CaseModel).where(CaseModel.case_id == case_id))
+        if _case.scalar_one_or_none() is None:
+            raise ValueError(f"Case '{case_id}' does not exist.")
+
+        # Step 1: Checksum Hashing & Uniqueness verification (scoped to this case)
         file_hash = calculate_file_hash(file_path)
-        existing_upload = await self.repo.get_upload_by_hash(file_hash)
+        existing_upload = await self.repo.get_upload_by_case_hash(case_id, file_hash)
         if existing_upload:
             logger.warning("duplicate_upload_blocked", file_hash=file_hash, file_name=original_file_name)
             raise DuplicateUploadError(
-                f"File '{original_file_name}' (hash: {file_hash}) has already been ingested."
+                f"File '{original_file_name}' (hash: {file_hash}) has already been ingested in this case."
             )
 
         # Step 2: File Format & Operator Detection
@@ -129,10 +137,26 @@ class TelecomIngestionPipeline:
         # Step 4: Extract Raw Rows
         raw_rows = extractor.extract(file_path, upload_id=upload_id)
 
-        # NMR already yields normalized SubscriberEventRecord rows; skip
-        # operator-specific validation/normalization and the legacy frame builder.
+        # NMR already yields normalized SubscriberEventRecord rows; validate
+        # timestamps/coords before persisting (previously skipped entirely).
         if source_type == SourceType.NMR:
             events = [r for r in raw_rows if isinstance(r, SubscriberEventRecord)]
+            from app.utils.datetime_utils import now_ist as _now_ist
+
+            _now = _now_ist()
+            _filtered: list[SubscriberEventRecord] = []
+            for _ev in events:
+                try:
+                    _ts = _ev.timestamp
+                    if _ts is not None and _ts > _now:
+                        continue
+                    if _ev.tower_latitude is not None and _ev.tower_longitude is not None:
+                        if not (8.0 <= float(_ev.tower_latitude) <= 38.0 and 68.0 <= float(_ev.tower_longitude) <= 98.0):
+                            continue
+                    _filtered.append(_ev)
+                except (TypeError, ValueError):
+                    continue
+            events = _filtered
             await self.repo.save_subscriber_events(events)
             await self.db_session.commit()
             end_time = datetime.now()

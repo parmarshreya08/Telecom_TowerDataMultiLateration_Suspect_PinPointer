@@ -112,7 +112,13 @@ class GISUtils:
         :param ta_uncertainty_meters: 1-sigma TA band half-width in meters.
                                       Wider bands widen the ellipse proportionally.
         """
-        vals, vecs = np.linalg.eigh(covariance_2d)
+        try:
+            cov_arr = np.asarray(covariance_2d, dtype=np.float64)
+        except Exception:
+            cov_arr = None
+        if cov_arr is None or cov_arr.shape != (2, 2) or not np.all(np.isfinite(cov_arr)):
+            cov_arr = np.eye(2, dtype=np.float64) * (25.0 ** 2)
+        vals, vecs = np.linalg.eigh(cov_arr)
         order = vals.argsort()[::-1]
         vals = vals[order]
         vecs = vecs[:, order]

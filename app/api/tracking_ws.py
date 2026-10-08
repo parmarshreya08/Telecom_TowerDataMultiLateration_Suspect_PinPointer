@@ -26,20 +26,24 @@ from sqlalchemy import select
 router = APIRouter()
 
 
-async def _authorize_websocket(token: str | None) -> bool:
+async def _authorize_websocket(token: str | None, case_id: str | None = None) -> bool:
     """
     Validate the bearer JWT and a non-revoked, non-expired session row.
     Returns True when the connection may be accepted.
     Supports both standard session tokens and short-lived live tracking tokens.
+    Live-tracking tokens are bound to their token case_id: a token for case A
+    must not open the room for case B.
     """
     if not token:
         return False
     payload = decode_token(token)
     if not payload:
         return False
-        
-    # Check if it's a live tracking token
+
+    # Check if it's a live tracking token (bound to its own case room).
     if payload.get("type") == "live_tracking" and payload.get("case_id"):
+        if case_id is not None and payload.get("case_id") != case_id:
+            return False
         return True
         
     if not payload.get("sub") or not payload.get("jti"):
@@ -65,7 +69,7 @@ async def _authorize_websocket(token: str | None) -> bool:
 async def tracking_ws(websocket: WebSocket, case_id: str) -> None:
     token = websocket.query_params.get("token")
 
-    if not await _authorize_websocket(token):
+    if not await _authorize_websocket(token, case_id):
         await websocket.close(code=4401)  # 4401 = unauthorised, mirrors WS 401
         return
 

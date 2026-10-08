@@ -3,6 +3,7 @@ Data validation engine for the E-Rakshak pipeline.
 Applies domain validation rules to filter out malformed telecommunication data.
 """
 
+from datetime import datetime
 from typing import Any
 
 from app.core.logging import logger
@@ -49,22 +50,31 @@ class IngestionValidator:
             # 1. Phone number validation (for CDR or SpotDump)
             if file_type in ("CDR", "SpotDump"):
                 # Check potential target/subscriber identifier keys
-                phone_keys = ["calling_no", "calling_party", "msisdn", "target_number", "phone_number", "target_number"]
+                # (normalized lowercase; includes called_no variants missed before).
+                phone_keys = ["calling_no", "calling_party", "msisdn", "target_number", "phone_number", "called_no"]
+                lowered = {str(k).lower(): v for k, v in record.items()}
                 phone_val = None
                 for key in phone_keys:
-                    if key in record:
-                        phone_val = record[key]
+                    if key in lowered:
+                        phone_val = lowered[key]
                         break
                 
                 if phone_val and not self.msisdn_rule.validate(phone_val):
                     is_valid = False
                     error_details["msisdn"] = self.msisdn_rule.error_message
 
-            # 2. Coordinates validation (for TowerDump)
+            # 2. Coordinates validation (for TowerDump, plus CDR/SpotDump tower coords)
             if file_type == "TowerDump":
-                lat_val = record.get("latitude")
-                lon_val = record.get("longitude")
-                if lat_val and lon_val:
+                lowered = {str(k).lower(): v for k, v in record.items()}
+                lat_val = lowered.get("latitude")
+                lon_val = lowered.get("longitude")
+                if lat_val is None or (isinstance(lat_val, str) and not lat_val.strip()):
+                    is_valid = False
+                    error_details["coordinates"] = "Latitude is required."
+                elif lon_val is None or (isinstance(lon_val, str) and not lon_val.strip()):
+                    is_valid = False
+                    error_details["coordinates"] = "Longitude is required."
+                else:
                     try:
                         coords = (float(lat_val), float(lon_val))
                         if not self.geo_rule.validate(coords):
@@ -73,6 +83,24 @@ class IngestionValidator:
                     except (ValueError, TypeError):
                         is_valid = False
                         error_details["coordinates"] = "Latitude and longitude must be valid floating numbers."
+            elif file_type in ("CDR", "SpotDump"):
+                # CDR/SpotDump tower coords were never geofenced (Paris passed).
+                lowered = {str(k).lower(): v for k, v in record.items()}
+                for _latk, _lonk in (("tower_latitude", "tower_longitude"), ("latitude", "longitude")):
+                    _lat = lowered.get(_latk)
+                    _lon = lowered.get(_lonk)
+                    if _lat is None or _lon is None:
+                        continue
+                    try:
+                        _coords = (float(_lat), float(_lon))
+                    except (ValueError, TypeError):
+                        is_valid = False
+                        error_details["coordinates"] = "Latitude and longitude must be valid floating numbers."
+                        break
+                    if not self.geo_rule.validate(_coords):
+                        is_valid = False
+                        error_details["coordinates"] = self.geo_rule.error_message
+                        break
 
             # 3. Timestamps validation (for CDR or SpotDump)
             if file_type in ("CDR", "SpotDump"):
@@ -98,6 +126,10 @@ class IngestionValidator:
                         # Parsing failures will be raised during normalization;
                         # we can log or ignore validation for now.
                         pass
+                elif isinstance(time_val, datetime):
+                    if not self.time_rule.validate(time_val):
+                        is_valid = False
+                        error_details["timestamp"] = self.time_rule.error_message
 
             if is_valid:
                 valid_records.append(record)

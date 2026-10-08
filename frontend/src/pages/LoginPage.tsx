@@ -8,43 +8,57 @@
  * Auth logic is unchanged.
  */
 
-import { lazy, Suspense, useState, type FormEvent } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { useNavigate, useLocation, Link } from 'react-router-dom'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
 import { LogIn, Eye, EyeOff, ShieldCheck } from 'lucide-react'
 import { Logo }   from '@/components/ui/Logo'
 import { authApi, setToken, setStoredOfficer } from '@/services/auth'
-import type { AxiosError } from 'axios'
+import { resetLoginRedirect } from '@/services/api'
+import { extractErrorMessage } from '@/utils'
+import axios from 'axios'
 
 const TechBackground = lazy(() =>
   import('@/components/landing/TechBackground').then((m) => ({ default: m.TechBackground }))
 )
 
-function errorMessage(err: unknown): string {
-  const e = err as AxiosError<{ detail?: string }>
-  return e?.response?.data?.detail ?? 'Something went wrong. Please try again.'
-}
+const schema = z.object({
+  email: z.string().trim().min(1, 'Email is required.').email('Enter a valid email address.'),
+  // Intentionally no min-length on login: wrong passwords must surface as a
+  // generic 401 banner, not a client-side length leak (user-enumeration).
+  password: z.string().min(1, 'Password is required.'),
+})
+
+type FormData = z.infer<typeof schema>
 
 export default function LoginPage() {
   const navigate  = useNavigate()
   const location  = useLocation()
-  const [email,    setEmail]    = useState('')
-  const [password, setPassword] = useState('')
   const [showPw,   setShowPw]   = useState(false)
-  const [error,    setError]    = useState<string | null>(null)
+  const [serverError, setServerError] = useState<string | null>(null)
   const [loading,  setLoading]  = useState(false)
 
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault()
-    setError(null)
+  const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
+    resolver: zodResolver(schema),
+    defaultValues: { email: '', password: '' },
+  })
+
+  async function onSubmit(data: FormData) {
+    setServerError(null)
     setLoading(true)
     try {
-      const res = await authApi.login({ email, password })
+      const res = await authApi.login({ email: data.email.trim(), password: data.password })
       setToken(res.access_token)
       setStoredOfficer(res.officer)
+      resetLoginRedirect()
       // Redirect back to the page the user was trying to reach, or fall back to /dashboard.
       // `from` (router state) wins; otherwise honour a ?returnTo= param set by the
       // 401 interceptor so session-expiry logins resume where they left off.
-      const fromState = (location.state as { from?: string } | null)?.from
+      const rawFrom = (location.state as { from?: string } | null)?.from
+      const fromState =
+        rawFrom && rawFrom.startsWith('/') && !rawFrom.startsWith('//') ? rawFrom : null
       const rawReturnTo = new URLSearchParams(location.search).get('returnTo')
       // Only accept same-origin paths — reject absolute/protocol-relative URLs.
       const returnTo = rawReturnTo && rawReturnTo.startsWith('/') && !rawReturnTo.startsWith('//')
@@ -53,7 +67,13 @@ export default function LoginPage() {
       const target = fromState || returnTo || '/dashboard'
       navigate(target && target !== '/login' ? target : '/dashboard', { replace: true })
     } catch (err) {
-      setError(errorMessage(err))
+      if (axios.isAxiosError(err) && err.response?.status === 401) {
+        // Prefer backend detail (e.g. deactivation) over a flat invalid-password line.
+        const detail = err.response?.data?.detail
+        setServerError(typeof detail === 'string' && detail.trim() ? detail.trim() : 'Invalid email or password.')
+      } else {
+        setServerError(extractErrorMessage(err))
+      }
     } finally {
       setLoading(false)
     }
@@ -97,7 +117,7 @@ export default function LoginPage() {
           className="rounded-2xl border border-white/10 bg-white/5 p-7 backdrop-blur-md"
           style={{ boxShadow: '0 8px 40px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.06)' }}
         >
-          <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+          <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-5" noValidate>
 
             {/* Email */}
             <div className="flex flex-col gap-1.5">
@@ -106,13 +126,15 @@ export default function LoginPage() {
               </label>
               <input
                 type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
                 placeholder="officer@police.gov.in"
                 autoComplete="email"
-                required
+                aria-invalid={!!errors.email}
                 className="w-full rounded-lg border border-white/10 bg-white/5 px-3.5 py-2.5 text-sm text-white placeholder-slate-500 backdrop-blur-sm transition focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                {...register('email')}
               />
+              {errors.email && (
+                <p className="text-xs text-red-300" role="alert">{errors.email.message}</p>
+              )}
             </div>
 
             {/* Password */}
@@ -123,12 +145,11 @@ export default function LoginPage() {
               <div className="relative">
                 <input
                   type={showPw ? 'text' : 'password'}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
                   autoComplete="current-password"
-                  required
+                  aria-invalid={!!errors.password}
                   className="w-full rounded-lg border border-white/10 bg-white/5 px-3.5 py-2.5 pr-10 text-sm text-white placeholder-slate-500 backdrop-blur-sm transition focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                  {...register('password')}
                 />
                 <button
                   type="button"
@@ -139,16 +160,19 @@ export default function LoginPage() {
                   {showPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
+              {errors.password && (
+                <p className="text-xs text-red-300" role="alert">{errors.password.message}</p>
+              )}
             </div>
 
             {/* Error */}
-            {error && (
+            {serverError && (
               <div
                 className="flex items-start gap-2 rounded-lg border border-red-500/20 bg-red-500/10 px-3.5 py-2.5 text-sm text-red-300"
                 role="alert"
               >
                 <span className="shrink-0 mt-0.5">⚠</span>
-                <span>{error}</span>
+                <span>{serverError}</span>
               </div>
             )}
 

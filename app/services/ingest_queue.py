@@ -25,12 +25,14 @@ class IngestQueue:
     runs detection + extraction + validation, and updates status.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, max_workers: int = 2) -> None:
         self._tasks: dict[UUID, asyncio.Task] = {}
+        self._sem = asyncio.Semaphore(max_workers)
 
     async def enqueue(self, upload_id: UUID, case_id: str, supabase_path: str) -> None:
         """
-        Enqueue a file for background ingestion.
+        Enqueue a file for background ingestion (bounded concurrency).
+        Re-enqueue of the same upload_id cancels the prior orphan task.
         """
         logger.info("ingest_queue_enqueue", upload_id=str(upload_id), case_id=case_id)
 
@@ -40,17 +42,50 @@ class IngestQueue:
             {"upload_id": str(upload_id), "case_id": case_id, "status": "queued"},
         )
 
+        prev = self._tasks.get(upload_id)
+        if prev is not None and not prev.done():
+            prev.cancel()
         task = asyncio.create_task(
             self._process_upload(upload_id, case_id, supabase_path)
         )
+        def _done(t: asyncio.Task) -> None:
+            self._tasks.pop(upload_id, None)
+            try:
+                exc = t.exception()
+                if exc is not None and not isinstance(exc, asyncio.CancelledError):
+                    logger.error("ingest_queue_task_failed", upload_id=str(upload_id), error=str(exc))
+            except asyncio.CancelledError:
+                pass
+        task.add_done_callback(_done)
         self._tasks[upload_id] = task
+
+    async def shutdown(self) -> None:
+        """Cancel and drain all pending ingest tasks (for graceful shutdown)."""
+        for task in list(self._tasks.values()):
+            task.cancel()
+        if self._tasks:
+            await asyncio.gather(*self._tasks.values(), return_exceptions=True)
+        self._tasks.clear()
 
     async def _process_upload(
         self, upload_id: UUID, case_id: str, supabase_path: str
     ) -> None:
         """
         Process a single upload: download → convert → detect → extract → validate → persist.
+        Bounded by semaphore so 10x90MB uploads cannot exhaust the DB pool/RAM.
         """
+        await self._sem.acquire()
+        try:
+            await self._run_upload(upload_id, case_id, supabase_path)
+        finally:
+            try:
+                self._sem.release()
+            except ValueError:
+                pass
+
+    async def _run_upload(
+        self, upload_id: UUID, case_id: str, supabase_path: str
+    ) -> None:
         from app.contracts.enums import SourceType
         from app.contracts.subscriber import SubscriberEventRecord
         from app.contracts.tower import TowerRecord
@@ -81,12 +116,15 @@ class IngestQueue:
                     {"upload_id": str(upload_id), "case_id": case_id, "status": "processing"},
                 )
 
-                # Download from Supabase to temp file
+                # Download from Supabase to temp file (blocking I/O off the loop).
                 with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as tmp:
                     local_path = tmp.name
 
                 try:
-                    storage_service.download_file(supabase_path, local_path)
+                    loop = asyncio.get_running_loop()
+                    await loop.run_in_executor(
+                        None, storage_service.download_file, supabase_path, local_path
+                    )
 
                     # Update detection info
                     upload = await repo.get_upload_by_id(upload_id)
@@ -123,7 +161,12 @@ class IngestQueue:
                     else:
                         extractor = AirtelExtractor()
 
-                    raw_rows = extractor.extract(local_path, upload_id=upload_id)
+                    import functools
+
+                    raw_rows = await loop.run_in_executor(
+                        None,
+                        functools.partial(extractor.extract, local_path, upload_id=upload_id),
+                    )
 
                     if source_type == SourceType.TOWER_DUMP:
                         validator = IngestionValidator()

@@ -142,24 +142,48 @@ class MeasurementFrameBuilder:
         towers_seen: list[MeasurementTower] = []
         seen_cgis: set[str] = set()
 
+        # Batch prefetch to avoid per-record N+1 SELECTs.
+        try:
+            cgi_list = [r.cgi for r in window_records if r.cgi not in seen_cgis]
+            prefetched = await self.tower_lookup.find_many_by_cgi(cgi_list)
+        except Exception:
+            prefetched = {}
+
         for rec in window_records:
             if rec.cgi in seen_cgis:
                 continue
 
-            # Resolve coordinates from database lookup
-            tower_info: Optional[TowerRecord] = await self.tower_lookup.find_by_cgi(
-                rec.cgi
-            )
+            # Resolve coordinates from database lookup (prefetched batch first)
+            tower_info: Optional[TowerRecord] = prefetched.get(rec.cgi)
+            if tower_info is None:
+                tower_info = await self.tower_lookup.find_by_cgi(
+                    rec.cgi
+                )
 
             if not tower_info:
                 logger.warning("tower_cgi_not_found_for_frame", cgi=rec.cgi)
                 continue
 
-            # Estimate range in meters if Timing Advance (TA) is present
+            # Never use OpenCellID fallback IDs for the FK: they are never
+            # persisted to tower_records and would violate
+            # measurement_towers_tower_id_fkey. Non-catalog towers are flagged
+            # rogue downstream via is_catalog=False.
+            if not tower_info.is_catalog:
+                logger.warning("tower_cgi_not_in_catalog_skipped", cgi=rec.cgi)
+                continue
+
+            # Estimate range in meters if Timing Advance (TA) is present.
+            # Guarded: negative/huge TA previously raised ValueError and killed
+            # the entire upload's framing.
             distance_est = None
             if rec.timing_advance is not None:
-                # Basic representation: 1 TA approx 78m in LTE
-                distance_est = float(rec.timing_advance * 78.12)
+                try:
+                    ta_f = int(rec.timing_advance)
+                except (TypeError, ValueError):
+                    ta_f = None
+                if ta_f is not None and 0 <= ta_f <= 1282:
+                    # Basic representation: 1 TA approx 78m in LTE
+                    distance_est = float(ta_f * 78.12)
 
             towers_seen.append(
                 MeasurementTower(

@@ -6,20 +6,27 @@ from app.core.logging import logger
 from app.services.mock_tsp_service import mock_tsp_service
 from app.services.alert_service import alert_service
 from app.core.security import decode_token
+from app.core.deps import require_inspector_or_admin
+from app.database.models import OfficerModel
 
 router = APIRouter(prefix="/api/v1/live-tracking", tags=["live-tracking"])
 
 class StartTrackingRequest(BaseModel):
-    msisdn: str
+    imsi: str
 
-@router.post("/{case_id}/start")
-async def start_live_tracking(case_id: str, request: StartTrackingRequest):
+@router.post("/start")
+async def start_live_tracking(
+    request: StartTrackingRequest,
+    officer: OfficerModel = Depends(require_inspector_or_admin),
+):
     """
-    Start tracking a specific MSISDN for a given case.
+    Start tracking a specific IMSI.
     This simulates subscribing to a TSP for live data.
+    Requires an authenticated officer (no anonymous token minting).
     """
-    logger.info(f"Starting live tracking for case {case_id}, msisdn {request.msisdn}")
-    mock_tsp_service.start_tracking(case_id, request.msisdn)
+    case_id = f"LIVE-{request.imsi}"
+    logger.info(f"Starting live tracking for IMSI {request.imsi} (Case: {case_id})")
+    await mock_tsp_service.start_tracking(case_id, request.imsi)
     
     # Generate a demo link immediately for easy testing
     token = alert_service.generate_tracking_token(case_id)
@@ -32,13 +39,20 @@ async def start_live_tracking(case_id: str, request: StartTrackingRequest):
         "token": token
     }
 
-@router.post("/{case_id}/stop")
-async def stop_live_tracking(case_id: str):
+class StopTrackingRequest(BaseModel):
+    imsi: str
+
+@router.post("/stop")
+async def stop_live_tracking(
+    request: StopTrackingRequest,
+    officer: OfficerModel = Depends(require_inspector_or_admin),
+):
     """
-    Stop tracking a specific case.
+    Stop tracking a specific IMSI.
     """
-    logger.info(f"Stopping live tracking for case {case_id}")
-    mock_tsp_service.stop_tracking(case_id)
+    case_id = f"LIVE-{request.imsi}"
+    logger.info(f"Stopping live tracking for IMSI {request.imsi} (Case: {case_id})")
+    await mock_tsp_service.stop_tracking(case_id, request.imsi)
     return {"status": "success", "message": "Tracking stopped successfully"}
 
 @router.get("/resolve-token/{token}")
@@ -55,8 +69,6 @@ async def resolve_tracking_token(token: str) -> Dict[str, Any]:
     if not case_id:
         raise HTTPException(status_code=400, detail="Invalid token payload")
         
-    # Here you'd fetch case details from DB.
-    # For demo purposes, we return a mock object.
     return {
         "case_id": case_id,
         "status": "active",
