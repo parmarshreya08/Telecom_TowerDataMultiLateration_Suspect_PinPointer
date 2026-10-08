@@ -1,20 +1,17 @@
 import { useState, useCallback } from 'react'
 import type { Notification, NotificationType } from '@/types'
 
-// TEMPORARY FRONTEND MOCK — replace with backend notification stream later
-const INITIAL_NOTIFICATIONS: Notification[] = [
-  {
-    id: 'notif-rogue-bts-01',
-    type: 'rogue_tower',
-    title: 'CRITICAL: Unregistered BTS detected in the investigation area.',
-    message: 'Possible IMSI Catcher.',
-    timestamp: new Date().toISOString(),
-    read: false,
-  },
-]
-
+/**
+ * Notification store.
+ *
+ * Starts empty: alerts must come from a real detection run, never from a
+ * seeded placeholder. The backend has no notification endpoint yet, so this
+ * is in-memory only and resets on reload. `addNotification` is the hook the
+ * BTS/SDR detectors and the live-tracking stream will call once they emit
+ * events; until then the drawer legitimately shows its empty state.
+ */
 export function useNotifications() {
-  const [notifications, setNotifications] = useState<Notification[]>(INITIAL_NOTIFICATIONS)
+  const [notifications, setNotifications] = useState<Notification[]>([])
 
   const unreadCount = notifications.filter((n) => !n.read).length
 
