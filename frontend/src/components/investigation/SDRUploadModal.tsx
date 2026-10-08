@@ -34,6 +34,7 @@ export function SDRUploadModal({
   const [stage, setStage] = useState<Stage>('idle')
   const [currentStepIdx, setCurrentStepIdx] = useState(0)
   const [verifiedFix, setVerifiedFix] = useState<RFVerifiedFix | null>(null)
+  const [error, setError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleReset = () => {
@@ -41,6 +42,7 @@ export function SDRUploadModal({
     setStage('idle')
     setCurrentStepIdx(0)
     setVerifiedFix(null)
+    setError(null)
   }
 
   const handleModalClose = () => {
@@ -65,42 +67,19 @@ export function SDRUploadModal({
     }
   }
 
-  // TEMPORARY FRONTEND MOCK — replace with backend SDR verification endpoint later
+  // POST /api/v1/sdr/verify-rf runs the real log-distance path-loss engine and
+  // returns residuals/consistency for the towers supplied. It needs actual RF
+  // measurements (measured RSSI per CGI) to be meaningful — a sweep file alone
+  // does not contain them, so until those are parsed and posted there is
+  // nothing honest to display. Inventing a ±5m "verified" fix from the
+  // current suspect position plus a fixed offset would assert a ground-truth
+  // confirmation that no measurement supports.
   const startProcessing = () => {
     if (!file) return
-    setStage('processing')
-    setCurrentStepIdx(0)
-
-    // Derived location slightly offset (+0.00028 lat, +0.00019 lon) from current suspect pin
-    const baseLat = currentSuspectLat ?? 28.6139
-    const baseLon = currentSuspectLon ?? 77.2090
-    const mockFix: RFVerifiedFix = {
-      id: `rf-verified-${Date.now()}`,
-      type: 'rf_verified_fix',
-      latitude: baseLat + 0.00028,
-      longitude: baseLon + 0.00019,
-      rssi_dbm: -45,
-      accuracy_m: 5,
-      confidence: 98,
-      timestamp: currentTimestamp || new Date().toISOString(),
-      source: 'SDR',
-      filename: file.name,
-      frequency_mhz: 935.2,
-    }
-
-    const stepInterval = 450
-    let step = 0
-    const interval = setInterval(() => {
-      step += 1
-      if (step < PROCESSING_STEPS.length) {
-        setCurrentStepIdx(step)
-      } else {
-        clearInterval(interval)
-        setVerifiedFix(mockFix)
-        setStage('complete')
-        onVerificationComplete(mockFix)
-      }
-    }, stepInterval)
+    setError(
+      'RF verification needs per-tower measured RSSI values parsed from the sweep file. ' +
+      'That parser is not implemented yet, so no verified fix is produced.'
+    )
   }
 
   return (
@@ -111,7 +90,7 @@ export function SDRUploadModal({
       size="md"
     >
       <p className="text-xs text-surface-500 dark:text-surface-400 -mt-2 mb-4">
-        Upload a field RF sweep to refine the suspect location to high-precision ±5m.
+        Attach a field RF sweep to cross-check the current suspect fix against measured signal strength.
       </p>
       <div className="space-y-4 pt-1">
         {stage === 'idle' && (
@@ -152,9 +131,19 @@ export function SDRUploadModal({
             <div className="rounded-lg bg-surface-100 p-3 text-xs text-surface-600 dark:bg-surface-800 dark:text-surface-300 flex items-start gap-2">
               <Sparkles className="h-4 w-4 text-cyan-600 dark:text-cyan-400 shrink-0 mt-0.5" />
               <p className="leading-relaxed">
-                Field SDR sweeps combine RSSI triangulation with hardware RF captures to isolate the suspect transmitter within the last 50 meters.
+                The RF engine predicts expected signal strength for each nearby tower using a
+                log-distance path-loss model and reports the residual against the measured RSSI.
               </p>
             </div>
+
+            {error && (
+              <div
+                role="alert"
+                className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
+              >
+                {error}
+              </div>
+            )}
 
             <div className="flex justify-end gap-2 pt-2 border-t border-surface-200 dark:border-surface-700">
               <Button variant="outline" onClick={handleModalClose}>
@@ -167,7 +156,7 @@ export function SDRUploadModal({
                 className="bg-cyan-600 hover:bg-cyan-700 text-white dark:bg-cyan-600 dark:hover:bg-cyan-700"
               >
                 <Upload className="h-4 w-4 mr-1.5" />
-                Upload & Correlate Sweep
+                Check RF Consistency
               </Button>
             </div>
           </>

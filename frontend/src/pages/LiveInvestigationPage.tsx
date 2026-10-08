@@ -125,49 +125,6 @@ function parseFixes(geo: GeoJSONFeatureCollection, caseId: string): LocalFix[] {
     }))
 }
 
-// TEMPORARY FRONTEND MOCK — replace with backend event stream later
-const ENABLE_SWAP_EVENT_MOCKS = true
-
-const MOCK_SWAP_TEMPLATES = [
-  {
-    id: 'mock-sim-swap-1',
-    event_type: 'sim_swap' as const,
-    old_imsi: '404450123456789',
-    new_imsi: '404450987654321',
-    title: 'SIM Swap Detected',
-    description: 'Subscriber IMSI changed: 404450123456789 → 404450987654321',
-  },
-  {
-    id: 'mock-device-swap-1',
-    event_type: 'device_swap' as const,
-    old_imei: '862045041234567',
-    new_imei: '354089097654321',
-    title: 'Device Handover / IMEI Swap Detected',
-    description: 'Device IMEI changed: 862045041234567 → 354089097654321',
-  },
-]
-
-// TEMPORARY FRONTEND MOCK — replace with backend is_rogue data
-const ENABLE_ROGUE_BTS_MOCK = true
-
-function createMockRogueTower(referenceLat?: number, referenceLon?: number): TowerRecord {
-  const lat = referenceLat ?? 28.6139
-  const lon = referenceLon ?? 77.2090
-  return {
-    tower_id: 'MOCK-ROGUE-BTS-01',
-    cgi: '404-45-ROGUE-99',
-    operator: 'UNREGISTERED / UNKNOWN',
-    radio: 'Fake GSM/LTE',
-    latitude: lat + 0.0072,
-    longitude: lon + 0.0058,
-    azimuth: 180,
-    beamwidth: 360,
-    range_meters: 850,
-    site_address: '⚠️ Unregistered Mobile BTS / IMSI Catcher Unit',
-    is_rogue: true,
-  }
-}
-
 export default function LiveInvestigationPage() {
   const { id = '' } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -479,15 +436,10 @@ export default function LiveInvestigationPage() {
       is_rogue: t.is_rogue ?? false,
     }))
 
-    let allTowers = parsedTowers
-    if (ENABLE_ROGUE_BTS_MOCK && !allTowers.some((t) => t.is_rogue)) {
-      const parsedFixes = data.geo ? parseFixes(data.geo, id) : []
-      const refLat = allTowers[0]?.latitude ?? parsedFixes[0]?.latitude ?? DEFAULT_MAP_CENTER[0]
-      const refLon = allTowers[0]?.longitude ?? parsedFixes[0]?.longitude ?? DEFAULT_MAP_CENTER[1]
-      allTowers = [...allTowers, createMockRogueTower(refLat, refLon)]
-    }
-
-    setTowers(allTowers)
+    // Towers come from the ingested cell-site data only. A rogue/IMSI-catcher
+    // marker may appear here solely when the backend flags `is_rogue`; nothing
+    // is synthesised client-side, so an unverified threat is never drawn.
+    setTowers(parsedTowers)
     setKdeHeatPoints(data.heatmapPoints ?? [])
     setFiles(data.filesData.files ?? [])
   }, [id])
@@ -681,43 +633,10 @@ export default function LiveInvestigationPage() {
   const maxScrub = Math.max(fixes.length - 1, 0)
 
   // ── Multi-SIM / Device Handover Events (Bonus Feature 1) ──
-  // Derives swap events only when real timeline fixes exist to map against.
-  // Never marks index 0 as a swap event by default on 1/1 cases.
-  const timelineSwapEvents: InvestigationSwapEvent[] = useMemo(() => {
-    if (!ENABLE_SWAP_EVENT_MOCKS || fixes.length < 2) {
-      return []
-    }
-
-    const events: InvestigationSwapEvent[] = []
-
-    if (fixes.length >= 3) {
-      // Place SIM swap at historical index 1 (timestamp derived from real fixes[1])
-      events.push({
-        ...MOCK_SWAP_TEMPLATES[0],
-        timestamp: fixes[1].timestamp,
-        fix_index: 1,
-      })
-
-      // If 4 or more fixes, place Device swap at historical index 2 (timestamp from real fixes[2])
-      if (fixes.length >= 4) {
-        events.push({
-          ...MOCK_SWAP_TEMPLATES[1],
-          timestamp: fixes[2].timestamp,
-          fix_index: 2,
-        })
-      }
-    } else if (fixes.length === 2) {
-      // For exactly 2 fixes, map SIM swap to historical index 0
-      // Since default load selects index 1 (the latest), no alert is shown on initial load
-      events.push({
-        ...MOCK_SWAP_TEMPLATES[0],
-        timestamp: fixes[0].timestamp,
-        fix_index: 0,
-      })
-    }
-
-    return events
-  }, [fixes])
+  // Swap events are a forensic claim about a subscriber, so they may only come
+  // from the backend's event stream. Nothing is inferred from fix count here:
+  // a timeline with three fixes does not imply a SIM swap occurred.
+  const timelineSwapEvents: InvestigationSwapEvent[] = useMemo(() => [], [])
 
   // Active swap event is determined strictly when the currently selected fix matches a swap event
   const activeSwapEvent = useMemo(() => {
