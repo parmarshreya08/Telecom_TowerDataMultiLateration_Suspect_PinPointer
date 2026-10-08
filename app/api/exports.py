@@ -63,6 +63,8 @@ def _to_contract(fix: Any) -> FixContract:
         ta_inner_m=fix.ta_inner_m,
         ta_outer_m=fix.ta_outer_m,
         rss_i_dbm=fix.rss_i_dbm,
+        fix_method=getattr(fix, "fix_method", "multilateration") or "multilateration",
+        n_towers=getattr(fix, "n_towers", 3) or 3,
     )
 
 
