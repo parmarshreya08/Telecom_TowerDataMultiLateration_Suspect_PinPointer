@@ -8,6 +8,8 @@ import { WorkspaceTour } from '@/components/onboarding/WorkspaceTour'
 import { useNotifications } from '@/hooks/useNotifications'
 import { useWorkspaceTour } from '@/hooks/useWorkspaceTour'
 
+import { OfflineBanner } from '@/components/ui/OfflineBanner'
+
 export function AppLayout() {
   const location = useLocation()
   const [sidebarOpen, setSidebarOpen]   = useState(() => typeof window !== 'undefined' ? window.innerWidth >= 768 : true)
@@ -22,6 +24,7 @@ export function AppLayout() {
 
       {/* Main content */}
       <div className="flex flex-1 flex-col overflow-hidden min-w-0 relative z-0">
+        <OfflineBanner />
         <Topbar
           sidebarOpen={sidebarOpen}
           onToggleSidebar={() => setSidebarOpen((v) => !v)}

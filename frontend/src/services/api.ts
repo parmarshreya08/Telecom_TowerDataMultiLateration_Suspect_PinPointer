@@ -5,6 +5,7 @@
 import axios from 'axios'
 import { API_BASE_URL } from '@/constants'
 import { extractErrorMessage } from '@/utils'
+import { cacheCasesOffline, cacheCaseOffline, getCachedCasesOffline, getCachedCaseOffline } from '@/services/offlineStorage'
 import type {
   HealthStatus,
   UploadResponse,
@@ -190,13 +191,41 @@ export const fileApi = {
 
 // Investigations
 export const investigationApi = {
-  list: (params?: { status?: string; page?: number; page_size?: number }) =>
-    apiClient
-      .get<PaginatedResponse<Investigation>>('/api/cases', { params })
-      .then((r) => r.data),
+  list: async (params?: { status?: string; page?: number; page_size?: number }): Promise<PaginatedResponse<Investigation>> => {
+    try {
+      const res = await apiClient.get<PaginatedResponse<Investigation>>('/api/cases', { params })
+      if (res.data?.items) {
+        cacheCasesOffline(res.data.items)
+      }
+      return res.data
+    } catch (err) {
+      const cached = await getCachedCasesOffline()
+      if (cached && cached.length > 0) {
+        return {
+          items: cached,
+          total: cached.length,
+          page: 1,
+          page_size: cached.length,
+          total_pages: 1,
+        }
+      }
+      throw err
+    }
+  },
 
-  getById: (id: string) =>
-    apiClient.get<Investigation>(`/api/case/${id}`).then((r) => r.data),
+  getById: async (id: string): Promise<Investigation> => {
+    try {
+      const res = await apiClient.get<Investigation>(`/api/case/${id}`)
+      if (res.data) {
+        cacheCaseOffline(res.data)
+      }
+      return res.data
+    } catch (err) {
+      const cached = await getCachedCaseOffline(id)
+      if (cached) return cached
+      throw err
+    }
+  },
 
   getCaseEvents: (caseId: string, limit: number = 500) =>
     apiClient

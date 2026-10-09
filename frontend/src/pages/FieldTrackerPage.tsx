@@ -25,7 +25,9 @@ import { DEFAULT_MAP_CENTER, WS_BASE_URL } from '@/constants'
 import 'leaflet/dist/leaflet.css'
 import { useMapTheme } from '@/hooks/useMapTheme'
 import { MapThemeSwitcher } from '@/components/map/MapThemeSwitcher'
+import { OfflineBanner } from '@/components/ui/OfflineBanner'
 import { formatTimeAgo, copyToClipboard } from '@/utils'
+import { cacheFixesOffline, getCachedFixesOffline } from '@/services/offlineStorage'
 
 interface LocationUpdate {
   lat: number
@@ -133,6 +135,7 @@ export default function FieldTrackerPage() {
 
         if (data.recent_fixes && data.recent_fixes.length > 0) {
           setLocations(data.recent_fixes)
+          cacheFixesOffline(data.case_id, data.recent_fixes)
           const latest = data.recent_fixes[data.recent_fixes.length - 1]
           setLastPingTime(latest.timestamp)
         }
@@ -142,6 +145,33 @@ export default function FieldTrackerPage() {
         }
       } catch (err: unknown) {
         if (!cancelled) {
+          // Attempt offline resolution from token payload
+          try {
+            const payloadPart = token.split('.')[1]
+            const decoded = JSON.parse(atob(payloadPart))
+            if (decoded?.case_id) {
+              const cachedFixes = await getCachedFixesOffline(decoded.case_id)
+              if (cachedFixes && cachedFixes.length > 0) {
+                setCaseDetails({
+                  case_id: decoded.case_id,
+                  case_name: 'Offline Field Trace',
+                  suspect_name: 'Target (Cached Offline)',
+                })
+                setLocations(
+                  cachedFixes.map((f) => ({
+                    lat: f.lat,
+                    lng: f.lng,
+                    timestamp: f.timestamp,
+                    state: f.state === 'MOVING' ? 'MOVING' : 'STATIONARY',
+                  }))
+                )
+                const latest = cachedFixes[cachedFixes.length - 1]
+                setLastPingTime(latest.timestamp)
+                setIsValidating(false)
+                return
+              }
+            }
+          } catch {}
           setError('Invalid or expired tracking link. Ground links expire after 2 hours.')
         }
       } finally {
@@ -201,7 +231,13 @@ export default function FieldTrackerPage() {
               imsi: payload.imsi,
             }
 
-            setLocations((prev) => [...prev.slice(-499), newLoc])
+            setLocations((prev) => {
+              const updated = [...prev.slice(-499), newLoc]
+              if (caseId) {
+                cacheFixesOffline(caseId, updated)
+              }
+              return updated
+            })
             setCurrentState(state)
             setLastPingTime(timestamp)
           }
@@ -301,6 +337,7 @@ export default function FieldTrackerPage() {
 
   return (
     <div className="relative flex h-screen w-full flex-col bg-surface-950 text-surface-100 overflow-hidden font-sans">
+      <OfflineBanner />
       {/* Top Floating Command HUD */}
       <header className="absolute top-3 inset-x-3 md:inset-x-6 z-[1000] pointer-events-none">
         <div className="pointer-events-auto mx-auto max-w-6xl rounded-xl border border-surface-700/60 bg-surface-900/85 backdrop-blur-md px-4 py-3 shadow-2xl flex flex-wrap items-center justify-between gap-3">
