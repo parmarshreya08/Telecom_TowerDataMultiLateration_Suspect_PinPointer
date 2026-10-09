@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Navigation, Play, Square, MapPin, AlertCircle, Copy, Check, Plus, Radio } from 'lucide-react'
+import { Navigation, Play, Square, MapPin, AlertCircle, Copy, Check, Plus, Radio, ExternalLink } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { socketService } from '@/services/socket'
@@ -75,7 +75,9 @@ export default function LiveTrackingPage() {
           if (!cancelled && st.active.length > 0) {
             setActiveId(c.id)
             setSelectedId((s) => s ?? c.id)
-            setDemoLink(null)
+            if (st.demo_link) {
+              setDemoLink(st.demo_link)
+            }
             break
           }
         } catch {
@@ -140,9 +142,18 @@ export default function LiveTrackingPage() {
     }
   }, [activeId])
 
-  const handleSelect = (id: string) => {
-    if (id === activeId) return
+  const handleSelect = async (id: string) => {
     setSelectedId(id)
+    if (id === activeId && !demoLink) {
+      try {
+        const st = await liveTrackingApi.getStatus(id)
+        if (st.demo_link) {
+          setDemoLink(st.demo_link)
+        }
+      } catch {
+        // ignore
+      }
+    }
   }
 
   const handleToggle = async (c: Investigation, on: boolean) => {
@@ -391,20 +402,37 @@ export default function LiveTrackingPage() {
               </Button>
             )}
             {activeId === selected.id && demoLink && (
-              <div className="space-y-1">
-                <div className="text-xs text-surface-500">
-                  Ground-officer link <span className="text-surface-400">(lightweight field view)</span>
+              <div className="space-y-1.5 pt-1 border-t border-surface-200 dark:border-surface-800">
+                <div className="flex items-center justify-between text-xs text-surface-500">
+                  <span>Ground-officer link <span className="text-surface-400">(lightweight field view)</span></span>
+                  <span className="text-[10px] text-emerald-500 font-medium">Valid 2 hrs</span>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex items-center gap-1.5">
                   <input
                     type="text"
                     readOnly
+                    onFocus={(e) => e.target.select()}
                     value={`${window.location.origin}${demoLink}`}
-                    className="flex-1 min-w-0 rounded-md border border-surface-300 px-2 py-1.5 text-xs bg-surface-50 truncate dark:bg-surface-900 dark:border-surface-700"
+                    className="flex-1 min-w-0 rounded-md border border-surface-300 px-2.5 py-1.5 text-xs bg-surface-50 dark:bg-surface-900 dark:border-surface-700 font-mono text-surface-700 dark:text-surface-300 select-all"
                   />
-                  <Button size="sm" variant="secondary" onClick={handleCopyLink}>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={handleCopyLink}
+                    title="Copy link to clipboard"
+                    className="shrink-0"
+                  >
                     {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
                   </Button>
+                  <a
+                    href={`${window.location.origin}${demoLink}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="shrink-0 inline-flex items-center justify-center p-1.5 rounded-md bg-primary-600 hover:bg-primary-500 text-white transition-colors shadow-sm"
+                    title="Open live tracking view in new tab"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                  </a>
                 </div>
               </div>
             )}

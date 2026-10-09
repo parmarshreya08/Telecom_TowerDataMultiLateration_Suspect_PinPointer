@@ -13,7 +13,7 @@ from app.services.live_tracking_service import LiveTrackingService
 from app.core.security import decode_token
 from app.core.deps import check_case_access, require_inspector_or_admin
 from app.database.models import OfficerModel
-from app.database.models.live_tracking import LiveTrackingSession
+from app.database.models.live_tracking import LiveTrackingSession, LiveTrackingFixModel
 from app.database.models.telecom import CaseModel
 from app.database.session import get_db_session
 
@@ -118,14 +118,26 @@ async def live_tracking_status(
             )
         )
     ).scalars().all()
+
+    token = None
+    demo_link = None
+    if rows:
+        token = alert_service.generate_tracking_token(case_id)
+        demo_link = f"/t/{token}"
+
     return {
         "case_id": case_id,
         "active": [{"imsi": r.imsi, "authorized_at": r.authorized_at.isoformat()} for r in rows],
+        "token": token,
+        "demo_link": demo_link,
     }
 
 
 @router.get("/resolve-token/{token}")
-async def resolve_tracking_token(token: str) -> Dict[str, Any]:
+async def resolve_tracking_token(
+    token: str,
+    db: AsyncSession = Depends(get_db_session),
+) -> Dict[str, Any]:
     """
     Resolve a tracking JWT token to get case details for the Ground Officer UI.
     No authentication required, the token acts as auth.
@@ -138,8 +150,46 @@ async def resolve_tracking_token(token: str) -> Dict[str, Any]:
     if not case_id:
         raise HTTPException(status_code=400, detail="Invalid token payload")
 
+    case = (
+        await db.execute(select(CaseModel).where(CaseModel.case_id == case_id))
+    ).scalar_one_or_none()
+
+    # Query recent fixes
+    fixes_res = (
+        await db.execute(
+            select(LiveTrackingFixModel)
+            .where(LiveTrackingFixModel.case_id == case_id)
+            .order_by(LiveTrackingFixModel.timestamp.desc())
+            .limit(100)
+        )
+    ).scalars().all()
+
+    recent_fixes = [
+        {
+            "lat": f.latitude,
+            "lng": f.longitude,
+            "timestamp": f.timestamp.isoformat() if hasattr(f.timestamp, "isoformat") else str(f.timestamp),
+            "state": "MOVING" if f.is_significant_anchor else "STATIONARY",
+            "imsi": f.imsi,
+        }
+        for f in reversed(fixes_res)
+    ]
+
+    # Check state from LiveTrackingService
+    current_state = "STATIONARY"
+    for k, v in LiveTrackingService._states.items():
+        if k.startswith(f"{case_id}::"):
+            current_state = v.get("state", "STATIONARY")
+            break
+
     return {
         "case_id": case_id,
         "status": "active",
-        "message": "Valid token"
+        "message": "Valid token",
+        "case_name": case.case_name if case else None,
+        "case_number": case.case_number if case else None,
+        "suspect_name": case.suspect_name if case else None,
+        "mobile_number": case.mobile_number if case else None,
+        "recent_fixes": recent_fixes,
+        "current_state": current_state,
     }

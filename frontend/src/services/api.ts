@@ -79,7 +79,10 @@ apiClient.interceptors.response.use(
     const status = error?.response?.status
     const url = error?.config?.url ?? ''
     const isLoginOrRegister =
-      url.startsWith('/api/auth/login') || url.startsWith('/api/auth/register')
+      url.startsWith('/api/auth/login') ||
+      url.startsWith('/api/auth/register') ||
+      url.includes('/live-tracking/resolve-token') ||
+      window.location.pathname.startsWith('/t/')
     if (status === 401 && !isLoginOrRegister) {
       localStorage.removeItem('erakshak_access_token')
       localStorage.removeItem('erakshak_officer')
@@ -229,7 +232,19 @@ export const liveTrackingApi = {
   stopTracking: (caseId: string, imsi?: string) =>
     apiClient.post<{ status: string; message: string }>(`/api/v1/live-tracking/${caseId}/stop`, { imsi: imsi ?? null }).then(r => r.data),
   getStatus: (caseId: string) =>
-    apiClient.get<{ case_id: string; active: Array<{ imsi: string; authorized_at: string }> }>(`/api/v1/live-tracking/${caseId}/status`).then(r => r.data),
+    apiClient.get<{ case_id: string; active: Array<{ imsi: string; authorized_at: string }>; demo_link?: string; token?: string }>(`/api/v1/live-tracking/${caseId}/status`).then(r => r.data),
+  resolveToken: (token: string) =>
+    apiClient.get<{
+      case_id: string;
+      status: string;
+      message: string;
+      case_name?: string;
+      case_number?: string;
+      suspect_name?: string;
+      mobile_number?: string;
+      recent_fixes?: Array<{ lat: number; lng: number; timestamp: string; state: 'MOVING' | 'STATIONARY'; imsi?: string }>;
+      current_state?: 'MOVING' | 'STATIONARY';
+    }>(`/api/v1/live-tracking/resolve-token/${encodeURIComponent(token)}`).then(r => r.data),
 }
 
 // Tracking / Localization
